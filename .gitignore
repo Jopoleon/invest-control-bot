@@ -1,5 +1,7 @@
 .env
 .env.*
+.idea
+/.idea
 !.env.example
 
 personal_notes.md
