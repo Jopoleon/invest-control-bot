@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin · Connectors</title>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --card: #ffffff;
+      --line: #e3e8f1;
+      --text: #182230;
+      --muted: #475467;
+      --accent: #0f766e;
+      --accent-2: #0b5cab;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--text);
+      background: radial-gradient(1200px 500px at 10% -20%, #d9f0ff 0%, transparent 70%), var(--bg);
+      font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    .wrap { max-width: 1160px; margin: 24px auto; padding: 0 16px 24px; }
+    .nav, .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: 0 3px 14px rgba(16,24,40,.05);
+    }
+    .nav { padding: 10px 14px; margin-bottom: 12px; }
+    .nav a { color: #0f172a; text-decoration: none; font-weight: 600; margin-right: 16px; }
+    .card { padding: 16px; margin-bottom: 14px; }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    h3 { margin: 0 0 6px; font-size: 18px; }
+    .sub { color: var(--muted); margin: 0 0 10px; }
+    .notice {
+      background: #edf6ff;
+      border: 1px solid #cfe5ff;
+      color: var(--accent-2);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      font-weight: 600;
+    }
+    .hint { color: #667085; font-size: 12px; margin-top: 4px; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    label { display: block; font-size: 13px; color: #344054; margin-bottom: 4px; }
+    input {
+      width: 100%;
+      border: 1px solid #ccd5e3;
+      border-radius: 8px;
+      padding: 9px 10px;
+      background: #fff;
+      color: #111827;
+    }
+    .actions { margin-top: 14px; }
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 9px 14px;
+      background: #111827;
+      color: #fff;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button:hover { opacity: .92; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td {
+      border-bottom: 1px solid #edf1f7;
+      text-align: left;
+      padding: 10px;
+      vertical-align: top;
+      font-size: 13px;
+    }
+    th { background: #f8fafc; color: #475467; position: sticky; top: 0; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: 12px; }
+    .table-wrap { overflow: auto; max-height: 54vh; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="nav">
+    <a href="/admin/connectors">Connectors</a>
+    <a href="/admin/help">Guide</a>
+  </div>
+
+  <div class="card">
+    <h1>Connectors</h1>
+    <p class="sub">Коннектор — это тариф/условие оплаты, по которому пользователь приходит в бот.</p>
+    {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+
+    <form method="POST" action="/admin/connectors">
+      <div class="grid">
+        <div>
+          <label>Name *</label>
+          <input name="name" required>
+        </div>
+        <div>
+          <label>Chat ID *</label>
+          <input name="chat_id" required>
+        </div>
+        <div>
+          <label>Price RUB *</label>
+          <input name="price_rub" placeholder="3335" required>
+        </div>
+        <div>
+          <label>Period days</label>
+          <input name="period_days" value="30">
+        </div>
+        <div>
+          <label>Start payload</label>
+          <input name="start_payload" placeholder="in-94db7d6813507bc">
+          <div class="hint">Если пусто, будет сгенерирован автоматически.</div>
+        </div>
+        <div>
+          <label>Internal ID</label>
+          <input name="id" placeholder="auto-generated">
+          <div class="hint">Если пусто, будет сгенерирован автоматически.</div>
+        </div>
+        <div>
+          <label>Offer URL</label>
+          <input name="offer_url" placeholder="https://...">
+        </div>
+        <div>
+          <label>Privacy URL</label>
+          <input name="privacy_url" placeholder="https://...">
+        </div>
+      </div>
+      <div style="margin-top:12px;">
+        <label>Description</label>
+        <input name="description" placeholder="Краткое описание тарифа">
+      </div>
+      <div class="actions"><button type="submit">Create connector</button></div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Подсказка</h3>
+    <p class="sub" style="margin:0">{{.RequiredMessage}}</p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-bottom:10px;">Список коннекторов</h3>
+    <div class="table-wrap">
+      <table>
+        <tr>
+          <th>ID</th>
+          <th>Payload</th>
+          <th>Name</th>
+          <th>Chat</th>
+          <th>Price</th>
+          <th>Period</th>
+          <th>Offer</th>
+          <th>Privacy</th>
+          <th>Bot Link</th>
+          <th>Active</th>
+          <th>Action</th>
+        </tr>
+        {{range .Connectors}}
+        <tr>
+          <td class="mono">{{.ID}}</td>
+          <td class="mono">{{.StartPayload}}</td>
+          <td>{{.Name}}</td>
+          <td class="mono">{{.ChatID}}</td>
+          <td>{{.PriceRUB}} ₽</td>
+          <td>{{.PeriodDays}}</td>
+          <td class="mono">{{.OfferURL}}</td>
+          <td class="mono">{{.PrivacyURL}}</td>
+          <td class="mono">{{.BotLink}}</td>
+          <td>{{.IsActive}}</td>
+          <td>
+            <form method="POST" action="/admin/connectors/toggle">
+              <input type="hidden" name="id" value="{{.ID}}">
+              <input type="hidden" name="active" value="{{.ToggleTo}}">
+              <button type="submit">{{.ToggleLabel}}</button>
+            </form>
+          </td>
+        </tr>
+        {{end}}
+      </table>
+    </div>
+  </div>
+</div>
+</body>
+</html>

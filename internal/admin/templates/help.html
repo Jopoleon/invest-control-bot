@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin · Guide</title>
+  <style>
+    body { margin:0; background:#f5f7fb; color:#101828; font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+    .wrap { max-width: 980px; margin: 24px auto; padding: 0 16px 24px; }
+    .nav, .card { background:#fff; border:1px solid #e3e8f1; border-radius:12px; box-shadow:0 3px 14px rgba(16,24,40,.05); }
+    .nav { padding:10px 14px; margin-bottom:12px; }
+    .nav a { color:#0f172a; text-decoration:none; font-weight:600; margin-right:16px; }
+    .card { padding:18px; }
+    h2 { margin-top:0; }
+    h3 { margin-bottom:6px; }
+    p { margin: 6px 0; color:#344054; line-height:1.45; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background:#f2f4f7; padding:1px 4px; border-radius:6px; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="nav">
+    <a href="/admin/connectors">Connectors</a>
+    <a href="/admin/help">Guide</a>
+  </div>
+  <div class="card">
+    <h2>Гайд по админке</h2>
+    <h3>1. Как создать коннектор</h3>
+    <p>Заполните <b>Name</b>, <b>Chat ID</b> и <b>Price RUB</b>. Нажмите <b>Create connector</b>.</p>
+
+    <h3>2. Поля формы</h3>
+    <p><b>Name</b>: название тарифа, которое увидит пользователь.</p>
+    <p><b>Chat ID</b>: Telegram ID чата/канала, например <code>-1003626584986</code>.</p>
+    <p><b>Price RUB</b>: сумма оплаты в рублях.</p>
+    <p><b>Period days</b>: длительность подписки в днях (по умолчанию 30).</p>
+    <p><b>Start payload</b>: токен deeplink (<code>/start ...</code>). Если пусто, генерируется автоматически.</p>
+    <p><b>Internal ID</b>: внутренний ID коннектора. Если пусто, генерируется автоматически.</p>
+    <p><b>Offer URL</b> и <b>Privacy URL</b>: ссылки на оферту и политику ПДн.</p>
+    <p><b>Description</b>: дополнительное описание тарифа.</p>
+
+    <h3>3. Как тестировать</h3>
+    <p>Скопируйте Bot Link из таблицы и откройте его в Telegram. Пройдите диалог и нажмите «Оплатить».</p>
+    <p>Пока активен mock-провайдер, откроется тестовая страница оплаты.</p>
+  </div>
+</div>
+</body>
+</html>

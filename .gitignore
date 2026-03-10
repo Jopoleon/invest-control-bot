@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+
+personal_notes.md
+
+/bin/
+/tmp/
+/vendor
+*.log
