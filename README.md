@@ -27,12 +27,20 @@
 1. Скопируйте `.env.example` в `.env`.
 2. Заполните переменные окружения.
 3. Приложение автоматически читает `.env` при старте.
-4. Для `stage/prod` обязательны все секреты (`TELEGRAM_BOT_TOKEN`, `YOOKASSA_*`, `APP_ENCRYPTION_KEY`, `ADMIN_AUTH_TOKEN`, `POSTGRES_DSN`).
+4. Для `stage/prod` обязательны все секреты (`TELEGRAM_BOT_TOKEN`, `YOOKASSA_*`, `APP_ENCRYPTION_KEY`, `ADMIN_AUTH_TOKEN`) и DB-параметры (`DB_DRIVER`, `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE`, `DB_SSL`).
+5. Уровень логов задается через `LOG_LEVEL` (`debug|info|warn|error`).
 
 ## Запуск
 ```bash
 go run ./cmd/server
 ```
+
+## База данных
+- `DB_DRIVER=postgres` - использовать PostgreSQL (по умолчанию).
+- `DB_DRIVER=memory` - использовать in-memory store (только для локальных тестов).
+- `DB_WITH_MIGRATION=true` - автоматически применять миграции при старте.
+- Доступ к PostgreSQL реализован через `github.com/jmoiron/sqlx`.
+- Миграции выполняются через `github.com/rubenv/sql-migrate`.
 
 ## Доступные маршруты
 - `GET /healthz`
@@ -64,9 +72,14 @@ go run ./cmd/server
 - Кнопка `Оплатить` ведет на тестовую страницу checkout (`/mock/pay`).
 - Для публичного теста укажи `PAYMENT_MOCK_BASE_URL` (обычно URL ngrok).
 
+## Логирование
+- Используется `log/slog` (structured logs).
+- В `debug` режиме включаются подробные Telegram webhook payload логи.
+
 ## Документация
 - Гайд по админке: `docs/ADMIN_GUIDE.md`
 - Выжимка по регуляторике ПДн (РФ): `docs/DATA_COMPLIANCE_RU.md`
+- Миграции БД (sql-migrate): `docs/MIGRATIONS.md`
 
 ## Структура bot-пакета
 - `internal/bot/handler.go` - базовый `Handler` и зависимости.

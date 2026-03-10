@@ -2,9 +2,10 @@ package config
 
 import (
 	"errors"
-	"fmt"
-	"log"
+	"log/slog"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +30,7 @@ type Config struct {
 	Telegram TelegramConfig
 	Yookassa YookassaConfig
 	Payment  PaymentConfig
+	Logging  LoggingConfig
 
 	Security SecurityConfig
 }
@@ -42,7 +44,17 @@ type HTTPConfig struct {
 
 // PostgresConfig stores database connectivity settings.
 type PostgresConfig struct {
-	DSN string
+	Driver        string
+	Host          string
+	Port          int
+	Username      string
+	Password      string
+	Database      string
+	Charset       string
+	Collation     string
+	SSLMode       string
+	WithMigration bool
+	DSN           string
 }
 
 // TelegramConfig stores bot credentials and webhook settings.
@@ -71,6 +83,11 @@ type PaymentConfig struct {
 	MockBaseURL string
 }
 
+// LoggingConfig controls verbosity of structured logs.
+type LoggingConfig struct {
+	Level string
+}
+
 // SecurityConfig stores application-level secrets.
 type SecurityConfig struct {
 	EncryptionKey string
@@ -81,14 +98,14 @@ type SecurityConfig struct {
 func Load() (Config, error) {
 	if _, err := os.Stat(".env"); err == nil {
 		if err := godotenv.Load(".env"); err != nil {
-			log.Printf("config: .env found but failed to load: %v", err)
+			slog.Warn("config .env found but failed to load", "error", err)
 		} else {
-			log.Printf("config: .env found and loaded")
+			slog.Info("config .env found and loaded")
 		}
 	} else if errors.Is(err, os.ErrNotExist) {
-		log.Printf("config: .env not found, using process environment only")
+		slog.Info("config .env not found, using process environment only")
 	} else {
-		log.Printf("config: failed to stat .env: %v", err)
+		slog.Warn("config failed to stat .env", "error", err)
 	}
 
 	cfg := Config{
@@ -99,7 +116,18 @@ func Load() (Config, error) {
 			ReadTimeout:  getDurationEnv("HTTP_READ_TIMEOUT", 10*time.Second),
 			WriteTimeout: getDurationEnv("HTTP_WRITE_TIMEOUT", 15*time.Second),
 		},
-		Postgres: PostgresConfig{DSN: os.Getenv("POSTGRES_DSN")},
+		Postgres: PostgresConfig{
+			Driver:        strings.ToLower(getEnv("DB_DRIVER", "postgres")),
+			Host:          getEnv("DB_HOST", "localhost"),
+			Port:          getIntEnv("DB_PORT", 5432),
+			Username:      getEnv("DB_USERNAME", "postgres"),
+			Password:      os.Getenv("DB_PASSWORD"),
+			Database:      getEnv("DB_DATABASE", "telega_bot_fedor"),
+			Charset:       getEnv("DB_CHARSET", "utf8"),
+			Collation:     getEnv("DB_COLLATION", "utf8_unicode_ci"),
+			SSLMode:       getEnv("DB_SSL", "disable"),
+			WithMigration: getBoolEnv("DB_WITH_MIGRATION", true),
+		},
 		Telegram: TelegramConfig{
 			BotToken:    os.Getenv("TELEGRAM_BOT_TOKEN"),
 			BotUsername: os.Getenv("TELEGRAM_BOT_USERNAME"),
@@ -117,11 +145,15 @@ func Load() (Config, error) {
 			Provider:    strings.ToLower(getEnv("PAYMENT_PROVIDER", "mock")),
 			MockBaseURL: strings.TrimSpace(os.Getenv("PAYMENT_MOCK_BASE_URL")),
 		},
+		Logging: LoggingConfig{
+			Level: strings.ToLower(getEnv("LOG_LEVEL", "info")),
+		},
 		Security: SecurityConfig{
 			EncryptionKey: os.Getenv("APP_ENCRYPTION_KEY"),
 			AdminToken:    os.Getenv("ADMIN_AUTH_TOKEN"),
 		},
 	}
+	cfg.Postgres.DSN = buildPostgresDSN(cfg.Postgres)
 
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -150,10 +182,33 @@ func (c Config) Validate() error {
 	if c.Payment.Provider == "" {
 		errs = append(errs, "PAYMENT_PROVIDER is required")
 	}
+	switch c.Logging.Level {
+	case "debug", "info", "warn", "error":
+	default:
+		errs = append(errs, "LOG_LEVEL must be one of: debug, info, warn, error")
+	}
 
 	if c.Environment != EnvLocal {
+		if c.Postgres.Driver == "" {
+			errs = append(errs, "DB_DRIVER is required for non-local environments")
+		}
+		if c.Postgres.Host == "" {
+			errs = append(errs, "DB_HOST is required for non-local environments")
+		}
+		if c.Postgres.Port <= 0 {
+			errs = append(errs, "DB_PORT must be > 0 for non-local environments")
+		}
+		if c.Postgres.Username == "" {
+			errs = append(errs, "DB_USERNAME is required for non-local environments")
+		}
+		if c.Postgres.Database == "" {
+			errs = append(errs, "DB_DATABASE is required for non-local environments")
+		}
+		if c.Postgres.Driver == "postgres" && c.Postgres.SSLMode == "" {
+			errs = append(errs, "DB_SSL is required for postgres non-local environments")
+		}
 		if c.Postgres.DSN == "" {
-			errs = append(errs, "POSTGRES_DSN is required for non-local environments")
+			errs = append(errs, "constructed postgres DSN is empty")
 		}
 		if c.Telegram.BotToken == "" {
 			errs = append(errs, "TELEGRAM_BOT_TOKEN is required for non-local environments")
@@ -193,8 +248,66 @@ func getDurationEnv(key string, fallback time.Duration) time.Duration {
 	}
 	d, err := time.ParseDuration(v)
 	if err != nil {
-		fmt.Printf("invalid duration for %s=%q, fallback to %s\n", key, v, fallback)
+		slog.Warn("invalid duration env, fallback will be used", "key", key, "value", v, "fallback", fallback.String())
 		return fallback
 	}
 	return d
+}
+
+func getIntEnv(key string, fallback int) int {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		slog.Warn("invalid int env, fallback will be used", "key", key, "value", v, "fallback", fallback)
+		return fallback
+	}
+	return n
+}
+
+func getBoolEnv(key string, fallback bool) bool {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return fallback
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		slog.Warn("invalid bool env, fallback will be used", "key", key, "value", v, "fallback", fallback)
+		return fallback
+	}
+	return b
+}
+
+func buildPostgresDSN(pg PostgresConfig) string {
+	if pg.Driver == "" {
+		return ""
+	}
+	if pg.Driver != "postgres" {
+		// For now we only build postgres DSN, but keep DB_DRIVER in config for future extensibility.
+		return ""
+	}
+
+	q := url.Values{}
+	if pg.SSLMode != "" {
+		q.Set("sslmode", pg.SSLMode)
+	}
+	if pg.Charset != "" {
+		q.Set("charset", pg.Charset)
+	}
+	if pg.Collation != "" {
+		q.Set("collation", pg.Collation)
+	}
+
+	u := &url.URL{
+		Scheme: "postgres",
+		Host:   pg.Host + ":" + strconv.Itoa(pg.Port),
+		Path:   "/" + pg.Database,
+	}
+	if pg.Username != "" {
+		u.User = url.UserPassword(pg.Username, pg.Password)
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
 }

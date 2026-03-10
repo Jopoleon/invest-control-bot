@@ -3,7 +3,7 @@ package app
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/Jopoleon/telega-bot-fedor/internal/admin"
@@ -31,7 +31,14 @@ func New(cfg config.Config, st store.Store) (*Server, error) {
 	if mockBaseURL == "" {
 		mockBaseURL = cfg.Telegram.Webhook.PublicURL
 	}
-	paymentService := payment.NewMockService(mockBaseURL)
+	var paymentService payment.Service
+	switch cfg.Payment.Provider {
+	case "", "mock":
+		paymentService = payment.NewMockService(mockBaseURL)
+	default:
+		slog.Warn("payment provider is not implemented yet, fallback to mock", "provider", cfg.Payment.Provider)
+		paymentService = payment.NewMockService(mockBaseURL)
+	}
 
 	botHandler := bot.NewHandler(st, tgClient, paymentService)
 	adminHandler := admin.NewHandler(st, cfg.Security.AdminToken, cfg.Telegram.BotUsername)
@@ -78,27 +85,27 @@ func New(cfg config.Config, st store.Store) (*Server, error) {
 		// Keep raw update logs during active development to simplify webhook diagnostics.
 		if update.Message != nil {
 			raw, _ := json.Marshal(update.Message)
-			log.Printf("telegram update.message=%s", raw)
+			slog.Debug("telegram update.message", "payload", string(raw))
 			logged = true
 		}
 		if update.CallbackQuery != nil {
 			raw, _ := json.Marshal(update.CallbackQuery.Message)
-			log.Printf("telegram update.callback_query.message=%s", raw)
+			slog.Debug("telegram update.callback_query.message", "payload", string(raw))
 			logged = true
 		}
 		if update.ChannelPost != nil {
 			raw, _ := json.Marshal(update.ChannelPost)
-			log.Printf("telegram update.channel_post=%s", raw)
+			slog.Debug("telegram update.channel_post", "payload", string(raw))
 			logged = true
 		}
 		if update.EditedChannelPost != nil {
 			raw, _ := json.Marshal(update.EditedChannelPost)
-			log.Printf("telegram update.edited_channel_post=%s", raw)
+			slog.Debug("telegram update.edited_channel_post", "payload", string(raw))
 			logged = true
 		}
 		if !logged {
 			raw, _ := json.Marshal(update)
-			log.Printf("telegram update.raw=%s", raw)
+			slog.Debug("telegram update.raw", "payload", string(raw))
 		}
 		botHandler.HandleUpdate(r.Context(), &update)
 		w.WriteHeader(http.StatusOK)
@@ -122,7 +129,7 @@ func (s *Server) Run() error {
 // loggingMiddleware logs basic request metadata for every incoming HTTP call.
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("method=%s path=%s remote=%s", r.Method, r.URL.Path, r.RemoteAddr)
+		slog.Info("http request", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
 		next.ServeHTTP(w, r)
 	})
 }

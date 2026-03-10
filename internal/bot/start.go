@@ -3,7 +3,7 @@ package bot
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"github.com/go-telegram/bot/models"
@@ -20,13 +20,13 @@ func (h *Handler) handleStart(ctx context.Context, msg *models.Message) {
 	payload := strings.TrimSpace(parts[1])
 	connector, ok, err := h.store.GetConnectorByStartPayload(ctx, payload)
 	if err != nil {
-		log.Printf("load connector by payload failed: %v", err)
+		slog.Error("load connector by payload failed", "error", err, "payload", payload)
 		return
 	}
 	if !ok {
 		connector, ok, err = h.store.GetConnector(ctx, payload)
 		if err != nil {
-			log.Printf("fallback load connector by id failed: %v", err)
+			slog.Error("fallback load connector by id failed", "error", err, "connector_id", payload)
 			return
 		}
 	}
@@ -58,6 +58,6 @@ func (h *Handler) handleStart(ctx context.Context, msg *models.Message) {
 	}}}
 
 	if err := h.tg.SendMessage(ctx, msg.Chat.ID, text, keyboard); err != nil {
-		log.Printf("send start message failed: %v", err)
+		slog.Error("send start message failed", "error", err, "chat_id", msg.Chat.ID, "connector_id", connector.ID)
 	}
 }

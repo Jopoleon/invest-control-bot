@@ -2,7 +2,7 @@ package bot
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/mail"
 	"strings"
 
@@ -20,7 +20,7 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg *models.Messag
 
 	user, exists, err := h.store.GetUser(ctx, msg.From.ID)
 	if err != nil {
-		log.Printf("load user failed: %v", err)
+		slog.Error("load user failed", "error", err, "telegram_id", msg.From.ID)
 		return
 	}
 	if !exists {
@@ -58,7 +58,7 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg *models.Messag
 		}
 		state.Step = domain.StepDone
 		if err := h.store.DeleteRegistrationState(ctx, msg.From.ID); err != nil {
-			log.Printf("delete registration state failed: %v", err)
+			slog.Error("delete registration state failed", "error", err, "telegram_id", msg.From.ID)
 		}
 
 		h.sendFinalRegistrationMessage(ctx, msg.Chat.ID, state.ConnectorID)
@@ -67,13 +67,13 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg *models.Messag
 	}
 
 	if err := h.store.SaveUser(ctx, user); err != nil {
-		log.Printf("save user failed: %v", err)
+		slog.Error("save user failed", "error", err, "telegram_id", msg.From.ID)
 		return
 	}
 
 	if state.Step != domain.StepDone {
 		if err := h.store.SaveRegistrationState(ctx, state); err != nil {
-			log.Printf("save registration step failed: %v", err)
+			slog.Error("save registration step failed", "error", err, "telegram_id", msg.From.ID, "step", state.Step)
 		}
 	}
 }
@@ -87,6 +87,6 @@ func (h *Handler) sendFinalRegistrationMessage(ctx context.Context, chatID int64
 		"✅ Спасибо! Ваша заявка оформлена успешно.\n💳 Осталось оплатить\nЧтобы произвести оплату, нажмите на кнопку «Оплатить» ниже, для переадресации на платежную страницу",
 		payKeyboard,
 	); err != nil {
-		log.Printf("send final message failed: %v", err)
+		slog.Error("send final message failed", "error", err, "chat_id", chatID, "connector_id", connectorID)
 	}
 }

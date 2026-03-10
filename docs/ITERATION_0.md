@@ -21,7 +21,12 @@
 - `YOOKASSA_WEBHOOK_SECRET`
 - `APP_ENCRYPTION_KEY` (минимум 32 символа)
 - `ADMIN_AUTH_TOKEN`
-- `POSTGRES_DSN`
+- `DB_HOST`
+- `DB_PORT`
+- `DB_USERNAME`
+- `DB_PASSWORD`
+- `DB_DATABASE`
+- `DB_SSL`
 
 ## Критерии завершения итерации 0
 - [x] Подготовлен конфиг-каркас и валидация окружения.

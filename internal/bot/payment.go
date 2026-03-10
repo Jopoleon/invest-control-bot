@@ -3,7 +3,7 @@ package bot
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"github.com/Jopoleon/telega-bot-fedor/internal/payment"
@@ -15,7 +15,7 @@ func (h *Handler) handlePay(ctx context.Context, cb *models.CallbackQuery) {
 	connectorID := strings.TrimPrefix(cb.Data, "pay:")
 	connector, ok, err := h.store.GetConnector(ctx, connectorID)
 	if err != nil {
-		log.Printf("load connector for pay failed: %v", err)
+		slog.Error("load connector for pay failed", "error", err, "connector_id", connectorID)
 		return
 	}
 	if !ok || !connector.IsActive {
@@ -33,7 +33,7 @@ func (h *Handler) handlePay(ctx context.Context, cb *models.CallbackQuery) {
 		AmountRUB:      connector.PriceRUB,
 	})
 	if err != nil {
-		log.Printf("create checkout url failed: %v", err)
+		slog.Error("create checkout url failed", "error", err, "connector_id", connectorID, "telegram_id", cb.From.ID)
 		h.send(ctx, cb.From.ID, "Не удалось сформировать ссылку оплаты. Попробуйте позже.")
 		return
 	}
@@ -45,6 +45,6 @@ func (h *Handler) handlePay(ctx context.Context, cb *models.CallbackQuery) {
 		fmt.Sprintf("Сформирована ссылка оплаты через %s в тестовом режиме.", h.payment.ProviderName()),
 		keyboard,
 	); err != nil {
-		log.Printf("send pay link failed: %v", err)
+		slog.Error("send pay link failed", "error", err, "connector_id", connectorID, "telegram_id", cb.From.ID)
 	}
 }

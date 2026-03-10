@@ -2,7 +2,7 @@ package telegram
 
 import (
 	"context"
-	"log"
+	"log/slog"
 
 	tgbot "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -36,7 +36,7 @@ func NewClient(botToken, webhookSecret string) (*Client, error) {
 // SendMessage sends plain text message with optional inline keyboard.
 func (c *Client) SendMessage(ctx context.Context, chatID int64, text string, keyboard *models.InlineKeyboardMarkup) error {
 	if !c.enabled {
-		log.Printf("telegram client is disabled (empty bot token), skip sendMessage chat_id=%d text=%q", chatID, text)
+		slog.Debug("telegram client disabled, skip sendMessage", "chat_id", chatID)
 		return nil
 	}
 
@@ -55,7 +55,7 @@ func (c *Client) SendMessage(ctx context.Context, chatID int64, text string, key
 // AnswerCallbackQuery acknowledges button click to stop Telegram client-side spinner.
 func (c *Client) AnswerCallbackQuery(ctx context.Context, callbackQueryID string) error {
 	if !c.enabled {
-		log.Printf("telegram client is disabled (empty bot token), skip answerCallbackQuery id=%s", callbackQueryID)
+		slog.Debug("telegram client disabled, skip answerCallbackQuery", "callback_id", callbackQueryID)
 		return nil
 	}
 

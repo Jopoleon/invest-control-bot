@@ -2,7 +2,7 @@ package bot
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -17,7 +17,7 @@ func (h *Handler) handleCallback(ctx context.Context, cb *models.CallbackQuery) 
 	}
 
 	if err := h.tg.AnswerCallbackQuery(ctx, cb.ID); err != nil {
-		log.Printf("answer callback failed: %v", err)
+		slog.Error("answer callback failed", "error", err, "callback_id", cb.ID)
 	}
 
 	if !strings.HasPrefix(cb.Data, "accept_terms:") {
@@ -30,7 +30,7 @@ func (h *Handler) handleCallback(ctx context.Context, cb *models.CallbackQuery) 
 	connectorID := strings.TrimPrefix(cb.Data, "accept_terms:")
 	connector, ok, err := h.store.GetConnector(ctx, connectorID)
 	if err != nil {
-		log.Printf("load connector failed: %v", err)
+		slog.Error("load connector failed", "error", err, "connector_id", connectorID)
 		return
 	}
 	if !ok || !connector.IsActive {
@@ -45,7 +45,7 @@ func (h *Handler) handleCallback(ctx context.Context, cb *models.CallbackQuery) 
 		PrivacyAcceptedAt: time.Now().UTC(),
 	}
 	if err := h.store.SaveConsent(ctx, consent); err != nil {
-		log.Printf("save consent failed: %v", err)
+		slog.Error("save consent failed", "error", err, "telegram_id", cb.From.ID, "connector_id", connectorID)
 		return
 	}
 
@@ -56,7 +56,7 @@ func (h *Handler) handleCallback(ctx context.Context, cb *models.CallbackQuery) 
 		TelegramUsername: cb.From.Username,
 	}
 	if err := h.store.SaveRegistrationState(ctx, state); err != nil {
-		log.Printf("save registration state failed: %v", err)
+		slog.Error("save registration state failed", "error", err, "telegram_id", cb.From.ID, "connector_id", connectorID)
 		return
 	}
 

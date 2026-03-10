@@ -2,7 +2,7 @@ package bot
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"strings"
 
 	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
@@ -23,7 +23,7 @@ func (h *Handler) handleMessage(ctx context.Context, msg *models.Message) {
 
 	state, ok, err := h.store.GetRegistrationState(ctx, msg.From.ID)
 	if err != nil {
-		log.Printf("load registration state failed: %v", err)
+		slog.Error("load registration state failed", "error", err, "telegram_id", msg.From.ID)
 		return
 	}
 	if !ok || state.Step == domain.StepNone || state.Step == domain.StepDone {
