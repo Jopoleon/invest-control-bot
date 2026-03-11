@@ -20,15 +20,21 @@ import (
 // main is the backend entrypoint used for local/dev runs and VPS deployments.
 func main() {
 	// Bootstrap logger before config load, then reconfigure from LOG_LEVEL.
-	logger.Init("info")
+	if _, err := logger.Init("info", ""); err != nil {
+		slog.Error("bootstrap logger init failed", "error", err)
+	}
 
 	cfg, err := config.Load()
 	if err != nil {
 		slog.Error("load config failed", "error", err)
 		os.Exit(1)
 	}
-	effectiveLevel := logger.Init(cfg.Logging.Level)
-	slog.Info("config loaded", "config", cfg, "effective_log_level", effectiveLevel)
+	effectiveLevel, err := logger.Init(cfg.Logging.Level, cfg.Logging.FilePath)
+	if err != nil {
+		slog.Error("logger init with file failed", "error", err, "file_path", cfg.Logging.FilePath)
+		os.Exit(1)
+	}
+	slog.Info("config loaded", "config", cfg, "effective_log_level", effectiveLevel, "log_file_path", cfg.Logging.FilePath)
 
 	st, cleanup, err := initStore(cfg)
 	if err != nil {

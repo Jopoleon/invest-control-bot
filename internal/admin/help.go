@@ -9,5 +9,12 @@ func (h *Handler) helpPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.persistTokenCookie(w, r)
-	h.renderer.render(w, "help.html", helpPageData{BotUsername: h.botUsername})
+	lang := h.resolveLang(w, r)
+	h.renderer.render(w, "help.html", helpPageData{
+		basePageData: basePageData{
+			Lang: lang,
+			I18N: dictForLang(lang),
+		},
+		BotUsername: h.botUsername,
+	})
 }

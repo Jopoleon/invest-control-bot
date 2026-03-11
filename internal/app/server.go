@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/Jopoleon/telega-bot-fedor/internal/admin"
 	"github.com/Jopoleon/telega-bot-fedor/internal/bot"
 	"github.com/Jopoleon/telega-bot-fedor/internal/config"
+	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
 	"github.com/Jopoleon/telega-bot-fedor/internal/payment"
 	"github.com/Jopoleon/telega-bot-fedor/internal/store"
 	"github.com/Jopoleon/telega-bot-fedor/internal/telegram"
@@ -57,11 +60,35 @@ func New(cfg config.Config, st store.Store) (*Server, error) {
 		connectorID := r.URL.Query().Get("connector_id")
 		userID := r.URL.Query().Get("user_id")
 		amount := r.URL.Query().Get("amount_rub")
-		_, _ = fmt.Fprintf(w, "<html><body style='font-family:sans-serif;background:#f5f7fb;'><div style='max-width:760px;margin:32px auto;background:#fff;border:1px solid #e5eaf2;border-radius:12px;padding:20px;'><h2>Mock Checkout</h2><p>Платежный шлюз пока в режиме заглушки.</p><p><b>Token:</b> %s<br><b>Connector:</b> %s<br><b>User:</b> %s<br><b>Amount:</b> %s RUB</p><a href='/mock/pay/success?token=%s' style='display:inline-block;padding:10px 14px;background:#111827;color:#fff;border-radius:8px;text-decoration:none;'>Имитировать успешную оплату</a></div></body></html>", token, connectorID, userID, amount, token)
+		if tgID, err := strconv.ParseInt(userID, 10, 64); err == nil && tgID > 0 {
+			if err := st.SaveAuditEvent(r.Context(), domain.AuditEvent{
+				TelegramID:  tgID,
+				ConnectorID: connectorID,
+				Action:      "mock_checkout_opened",
+				Details:     "token=" + token,
+				CreatedAt:   time.Now().UTC(),
+			}); err != nil {
+				slog.Error("save audit event failed", "error", err, "action", "mock_checkout_opened")
+			}
+		}
+		_, _ = fmt.Fprintf(w, "<html><body style='font-family:sans-serif;background:#f5f7fb;'><div style='max-width:760px;margin:32px auto;background:#fff;border:1px solid #e5eaf2;border-radius:12px;padding:20px;'><h2>Mock Checkout</h2><p>Платежный шлюз пока в режиме заглушки.</p><p><b>Token:</b> %s<br><b>Connector:</b> %s<br><b>User:</b> %s<br><b>Amount:</b> %s RUB</p><a href='/mock/pay/success?token=%s&connector_id=%s&user_id=%s' style='display:inline-block;padding:10px 14px;background:#111827;color:#fff;border-radius:8px;text-decoration:none;'>Имитировать успешную оплату</a></div></body></html>", token, connectorID, userID, amount, token, connectorID, userID)
 	})
 	mux.HandleFunc("/mock/pay/success", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		token := r.URL.Query().Get("token")
+		connectorID := r.URL.Query().Get("connector_id")
+		userID := r.URL.Query().Get("user_id")
+		if tgID, err := strconv.ParseInt(userID, 10, 64); err == nil && tgID > 0 {
+			if err := st.SaveAuditEvent(r.Context(), domain.AuditEvent{
+				TelegramID:  tgID,
+				ConnectorID: connectorID,
+				Action:      "mock_payment_success",
+				Details:     "token=" + token,
+				CreatedAt:   time.Now().UTC(),
+			}); err != nil {
+				slog.Error("save audit event failed", "error", err, "action", "mock_payment_success")
+			}
+		}
 		_, _ = fmt.Fprintf(w, "<html><body style='font-family:sans-serif;background:#f5f7fb;'><div style='max-width:760px;margin:32px auto;background:#fff;border:1px solid #e5eaf2;border-radius:12px;padding:20px;'><h2>Mock Payment Succeeded</h2><p>Тестовая оплата подтверждена. Token: <b>%s</b></p><p>В проде здесь будет webhook от платежного провайдера.</p></div></body></html>", token)
 	})
 

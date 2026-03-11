@@ -56,3 +56,31 @@ type RegistrationState struct {
 	TelegramUsername string
 	UpdatedAt        time.Time
 }
+
+// AuditEvent stores immutable user action records for compliance and support.
+type AuditEvent struct {
+	ID          int64
+	TelegramID  int64
+	ConnectorID string
+	Action      string
+	Details     string
+	CreatedAt   time.Time
+}
+
+// AuditEventListQuery describes filtering, sorting and pagination for audit event history.
+type AuditEventListQuery struct {
+	TelegramID int64
+
+	ConnectorID string
+	Action      string
+	Search      string
+
+	CreatedFrom      *time.Time
+	CreatedToExclude *time.Time
+
+	SortBy   string
+	SortDesc bool
+
+	Page     int
+	PageSize int
+}

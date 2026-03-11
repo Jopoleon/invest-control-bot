@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="ru">
+<html lang="{{.Lang}}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Admin · Connectors</title>
+  <title>Admin · {{index .I18N "connectors.title"}}</title>
   <style>
     :root {
       --bg: #f4f7fb;
@@ -11,7 +11,6 @@
       --line: #e3e8f1;
       --text: #182230;
       --muted: #475467;
-      --accent: #0f766e;
       --accent-2: #0b5cab;
     }
     * { box-sizing: border-box; }
@@ -28,8 +27,9 @@
       border-radius: 12px;
       box-shadow: 0 3px 14px rgba(16,24,40,.05);
     }
-    .nav { padding: 10px 14px; margin-bottom: 12px; }
+    .nav { padding: 10px 14px; margin-bottom: 12px; display:flex; justify-content:space-between; align-items:center; }
     .nav a { color: #0f172a; text-decoration: none; font-weight: 600; margin-right: 16px; }
+    .langs a { margin-right: 8px; font-size: 12px; }
     .card { padding: 16px; margin-bottom: 14px; }
     h1 { margin: 0 0 8px; font-size: 24px; }
     h3 { margin: 0 0 6px; font-size: 18px; }
@@ -82,81 +82,88 @@
 <body>
 <div class="wrap">
   <div class="nav">
-    <a href="/admin/connectors">Connectors</a>
-    <a href="/admin/help">Guide</a>
+    <div>
+      <a href="/admin/connectors?lang={{.Lang}}">{{index .I18N "nav.connectors"}}</a>
+      <a href="/admin/events?lang={{.Lang}}">{{index .I18N "nav.events"}}</a>
+      <a href="/admin/help?lang={{.Lang}}">{{index .I18N "nav.guide"}}</a>
+    </div>
+    <div class="langs">
+      <a href="/admin/connectors?lang=ru">{{index .I18N "lang.ru"}}</a>
+      <a href="/admin/connectors?lang=en">{{index .I18N "lang.en"}}</a>
+    </div>
   </div>
 
   <div class="card">
-    <h1>Connectors</h1>
-    <p class="sub">Коннектор — это тариф/условие оплаты, по которому пользователь приходит в бот.</p>
+    <h1>{{index .I18N "connectors.title"}}</h1>
+    <p class="sub">{{index .I18N "connectors.subtitle"}}</p>
     {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
 
-    <form method="POST" action="/admin/connectors">
+    <form method="POST" action="/admin/connectors?lang={{.Lang}}">
       <div class="grid">
         <div>
-          <label>Name *</label>
+          <label>{{index .I18N "connectors.form.name"}}</label>
           <input name="name" required>
         </div>
         <div>
-          <label>Chat ID *</label>
+          <label>{{index .I18N "connectors.form.chat_id"}}</label>
           <input name="chat_id" required>
         </div>
         <div>
-          <label>Price RUB *</label>
-          <input name="price_rub" placeholder="3335" required>
+          <label>{{index .I18N "connectors.form.price_rub"}}</label>
+          <input name="price_rub" placeholder="{{index .I18N "connectors.form.price_ph"}}" required>
         </div>
         <div>
-          <label>Period days</label>
+          <label>{{index .I18N "connectors.form.period_days"}}</label>
           <input name="period_days" value="30">
         </div>
         <div>
-          <label>Start payload</label>
+          <label>{{index .I18N "connectors.form.start_payload"}}</label>
           <input name="start_payload" placeholder="in-94db7d6813507bc">
-          <div class="hint">Если пусто, будет сгенерирован автоматически.</div>
+          <div class="hint">{{index .I18N "connectors.form.payload_hint"}}</div>
         </div>
         <div>
-          <label>Internal ID</label>
+          <label>{{index .I18N "connectors.form.internal_id"}}</label>
           <input name="id" placeholder="auto-generated">
-          <div class="hint">Если пусто, будет сгенерирован автоматически.</div>
+          <div class="hint">{{index .I18N "connectors.form.id_hint"}}</div>
         </div>
         <div>
-          <label>Offer URL</label>
+          <label>{{index .I18N "connectors.form.offer_url"}}</label>
           <input name="offer_url" placeholder="https://...">
         </div>
         <div>
-          <label>Privacy URL</label>
+          <label>{{index .I18N "connectors.form.privacy_url"}}</label>
           <input name="privacy_url" placeholder="https://...">
         </div>
       </div>
       <div style="margin-top:12px;">
-        <label>Description</label>
-        <input name="description" placeholder="Краткое описание тарифа">
+        <label>{{index .I18N "connectors.form.description"}}</label>
+        <input name="description" placeholder="{{index .I18N "connectors.form.description_ph"}}">
       </div>
-      <div class="actions"><button type="submit">Create connector</button></div>
+      <div class="actions"><button type="submit">{{index .I18N "connectors.create"}}</button></div>
     </form>
   </div>
 
   <div class="card">
-    <h3>Подсказка</h3>
+    <h3>{{index .I18N "connectors.hint_title"}}</h3>
     <p class="sub" style="margin:0">{{.RequiredMessage}}</p>
   </div>
 
   <div class="card">
-    <h3 style="margin-bottom:10px;">Список коннекторов</h3>
+    <h3 style="margin-bottom:10px;">{{index .I18N "connectors.table_title"}}</h3>
     <div class="table-wrap">
       <table>
         <tr>
-          <th>ID</th>
-          <th>Payload</th>
-          <th>Name</th>
-          <th>Chat</th>
-          <th>Price</th>
-          <th>Period</th>
-          <th>Offer</th>
-          <th>Privacy</th>
-          <th>Bot Link</th>
-          <th>Active</th>
-          <th>Action</th>
+          <th>{{index .I18N "connectors.table.id"}}</th>
+          <th>{{index .I18N "connectors.table.payload"}}</th>
+          <th>{{index .I18N "connectors.table.name"}}</th>
+          <th>{{index .I18N "connectors.table.chat"}}</th>
+          <th>{{index .I18N "connectors.table.price"}}</th>
+          <th>{{index .I18N "connectors.table.period"}}</th>
+          <th>{{index .I18N "connectors.table.offer"}}</th>
+          <th>{{index .I18N "connectors.table.privacy"}}</th>
+          <th>{{index .I18N "connectors.table.bot_link"}}</th>
+          <th>{{index .I18N "connectors.table.active"}}</th>
+          <th>{{index .I18N "connectors.table.action"}}</th>
         </tr>
         {{range .Connectors}}
         <tr>
@@ -171,7 +178,7 @@
           <td class="mono">{{.BotLink}}</td>
           <td>{{.IsActive}}</td>
           <td>
-            <form method="POST" action="/admin/connectors/toggle">
+            <form method="POST" action="/admin/connectors/toggle?lang={{$.Lang}}">
               <input type="hidden" name="id" value="{{.ID}}">
               <input type="hidden" name="active" value="{{.ToggleTo}}">
               <button type="submit">{{.ToggleLabel}}</button>

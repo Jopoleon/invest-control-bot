@@ -4,13 +4,19 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"fmt"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
+)
+
+var (
+	errCreateConnectorRequired = errors.New("create_connector_required")
+	errCreateConnectorPrice    = errors.New("create_connector_price")
+	errCreateConnectorPeriod   = errors.New("create_connector_period")
 )
 
 // connectorsPage handles list/create connector operations.
@@ -20,20 +26,21 @@ func (h *Handler) connectorsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.persistTokenCookie(w, r)
+	lang := h.resolveLang(w, r)
 
 	switch r.Method {
 	case http.MethodGet:
-		h.renderConnectorsPage(r.Context(), w, "")
+		h.renderConnectorsPage(r.Context(), w, lang, "")
 	case http.MethodPost:
 		if err := r.ParseForm(); err != nil {
-			h.renderConnectorsPage(r.Context(), w, "не удалось разобрать форму")
+			h.renderConnectorsPage(r.Context(), w, lang, t(lang, "connectors.bad_form"))
 			return
 		}
 		if err := h.createConnector(r.Context(), r); err != nil {
-			h.renderConnectorsPage(r.Context(), w, err.Error())
+			h.renderConnectorsPage(r.Context(), w, lang, h.localizeCreateConnectorError(lang, err))
 			return
 		}
-		h.renderConnectorsPage(r.Context(), w, "коннектор создан")
+		h.renderConnectorsPage(r.Context(), w, lang, t(lang, "connectors.created"))
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
@@ -46,6 +53,7 @@ func (h *Handler) toggleConnector(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.persistTokenCookie(w, r)
+	lang := h.resolveLang(w, r)
 
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -70,7 +78,7 @@ func (h *Handler) toggleConnector(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.renderConnectorsPage(r.Context(), w, "статус коннектора обновлен")
+	h.renderConnectorsPage(r.Context(), w, lang, t(lang, "connectors.updated"))
 }
 
 // createConnector parses HTML form and persists connector entity.
@@ -96,16 +104,18 @@ func (h *Handler) createConnector(ctx context.Context, r *http.Request) error {
 	}
 
 	if name == "" || chatID == "" || priceRaw == "" {
-		return fmt.Errorf("обязательные поля: name, chat_id, price_rub")
+		return errCreateConnectorRequired
 	}
+	// Keep chat ID in unsigned form to stay consistent with current admin input convention.
+	chatID = strings.TrimPrefix(chatID, "-")
 
 	price, err := strconv.ParseInt(priceRaw, 10, 64)
 	if err != nil || price <= 0 {
-		return fmt.Errorf("цена должна быть положительным числом")
+		return errCreateConnectorPrice
 	}
 	periodDays, err := strconv.Atoi(periodRaw)
 	if err != nil || periodDays <= 0 {
-		return fmt.Errorf("период должен быть положительным числом")
+		return errCreateConnectorPeriod
 	}
 
 	connector := domain.Connector{
@@ -130,7 +140,7 @@ func (h *Handler) createConnector(ctx context.Context, r *http.Request) error {
 }
 
 // renderConnectorsPage maps domain models to view models and renders template.
-func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWriter, notice string) {
+func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWriter, lang, notice string) {
 	connectors, _ := h.store.ListConnectors(ctx)
 
 	botUsername := h.botUsername
@@ -141,9 +151,9 @@ func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWrite
 	rows := make([]connectorView, 0, len(connectors))
 	for _, c := range connectors {
 		toggleTo := !c.IsActive
-		toggleLabel := "Enable"
+		toggleLabel := t(lang, "connectors.table.enable")
 		if c.IsActive {
-			toggleLabel = "Disable"
+			toggleLabel = t(lang, "connectors.table.disable")
 		}
 		rows = append(rows, connectorView{
 			ID:           c.ID,
@@ -162,10 +172,27 @@ func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWrite
 	}
 
 	h.renderer.render(w, "connectors.html", connectorsPageData{
+		basePageData: basePageData{
+			Lang: lang,
+			I18N: dictForLang(lang),
+		},
 		Notice:          notice,
-		RequiredMessage: "Обязательные: Name, Chat ID, Price RUB. Остальные поля опциональны.",
+		RequiredMessage: t(lang, "connectors.required"),
 		Connectors:      rows,
 	})
+}
+
+func (h *Handler) localizeCreateConnectorError(lang string, err error) string {
+	switch {
+	case errors.Is(err, errCreateConnectorRequired):
+		return t(lang, "connectors.required")
+	case errors.Is(err, errCreateConnectorPrice):
+		return t(lang, "connector.validation.price")
+	case errors.Is(err, errCreateConnectorPeriod):
+		return t(lang, "connector.validation.period")
+	default:
+		return err.Error()
+	}
 }
 
 // generateToken creates random hex token for IDs/payloads in admin form defaults.

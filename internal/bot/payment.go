@@ -13,6 +13,7 @@ import (
 // handlePay creates checkout URL with currently selected payment provider.
 func (h *Handler) handlePay(ctx context.Context, cb *models.CallbackQuery) {
 	connectorID := strings.TrimPrefix(cb.Data, "pay:")
+	h.logAuditEvent(ctx, cb.From.ID, connectorID, "pay_clicked", "")
 	connector, ok, err := h.store.GetConnector(ctx, connectorID)
 	if err != nil {
 		slog.Error("load connector for pay failed", "error", err, "connector_id", connectorID)
@@ -46,5 +47,7 @@ func (h *Handler) handlePay(ctx context.Context, cb *models.CallbackQuery) {
 		keyboard,
 	); err != nil {
 		slog.Error("send pay link failed", "error", err, "connector_id", connectorID, "telegram_id", cb.From.ID)
+		return
 	}
+	h.logAuditEvent(ctx, cb.From.ID, connectorID, "pay_link_sent", h.payment.ProviderName())
 }

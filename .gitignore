@@ -3,7 +3,8 @@
 .idea
 /.idea
 !.env.example
-
+.codex
+/.codex
 personal_notes.md
 
 /bin/

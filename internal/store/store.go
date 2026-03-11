@@ -23,4 +23,7 @@ type Store interface {
 	SaveRegistrationState(ctx context.Context, state domain.RegistrationState) error
 	GetRegistrationState(ctx context.Context, telegramID int64) (domain.RegistrationState, bool, error)
 	DeleteRegistrationState(ctx context.Context, telegramID int64) error
+
+	SaveAuditEvent(ctx context.Context, event domain.AuditEvent) error
+	ListAuditEvents(ctx context.Context, query domain.AuditEventListQuery) ([]domain.AuditEvent, int, error)
 }

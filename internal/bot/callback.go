@@ -48,6 +48,7 @@ func (h *Handler) handleCallback(ctx context.Context, cb *models.CallbackQuery) 
 		slog.Error("save consent failed", "error", err, "telegram_id", cb.From.ID, "connector_id", connectorID)
 		return
 	}
+	h.logAuditEvent(ctx, cb.From.ID, connectorID, "consent_accepted", "")
 
 	state := domain.RegistrationState{
 		TelegramID:       cb.From.ID,
@@ -59,6 +60,7 @@ func (h *Handler) handleCallback(ctx context.Context, cb *models.CallbackQuery) 
 		slog.Error("save registration state failed", "error", err, "telegram_id", cb.From.ID, "connector_id", connectorID)
 		return
 	}
+	h.logAuditEvent(ctx, cb.From.ID, connectorID, "registration_step_requested", string(domain.StepFullName))
 
 	h.send(ctx, cb.From.ID, "ФИО")
 }

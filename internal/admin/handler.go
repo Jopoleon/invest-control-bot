@@ -33,5 +33,6 @@ func NewHandler(st store.Store, adminToken, botUsername string) *Handler {
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/connectors", h.connectorsPage)
 	mux.HandleFunc("/admin/connectors/toggle", h.toggleConnector)
+	mux.HandleFunc("/admin/events", h.eventsPage)
 	mux.HandleFunc("/admin/help", h.helpPage)
 }

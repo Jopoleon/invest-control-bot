@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin · {{index .I18N "events.title"}}</title>
+  <style>
+    body { margin:0; background:#f4f7fb; color:#182230; font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+    .wrap { max-width: 1240px; margin: 24px auto; padding: 0 16px 24px; }
+    .nav, .card { background:#fff; border:1px solid #e3e8f1; border-radius:12px; box-shadow:0 3px 14px rgba(16,24,40,.05); }
+    .nav { padding:10px 14px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; }
+    .nav a { color:#0f172a; text-decoration:none; font-weight:600; margin-right:16px; }
+    .langs a { margin-right: 8px; font-size: 12px; }
+    .card { padding:16px; margin-bottom:12px; }
+    .notice { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:8px; padding:10px 12px; margin-bottom:10px; font-weight:600; }
+    h1 { margin:0 0 8px; font-size:24px; }
+    p { margin:0 0 10px; color:#475467; }
+    .grid { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:10px; }
+    label { display:block; font-size:12px; color:#344054; margin-bottom:4px; }
+    input, select { width:100%; border:1px solid #ccd5e3; border-radius:8px; padding:8px 10px; background:#fff; color:#111827; }
+    .actions { margin-top:10px; display:flex; gap:10px; align-items:center; }
+    .btn { border:0; border-radius:8px; padding:9px 14px; background:#111827; color:#fff; text-decoration:none; cursor:pointer; font-weight:600; display:inline-block; }
+    .btn.secondary { background:#475467; }
+    .table-wrap { overflow:auto; max-height:62vh; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border-bottom:1px solid #edf1f7; text-align:left; padding:10px; vertical-align:top; font-size:13px; }
+    th { background:#f8fafc; color:#475467; position:sticky; top:0; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size:12px; }
+    .pager { display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+    .pager a { padding:7px 10px; border-radius:8px; border:1px solid #d0d5dd; color:#0f172a; text-decoration:none; background:#fff; }
+    .pager span { color:#475467; font-size:13px; }
+    @media (max-width: 1100px) { .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="nav">
+    <div>
+      <a href="/admin/connectors?lang={{.Lang}}">{{index .I18N "nav.connectors"}}</a>
+      <a href="/admin/events?lang={{.Lang}}">{{index .I18N "nav.events"}}</a>
+      <a href="/admin/help?lang={{.Lang}}">{{index .I18N "nav.guide"}}</a>
+    </div>
+    <div class="langs">
+      <a href="/admin/events?lang=ru">{{index .I18N "lang.ru"}}</a>
+      <a href="/admin/events?lang=en">{{index .I18N "lang.en"}}</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h1>{{index .I18N "events.title"}}</h1>
+    <p>{{index .I18N "events.subtitle"}}</p>
+    {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+
+    <form method="GET" action="/admin/events">
+      <div class="grid">
+        <div>
+          <label>{{index .I18N "events.filter.telegram_id"}}</label>
+          <input name="telegram_id" value="{{.TelegramID}}" placeholder="264704572">
+        </div>
+        <div>
+          <label>{{index .I18N "events.filter.connector_id"}}</label>
+          <input name="connector_id" value="{{.ConnectorID}}" placeholder="57b1f7bb9c712860">
+        </div>
+        <div>
+          <label>{{index .I18N "events.filter.action"}}</label>
+          <input name="action" value="{{.Action}}" placeholder="pay_clicked">
+        </div>
+        <div>
+          <label>{{index .I18N "events.filter.search"}}</label>
+          <input name="search" value="{{.Search}}" placeholder="token=...">
+        </div>
+        <div>
+          <label>{{index .I18N "events.filter.date_from"}}</label>
+          <input type="date" name="date_from" value="{{.DateFrom}}">
+        </div>
+        <div>
+          <label>{{index .I18N "events.filter.date_to"}}</label>
+          <input type="date" name="date_to" value="{{.DateTo}}">
+        </div>
+        <div>
+          <label>{{index .I18N "events.filter.sort_by"}}</label>
+          <select name="sort_by">
+            <option value="created_at" {{if eq .SortBy "created_at"}}selected{{end}}>created_at</option>
+            <option value="telegram_id" {{if eq .SortBy "telegram_id"}}selected{{end}}>telegram_id</option>
+            <option value="connector_id" {{if eq .SortBy "connector_id"}}selected{{end}}>connector_id</option>
+            <option value="action" {{if eq .SortBy "action"}}selected{{end}}>action</option>
+          </select>
+        </div>
+        <div>
+          <label>{{index .I18N "events.filter.sort_dir"}}</label>
+          <select name="sort_dir">
+            <option value="desc" {{if eq .SortDir "desc"}}selected{{end}}>{{index .I18N "events.sort.desc"}}</option>
+            <option value="asc" {{if eq .SortDir "asc"}}selected{{end}}>{{index .I18N "events.sort.asc"}}</option>
+          </select>
+        </div>
+        <div>
+          <label>{{index .I18N "events.filter.page_size"}}</label>
+          <select name="page_size">
+            <option value="20" {{if eq .PageSize 20}}selected{{end}}>20</option>
+            <option value="50" {{if eq .PageSize 50}}selected{{end}}>50</option>
+            <option value="100" {{if eq .PageSize 100}}selected{{end}}>100</option>
+            <option value="200" {{if eq .PageSize 200}}selected{{end}}>200</option>
+          </select>
+        </div>
+      </div>
+      <input type="hidden" name="lang" value="{{.Lang}}">
+      <input type="hidden" name="page" value="1">
+      <div class="actions">
+        <button class="btn" type="submit">{{index .I18N "events.apply"}}</button>
+        <a class="btn secondary" href="/admin/events?lang={{.Lang}}">{{index .I18N "events.reset"}}</a>
+      </div>
+    </form>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <tr>
+          <th>{{index .I18N "events.table.time"}}</th>
+          <th>{{index .I18N "events.table.telegram_id"}}</th>
+          <th>{{index .I18N "events.table.connector"}}</th>
+          <th>{{index .I18N "events.table.action"}}</th>
+          <th>{{index .I18N "events.table.details"}}</th>
+        </tr>
+        {{range .Rows}}
+        <tr>
+          <td class="mono">{{.CreatedAt}}</td>
+          <td class="mono">{{.TelegramID}}</td>
+          <td class="mono">{{.ConnectorID}}</td>
+          <td class="mono">{{.Action}}</td>
+          <td class="mono">{{.Details}}</td>
+        </tr>
+        {{end}}
+      </table>
+    </div>
+
+    <div class="pager">
+      <span>{{index .I18N "events.total"}}: {{.TotalItems}}</span>
+      <span>{{index .I18N "events.page"}} {{.Page}} / {{.TotalPages}}</span>
+      {{if .HasPrev}}
+      <a href="{{.FirstURL}}">{{index .I18N "events.first"}}</a>
+      <a href="{{.PrevURL}}">{{index .I18N "events.prev"}}</a>
+      {{end}}
+      {{if .HasNext}}
+      <a href="{{.NextURL}}">{{index .I18N "events.next"}}</a>
+      <a href="{{.LastURL}}">{{index .I18N "events.last"}}</a>
+      {{end}}
+    </div>
+  </div>
+</div>
+</body>
+</html>

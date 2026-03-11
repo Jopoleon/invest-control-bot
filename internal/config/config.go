@@ -85,7 +85,8 @@ type PaymentConfig struct {
 
 // LoggingConfig controls verbosity of structured logs.
 type LoggingConfig struct {
-	Level string
+	Level    string
+	FilePath string
 }
 
 // SecurityConfig stores application-level secrets.
@@ -146,7 +147,8 @@ func Load() (Config, error) {
 			MockBaseURL: strings.TrimSpace(os.Getenv("PAYMENT_MOCK_BASE_URL")),
 		},
 		Logging: LoggingConfig{
-			Level: strings.ToLower(getEnv("LOG_LEVEL", "info")),
+			Level:    strings.ToLower(getEnv("LOG_LEVEL", "info")),
+			FilePath: strings.TrimSpace(getEnv("LOG_FILE_PATH", "logs/app.log")),
 		},
 		Security: SecurityConfig{
 			EncryptionKey: os.Getenv("APP_ENCRYPTION_KEY"),
@@ -293,12 +295,8 @@ func buildPostgresDSN(pg PostgresConfig) string {
 	if pg.SSLMode != "" {
 		q.Set("sslmode", pg.SSLMode)
 	}
-	if pg.Charset != "" {
-		q.Set("charset", pg.Charset)
-	}
-	if pg.Collation != "" {
-		q.Set("collation", pg.Collation)
-	}
+	// charset/collation are intentionally not injected into postgres DSN:
+	// these params are MySQL-oriented and break PostgreSQL connections.
 
 	u := &url.URL{
 		Scheme: "postgres",

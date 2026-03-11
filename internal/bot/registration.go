@@ -34,6 +34,7 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg *models.Messag
 	case domain.StepFullName:
 		user.FullName = text
 		state.Step = domain.StepPhone
+		h.logAuditEvent(ctx, msg.From.ID, state.ConnectorID, "registration_full_name_saved", "")
 		h.send(ctx, msg.Chat.ID, "Телефон")
 	case domain.StepPhone:
 		phone := normalizePhone(text)
@@ -43,6 +44,7 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg *models.Messag
 		}
 		user.Phone = phone
 		state.Step = domain.StepEmail
+		h.logAuditEvent(ctx, msg.From.ID, state.ConnectorID, "registration_phone_saved", "")
 		h.send(ctx, msg.Chat.ID, "E-mail")
 	case domain.StepEmail:
 		if _, err := mail.ParseAddress(text); err != nil {
@@ -51,6 +53,7 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg *models.Messag
 		}
 		user.Email = text
 		state.Step = domain.StepUsername
+		h.logAuditEvent(ctx, msg.From.ID, state.ConnectorID, "registration_email_saved", "")
 		h.send(ctx, msg.Chat.ID, "Ник телеграм")
 	case domain.StepUsername:
 		if text != "-" {
@@ -62,6 +65,7 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg *models.Messag
 		}
 
 		h.sendFinalRegistrationMessage(ctx, msg.Chat.ID, state.ConnectorID)
+		h.logAuditEvent(ctx, msg.From.ID, state.ConnectorID, "registration_completed", "")
 	default:
 		return
 	}
