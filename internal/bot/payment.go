@@ -37,14 +37,19 @@ func (h *Handler) handlePay(ctx context.Context, cb *models.CallbackQuery) {
 		h.send(ctx, cb.From.ID, "Платежный провайдер пока не настроен.")
 		return
 	}
+	autoPayEnabled, _, err := h.store.GetUserAutoPayEnabled(ctx, cb.From.ID)
+	if err != nil {
+		slog.Error("load user autopay preference failed", "error", err, "telegram_id", cb.From.ID)
+	}
 	invoiceID := generateInvoiceID()
 
 	checkoutURL, err := h.payment.CreateCheckoutURL(ctx, payment.Request{
-		UserTelegramID: cb.From.ID,
-		ConnectorID:    connectorID,
-		AmountRUB:      connector.PriceRUB,
-		InvoiceID:      invoiceID,
-		Description:    connector.Name,
+		UserTelegramID:  cb.From.ID,
+		ConnectorID:     connectorID,
+		AmountRUB:       connector.PriceRUB,
+		InvoiceID:       invoiceID,
+		Description:     connector.Name,
+		EnableRecurring: autoPayEnabled,
 	})
 	if err != nil {
 		slog.Error("create checkout url failed", "error", err, "connector_id", connectorID, "telegram_id", cb.From.ID)
@@ -53,15 +58,16 @@ func (h *Handler) handlePay(ctx context.Context, cb *models.CallbackQuery) {
 	}
 	token := invoiceID
 	err = h.store.CreatePayment(ctx, domain.Payment{
-		Provider:    h.payment.ProviderName(),
-		Status:      domain.PaymentStatusPending,
-		Token:       token,
-		TelegramID:  cb.From.ID,
-		ConnectorID: connectorID,
-		AmountRUB:   connector.PriceRUB,
-		CheckoutURL: checkoutURL,
-		CreatedAt:   time.Now().UTC(),
-		UpdatedAt:   time.Now().UTC(),
+		Provider:       h.payment.ProviderName(),
+		Status:         domain.PaymentStatusPending,
+		Token:          token,
+		TelegramID:     cb.From.ID,
+		ConnectorID:    connectorID,
+		AmountRUB:      connector.PriceRUB,
+		AutoPayEnabled: autoPayEnabled,
+		CheckoutURL:    checkoutURL,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
 	})
 	if err != nil {
 		slog.Error("save payment failed", "error", err, "connector_id", connectorID, "telegram_id", cb.From.ID)
@@ -80,7 +86,11 @@ func (h *Handler) handlePay(ctx context.Context, cb *models.CallbackQuery) {
 		slog.Error("send pay link failed", "error", err, "connector_id", connectorID, "telegram_id", cb.From.ID)
 		return
 	}
-	h.logAuditEvent(ctx, cb.From.ID, connectorID, "pay_link_sent", h.payment.ProviderName())
+	details := h.payment.ProviderName()
+	if autoPayEnabled {
+		details += ";autopay=on"
+	}
+	h.logAuditEvent(ctx, cb.From.ID, connectorID, "pay_link_sent", details)
 }
 
 func generateInvoiceID() string {

@@ -13,6 +13,8 @@ type Handler struct {
 	adminToken  string
 	botUsername string
 	renderer    *renderer
+
+	loginRateLimiter *loginRateLimiter
 }
 
 // NewHandler creates admin handler and preloads HTML templates.
@@ -26,12 +28,16 @@ func NewHandler(st store.Store, adminToken, botUsername string) *Handler {
 		adminToken:  adminToken,
 		botUsername: strings.TrimPrefix(strings.TrimSpace(botUsername), "@"),
 		renderer:    r,
+
+		loginRateLimiter: newLoginRateLimiter(),
 	}
 }
 
 // Register mounts admin routes into provided mux.
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("/admin/assets/", http.StripPrefix("/admin/assets/", staticHandler()))
+	mux.HandleFunc("/admin/login", h.loginPage)
+	mux.HandleFunc("/admin/logout", h.logout)
 	mux.HandleFunc("/admin/connectors", h.connectorsPage)
 	mux.HandleFunc("/admin/connectors/toggle", h.toggleConnector)
 	mux.HandleFunc("/admin/billing", h.billingPage)

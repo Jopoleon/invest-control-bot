@@ -20,6 +20,7 @@ type Store struct {
 	payloadIndex    map[string]int64
 	nextConnectorID int64
 	users           map[int64]domain.User
+	userAutoPay     map[int64]bool
 	consents        map[string]domain.Consent
 	states          map[int64]domain.RegistrationState
 	events          []domain.AuditEvent
@@ -38,6 +39,7 @@ func New() *Store {
 		payloadIndex:    make(map[string]int64),
 		nextConnectorID: 1,
 		users:           make(map[int64]domain.User),
+		userAutoPay:     make(map[int64]bool),
 		consents:        make(map[string]domain.Consent),
 		states:          make(map[int64]domain.RegistrationState),
 		events:          make([]domain.AuditEvent, 0, 128),
@@ -165,6 +167,22 @@ func (s *Store) GetUser(_ context.Context, telegramID int64) (domain.User, bool,
 
 	u, ok := s.users[telegramID]
 	return u, ok, nil
+}
+
+// SetUserAutoPayEnabled stores user recurring preference used for next payment link creation.
+func (s *Store) SetUserAutoPayEnabled(_ context.Context, telegramID int64, enabled bool, _ time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.userAutoPay[telegramID] = enabled
+	return nil
+}
+
+// GetUserAutoPayEnabled returns user recurring preference if explicitly set.
+func (s *Store) GetUserAutoPayEnabled(_ context.Context, telegramID int64) (bool, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	enabled, ok := s.userAutoPay[telegramID]
+	return enabled, ok, nil
 }
 
 // SaveRegistrationState stores FSM progress for user.
@@ -344,13 +362,17 @@ func (s *Store) GetPaymentByToken(_ context.Context, token string) (domain.Payme
 }
 
 // UpdatePaymentPaid moves payment into paid state and stores provider reference.
-func (s *Store) UpdatePaymentPaid(_ context.Context, paymentID int64, providerPaymentID string, paidAt time.Time) error {
+// Returns true only when state changed from non-paid to paid.
+func (s *Store) UpdatePaymentPaid(_ context.Context, paymentID int64, providerPaymentID string, paidAt time.Time) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	payment, ok := s.payments[paymentID]
 	if !ok {
-		return errors.New("payment not found")
+		return false, errors.New("payment not found")
+	}
+	if payment.Status == domain.PaymentStatusPaid {
+		return false, nil
 	}
 	if paidAt.IsZero() {
 		paidAt = time.Now().UTC()
@@ -360,7 +382,7 @@ func (s *Store) UpdatePaymentPaid(_ context.Context, paymentID int64, providerPa
 	payment.PaidAt = &paidAt
 	payment.UpdatedAt = time.Now().UTC()
 	s.payments[paymentID] = payment
-	return nil
+	return true, nil
 }
 
 // UpsertSubscriptionByPayment creates or updates subscription by unique payment ID.

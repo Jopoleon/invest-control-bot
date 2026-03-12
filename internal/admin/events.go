@@ -13,17 +13,18 @@ import (
 
 // eventsPage renders audit event history with filtering, sorting and pagination.
 func (h *Handler) eventsPage(w http.ResponseWriter, r *http.Request) {
-	if !h.authorized(r) {
-		h.unauthorized(w)
+	if !h.requireAuth(w, r) {
 		return
 	}
-	h.persistTokenCookie(w, r)
 	lang := h.resolveLang(w, r)
 
 	data := eventsPageData{
 		basePageData: basePageData{
-			Lang: lang,
-			I18N: dictForLang(lang),
+			Lang:       lang,
+			I18N:       dictForLang(lang),
+			CSRFToken:  h.ensureCSRFToken(w, r),
+			TopbarPath: "/admin/events",
+			ActiveNav:  "events",
 		},
 		SortBy:   "created_at",
 		SortDir:  "desc",
@@ -107,8 +108,11 @@ func (h *Handler) eventsPage(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.renderer.render(w, "events.html", eventsPageData{
 			basePageData: basePageData{
-				Lang: lang,
-				I18N: dictForLang(lang),
+				Lang:       lang,
+				I18N:       dictForLang(lang),
+				CSRFToken:  h.ensureCSRFToken(w, r),
+				TopbarPath: "/admin/events",
+				ActiveNav:  "events",
 			},
 			Notice: t(lang, "events.load_error"),
 		})

@@ -3,6 +3,7 @@ package admin
 import (
 	"net/http"
 	"strings"
+	"time"
 )
 
 const (
@@ -16,8 +17,19 @@ var translations = map[string]map[string]string{
 		"nav.billing":    "Биллинг",
 		"nav.events":     "События",
 		"nav.guide":      "Гайд",
+		"nav.logout":     "Выйти",
 		"lang.ru":        "Рус",
 		"lang.en":        "Eng",
+
+		"login.title":        "Вход в админку",
+		"login.subtitle":     "Введите ADMIN_AUTH_TOKEN для доступа к панели.",
+		"login.token":        "Токен",
+		"login.submit":       "Войти",
+		"login.hint":         "Для локальной разработки используйте значение ADMIN_AUTH_TOKEN из .env.",
+		"login.bad_form":     "не удалось разобрать форму",
+		"login.bad_token":    "неверный токен",
+		"login.rate_limited": "слишком много неудачных попыток, попробуйте позже",
+		"csrf.invalid":       "сессия формы устарела, обновите страницу и попробуйте снова",
 
 		"connectors.title":                 "Коннекторы",
 		"connectors.subtitle":              "Коннектор - это тариф/условие оплаты, по которому пользователь приходит в бот.",
@@ -116,6 +128,7 @@ var translations = map[string]map[string]string{
 		"billing.table.payment.id":             "ID",
 		"billing.table.payment.provider":       "Провайдер",
 		"billing.table.payment.status":         "Статус",
+		"billing.table.payment.autopay":        "Автоплатеж",
 		"billing.table.payment.telegram":       "Telegram",
 		"billing.table.payment.connector":      "Коннектор",
 		"billing.table.payment.amount":         "Сумма",
@@ -123,6 +136,7 @@ var translations = map[string]map[string]string{
 		"billing.table.payment.paid_at":        "Оплачен",
 		"billing.table.subscription.id":        "ID",
 		"billing.table.subscription.status":    "Статус",
+		"billing.table.subscription.autopay":   "Автоплатеж",
 		"billing.table.subscription.telegram":  "Telegram",
 		"billing.table.subscription.connector": "Коннектор",
 		"billing.table.subscription.payment":   "Платеж",
@@ -151,8 +165,19 @@ var translations = map[string]map[string]string{
 		"nav.billing":    "Billing",
 		"nav.events":     "Events",
 		"nav.guide":      "Guide",
+		"nav.logout":     "Logout",
 		"lang.ru":        "Rus",
 		"lang.en":        "Eng",
+
+		"login.title":        "Admin login",
+		"login.subtitle":     "Enter ADMIN_AUTH_TOKEN to access admin panel.",
+		"login.token":        "Token",
+		"login.submit":       "Sign in",
+		"login.hint":         "For local development use ADMIN_AUTH_TOKEN value from .env.",
+		"login.bad_form":     "failed to parse form",
+		"login.bad_token":    "invalid token",
+		"login.rate_limited": "too many failed attempts, try again later",
+		"csrf.invalid":       "form session expired, refresh page and try again",
 
 		"connectors.title":                 "Connectors",
 		"connectors.subtitle":              "Connector defines tariff/payment conditions used in bot deep links.",
@@ -251,6 +276,7 @@ var translations = map[string]map[string]string{
 		"billing.table.payment.id":             "ID",
 		"billing.table.payment.provider":       "Provider",
 		"billing.table.payment.status":         "Status",
+		"billing.table.payment.autopay":        "Autopay",
 		"billing.table.payment.telegram":       "Telegram",
 		"billing.table.payment.connector":      "Connector",
 		"billing.table.payment.amount":         "Amount",
@@ -258,6 +284,7 @@ var translations = map[string]map[string]string{
 		"billing.table.payment.paid_at":        "Paid at",
 		"billing.table.subscription.id":        "ID",
 		"billing.table.subscription.status":    "Status",
+		"billing.table.subscription.autopay":   "Autopay",
 		"billing.table.subscription.telegram":  "Telegram",
 		"billing.table.subscription.connector": "Connector",
 		"billing.table.subscription.payment":   "Payment",
@@ -286,12 +313,13 @@ var translations = map[string]map[string]string{
 func (h *Handler) resolveLang(w http.ResponseWriter, r *http.Request) string {
 	lang := normalizeLang(r.URL.Query().Get("lang"))
 	if lang != "" {
-		http.SetCookie(w, &http.Cookie{
+		h.setCookie(w, r, http.Cookie{
 			Name:     "admin_lang",
 			Value:    lang,
 			Path:     "/",
 			HttpOnly: false,
 			SameSite: http.SameSiteLaxMode,
+			MaxAge:   int((30 * 24 * time.Hour).Seconds()),
 		})
 		return lang
 	}

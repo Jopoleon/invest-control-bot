@@ -55,13 +55,16 @@ go run ./cmd/server
 - `GET /admin/connectors`
 - `GET /admin/billing`
 - `GET /admin/events`
+- `GET /admin/login`
+- `GET /admin/logout`
 - `POST /admin/connectors`
 - `POST /admin/connectors/toggle`
 - `GET /admin/help`
 - `GET /admin/assets/*`
 
 ## Авторизация админки
-- `?token=<ADMIN_AUTH_TOKEN>` или `Authorization: Bearer <ADMIN_AUTH_TOKEN>`.
+- Откройте `/admin/login`, введите `ADMIN_AUTH_TOKEN`, после этого токен сохранится в HTTP-only cookie.
+- Для API/скриптов доступен `Authorization: Bearer <ADMIN_AUTH_TOKEN>`.
 - Если `ADMIN_AUTH_TOKEN` пустой, в `local` окружении доступ открыт.
 
 ## Коннекторы

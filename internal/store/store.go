@@ -20,6 +20,8 @@ type Store interface {
 
 	SaveUser(ctx context.Context, user domain.User) error
 	GetUser(ctx context.Context, telegramID int64) (domain.User, bool, error)
+	SetUserAutoPayEnabled(ctx context.Context, telegramID int64, enabled bool, updatedAt time.Time) error
+	GetUserAutoPayEnabled(ctx context.Context, telegramID int64) (bool, bool, error)
 
 	SaveRegistrationState(ctx context.Context, state domain.RegistrationState) error
 	GetRegistrationState(ctx context.Context, telegramID int64) (domain.RegistrationState, bool, error)
@@ -30,7 +32,7 @@ type Store interface {
 
 	CreatePayment(ctx context.Context, payment domain.Payment) error
 	GetPaymentByToken(ctx context.Context, token string) (domain.Payment, bool, error)
-	UpdatePaymentPaid(ctx context.Context, paymentID int64, providerPaymentID string, paidAt time.Time) error
+	UpdatePaymentPaid(ctx context.Context, paymentID int64, providerPaymentID string, paidAt time.Time) (bool, error)
 	ListPayments(ctx context.Context, query domain.PaymentListQuery) ([]domain.Payment, error)
 
 	UpsertSubscriptionByPayment(ctx context.Context, sub domain.Subscription) error

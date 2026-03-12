@@ -11,17 +11,18 @@ import (
 
 // billingPage renders payments/subscriptions with admin filters.
 func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
-	if !h.authorized(r) {
-		h.unauthorized(w)
+	if !h.requireAuth(w, r) {
 		return
 	}
-	h.persistTokenCookie(w, r)
 	lang := h.resolveLang(w, r)
 
 	data := billingPageData{
 		basePageData: basePageData{
-			Lang: lang,
-			I18N: dictForLang(lang),
+			Lang:       lang,
+			I18N:       dictForLang(lang),
+			CSRFToken:  h.ensureCSRFToken(w, r),
+			TopbarPath: "/admin/billing",
+			ActiveNav:  "billing",
 		},
 		PaymentStatus:      strings.TrimSpace(r.URL.Query().Get("payment_status")),
 		SubscriptionStatus: strings.TrimSpace(r.URL.Query().Get("subscription_status")),
@@ -90,6 +91,7 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 			Provider:          p.Provider,
 			ProviderPaymentID: p.ProviderPaymentID,
 			Status:            string(p.Status),
+			AutoPayEnabled:    p.AutoPayEnabled,
 			TelegramID:        p.TelegramID,
 			ConnectorID:       p.ConnectorID,
 			Connector:         connectorDisplayName(connectorNames, p.ConnectorID),
@@ -102,15 +104,16 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 	data.Subscriptions = make([]subscriptionView, 0, len(subs))
 	for _, s := range subs {
 		data.Subscriptions = append(data.Subscriptions, subscriptionView{
-			ID:          s.ID,
-			Status:      string(s.Status),
-			TelegramID:  s.TelegramID,
-			ConnectorID: s.ConnectorID,
-			Connector:   connectorDisplayName(connectorNames, s.ConnectorID),
-			PaymentID:   s.PaymentID,
-			StartsAt:    s.StartsAt.In(time.Local).Format("2006-01-02 15:04:05"),
-			EndsAt:      s.EndsAt.In(time.Local).Format("2006-01-02 15:04:05"),
-			CreatedAt:   s.CreatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
+			ID:             s.ID,
+			Status:         string(s.Status),
+			AutoPayEnabled: s.AutoPayEnabled,
+			TelegramID:     s.TelegramID,
+			ConnectorID:    s.ConnectorID,
+			Connector:      connectorDisplayName(connectorNames, s.ConnectorID),
+			PaymentID:      s.PaymentID,
+			StartsAt:       s.StartsAt.In(time.Local).Format("2006-01-02 15:04:05"),
+			EndsAt:         s.EndsAt.In(time.Local).Format("2006-01-02 15:04:05"),
+			CreatedAt:      s.CreatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
 		})
 	}
 

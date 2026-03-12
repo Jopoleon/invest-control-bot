@@ -17,6 +17,8 @@ const (
 	menuCallbackSubscription = "menu:subscription"
 	menuCallbackPayments     = "menu:payments"
 	menuCallbackAutopay      = "menu:autopay"
+	menuCallbackAutopayOn    = "menu:autopay:on"
+	menuCallbackAutopayOff   = "menu:autopay:off"
 )
 
 func (h *Handler) sendMenu(ctx context.Context, chatID int64) {
@@ -51,6 +53,10 @@ func (h *Handler) handleMenuCallback(ctx context.Context, cb *models.CallbackQue
 		h.sendPaymentHistory(ctx, chatID, cb.From.ID)
 	case menuCallbackAutopay:
 		h.sendAutopayInfo(ctx, chatID, cb.From.ID)
+	case menuCallbackAutopayOn:
+		h.setAutopayPreference(ctx, chatID, cb.From.ID, true)
+	case menuCallbackAutopayOff:
+		h.setAutopayPreference(ctx, chatID, cb.From.ID, false)
 	default:
 		h.send(ctx, chatID, "Неизвестная команда меню.")
 	}
@@ -89,7 +95,11 @@ func (h *Handler) sendSubscriptionOverview(ctx context.Context, chatID, telegram
 		lines = append(lines, fmt.Sprintf("  Сумма: %d ₽", connector.PriceRUB))
 		lines = append(lines, fmt.Sprintf("  Период: %d дн.", connector.PeriodDays))
 		lines = append(lines, fmt.Sprintf("  Действует до: %s", sub.EndsAt.In(time.Local).Format("02.01.2006 15:04")))
-		lines = append(lines, "  Автоплатеж: выключен (пока mock-провайдер)")
+		if sub.AutoPayEnabled {
+			lines = append(lines, "  Автоплатеж: включен")
+		} else {
+			lines = append(lines, "  Автоплатеж: выключен")
+		}
 		if channel != "" {
 			lines = append(lines, fmt.Sprintf("  Канал: %s", channel))
 		}
@@ -134,9 +144,46 @@ func (h *Handler) sendPaymentHistory(ctx context.Context, chatID, telegramID int
 }
 
 func (h *Handler) sendAutopayInfo(ctx context.Context, chatID, telegramID int64) {
-	text := "🔁 Автоплатеж\n\nПока используется mock-провайдер, автоплатеж недоступен.\nПосле выбора реального шлюза добавим подключение recurring."
-	h.send(ctx, chatID, text)
+	enabled, _, err := h.store.GetUserAutoPayEnabled(ctx, telegramID)
+	if err != nil {
+		slog.Error("load user autopay preference failed", "error", err, "telegram_id", telegramID)
+		h.send(ctx, chatID, "Не удалось загрузить настройки автоплатежа.")
+		return
+	}
+	status := "выключен"
+	actionLabel := "Включить автоплатеж"
+	actionCallback := menuCallbackAutopayOn
+	if enabled {
+		status = "включен"
+		actionLabel = "Выключить автоплатеж"
+		actionCallback = menuCallbackAutopayOff
+	}
+	text := "🔁 Автоплатеж\n\nТекущий статус: " + status + ".\nИзменение применяется к следующим платежам через Robokassa recurring."
+	keyboard := &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+		{
+			{Text: actionLabel, CallbackData: actionCallback},
+		},
+	}}
+	if err := h.tg.SendMessage(ctx, chatID, text, keyboard); err != nil {
+		slog.Error("send autopay info failed", "error", err, "telegram_id", telegramID)
+		return
+	}
 	h.logAuditEvent(ctx, telegramID, 0, "menu_autopay_opened", "")
+}
+
+func (h *Handler) setAutopayPreference(ctx context.Context, chatID, telegramID int64, enabled bool) {
+	if err := h.store.SetUserAutoPayEnabled(ctx, telegramID, enabled, time.Now().UTC()); err != nil {
+		slog.Error("save user autopay preference failed", "error", err, "telegram_id", telegramID, "enabled", enabled)
+		h.send(ctx, chatID, "Не удалось изменить настройку автоплатежа.")
+		return
+	}
+	if enabled {
+		h.send(ctx, chatID, "Автоплатеж включен. Следующая оплата будет создана в recurring-режиме.")
+		h.logAuditEvent(ctx, telegramID, 0, "autopay_enabled", "")
+		return
+	}
+	h.send(ctx, chatID, "Автоплатеж выключен.")
+	h.logAuditEvent(ctx, telegramID, 0, "autopay_disabled", "")
 }
 
 func resolveChannelForBot(channelURL, chatID string) string {

@@ -71,13 +71,24 @@ func New(cfg config.Config, st store.Store) (*Server, error) {
 		paymentMarkedNow := false
 		effectivePaidAt := now
 		if paymentRow.Status != domain.PaymentStatusPaid {
-			if err := st.UpdatePaymentPaid(ctx, paymentRow.ID, providerPaymentID, now); err != nil {
+			updated, err := st.UpdatePaymentPaid(ctx, paymentRow.ID, providerPaymentID, now)
+			if err != nil {
 				slog.Error("update payment status failed", "error", err, "payment_id", paymentRow.ID)
 				return
 			}
-			slog.Info("payment marked as paid", "payment_id", paymentRow.ID, "provider_payment_id", providerPaymentID)
-			effectivePaidAt = now
-			paymentMarkedNow = true
+			if updated {
+				slog.Info("payment marked as paid", "payment_id", paymentRow.ID, "provider_payment_id", providerPaymentID)
+				effectivePaidAt = now
+				paymentMarkedNow = true
+			} else {
+				latestPayment, found, loadErr := st.GetPaymentByToken(ctx, paymentRow.Token)
+				if loadErr != nil {
+					slog.Error("reload payment failed", "error", loadErr, "payment_id", paymentRow.ID)
+				} else if found && latestPayment.PaidAt != nil {
+					effectivePaidAt = *latestPayment.PaidAt
+					paymentRow = latestPayment
+				}
+			}
 		} else if paymentRow.PaidAt != nil {
 			effectivePaidAt = *paymentRow.PaidAt
 		}
@@ -90,14 +101,15 @@ func New(cfg config.Config, st store.Store) (*Server, error) {
 			periodDays = connector.PeriodDays
 		}
 		if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
-			TelegramID:  paymentRow.TelegramID,
-			ConnectorID: paymentRow.ConnectorID,
-			PaymentID:   paymentRow.ID,
-			Status:      domain.SubscriptionStatusActive,
-			StartsAt:    effectivePaidAt,
-			EndsAt:      effectivePaidAt.AddDate(0, 0, periodDays),
-			CreatedAt:   effectivePaidAt,
-			UpdatedAt:   now,
+			TelegramID:     paymentRow.TelegramID,
+			ConnectorID:    paymentRow.ConnectorID,
+			PaymentID:      paymentRow.ID,
+			Status:         domain.SubscriptionStatusActive,
+			AutoPayEnabled: paymentRow.AutoPayEnabled,
+			StartsAt:       effectivePaidAt,
+			EndsAt:         effectivePaidAt.AddDate(0, 0, periodDays),
+			CreatedAt:      effectivePaidAt,
+			UpdatedAt:      now,
 		}); err != nil {
 			slog.Error("upsert subscription failed", "error", err, "payment_id", paymentRow.ID)
 			return
@@ -187,7 +199,14 @@ func New(cfg config.Config, st store.Store) (*Server, error) {
 				slog.Error("save audit event failed", "error", err, "action", "mock_checkout_opened")
 			}
 		}
-		_, _ = fmt.Fprintf(w, "<html><body style='font-family:sans-serif;background:#f5f7fb;'><div style='max-width:760px;margin:32px auto;background:#fff;border:1px solid #e5eaf2;border-radius:12px;padding:20px;'><h2>Mock Checkout</h2><p>Платежный шлюз пока в режиме заглушки.</p><p><b>Token:</b> %s<br><b>Connector:</b> %d<br><b>User:</b> %s<br><b>Amount:</b> %s RUB</p><a href='/mock/pay/success?token=%s&connector_id=%d&user_id=%s' style='display:inline-block;padding:10px 14px;background:#111827;color:#fff;border-radius:8px;text-decoration:none;'>Имитировать успешную оплату</a></div></body></html>", token, connectorID, userID, amount, token, connectorID, userID)
+		successURL := fmt.Sprintf("/mock/pay/success?token=%s&connector_id=%d&user_id=%s", token, connectorID, userID)
+		renderAppTemplate(w, "mock_pay.html", mockCheckoutPageData{
+			Token:       token,
+			ConnectorID: connectorID,
+			UserID:      userID,
+			Amount:      amount,
+			SuccessURL:  successURL,
+		})
 	})
 	mux.HandleFunc("/mock/pay/success", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -219,7 +238,7 @@ func New(cfg config.Config, st store.Store) (*Server, error) {
 				slog.Error("save audit event failed", "error", err, "action", "mock_payment_success")
 			}
 		}
-		_, _ = fmt.Fprintf(w, "<html><body style='font-family:sans-serif;background:#f5f7fb;'><div style='max-width:760px;margin:32px auto;background:#fff;border:1px solid #e5eaf2;border-radius:12px;padding:20px;'><h2>Mock Payment Succeeded</h2><p>Тестовая оплата подтверждена. Token: <b>%s</b></p><p>В проде здесь будет webhook от платежного провайдера.</p></div></body></html>", token)
+		renderAppTemplate(w, "mock_pay_success.html", mockPaymentSuccessPageData{Token: token})
 	})
 	mux.HandleFunc("/payment/result", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -254,6 +273,18 @@ func New(cfg config.Config, st store.Store) (*Server, error) {
 		}
 		if !ok {
 			slog.Warn("payment not found for robokassa inv_id", "inv_id", invID)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		amountKopeks, parseErr := parseRobokassaAmountToKopeks(outSum)
+		if parseErr != nil {
+			slog.Warn("robokassa outsum parse failed", "inv_id", invID, "out_sum", outSum, "error", parseErr)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		expectedKopeks := paymentRow.AmountRUB * 100
+		if amountKopeks != expectedKopeks {
+			slog.Warn("robokassa outsum mismatch", "inv_id", invID, "expected_kopeks", expectedKopeks, "actual_kopeks", amountKopeks)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -295,51 +326,32 @@ func New(cfg config.Config, st store.Store) (*Server, error) {
 				}
 			}
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		var actionButtons strings.Builder
-		if botURL != "" {
-			actionButtons.WriteString(`<a class="btn" href="` + botURL + `">Открыть бота</a>`)
-		}
-		if channelURL != "" {
-			actionButtons.WriteString(`<a class="btn secondary" href="` + channelURL + `">Открыть канал</a>`)
-		}
-		if actionButtons.Len() == 0 {
-			actionButtons.WriteString(`<a class="btn" href="https://t.me">Открыть Telegram</a>`)
-		}
-		_, _ = w.Write([]byte(`<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Оплата успешна</title><style>
-body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f4f7fb;margin:0;padding:24px}
-.card{max-width:620px;margin:36px auto;background:#fff;border:1px solid #e5eaf2;border-radius:14px;padding:24px}
-h2{margin:0 0 10px}.muted{color:#5b6472}.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
-.btn{display:inline-block;padding:10px 14px;border-radius:10px;background:#111827;color:#fff;text-decoration:none}
-.btn.secondary{background:#4b5563}
-</style></head><body><div class="card">
-<h2>Оплата успешно завершена</h2>
-<p class="muted">Платеж подтвержден. Подписка активируется автоматически и в боте придет сообщение с деталями.</p>
-<div class="row">` + actionButtons.String() + `</div>
-</div></body></html>`))
+		renderPaymentPage(w, paymentPageData{
+			Title:   "Оплата успешно завершена",
+			Message: "Платеж подтвержден. Подписка активируется автоматически, а в боте придет сообщение с деталями.",
+			Actions: []paymentPageAction{
+				{Label: "Открыть бота", URL: botURL},
+				{Label: "Открыть канал", URL: channelURL, Secondary: true},
+				{Label: "Открыть Telegram", URL: "https://t.me"},
+			},
+		})
 	})
 	mux.HandleFunc("/payment/fail", func(w http.ResponseWriter, r *http.Request) {
 		if robokassaService == nil {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		botURL := buildBotChatURL(cfg.Telegram.BotUsername)
-		link := "https://t.me"
-		if botURL != "" {
-			link = botURL
+		if botURL == "" {
+			botURL = "https://t.me"
 		}
-		_, _ = w.Write([]byte(`<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Оплата не завершена</title><style>
-body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f4f7fb;margin:0;padding:24px}
-.card{max-width:620px;margin:36px auto;background:#fff;border:1px solid #e5eaf2;border-radius:14px;padding:24px}
-h2{margin:0 0 10px}.muted{color:#5b6472}.btn{display:inline-block;padding:10px 14px;border-radius:10px;background:#111827;color:#fff;text-decoration:none;margin-top:14px}
-</style></head><body><div class="card">
-<h2>Оплата не завершена</h2>
-<p class="muted">Платеж был отменен или не прошел. Вернитесь в бота и попробуйте снова.</p>
-<a class="btn" href="` + link + `">Вернуться в бота</a>
-</div></body></html>`))
+		renderPaymentPage(w, paymentPageData{
+			Title:   "Оплата не завершена",
+			Message: "Платеж был отменен или не прошел. Вернитесь в бота и попробуйте снова.",
+			Actions: []paymentPageAction{
+				{Label: "Вернуться в бота", URL: botURL},
+			},
+		})
 	})
 
 	mux.HandleFunc("/telegram/webhook", func(w http.ResponseWriter, r *http.Request) {
@@ -475,4 +487,68 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+type paymentPageAction struct {
+	Label     string
+	URL       string
+	Secondary bool
+}
+
+type paymentPageData struct {
+	Title   string
+	Message string
+	Actions []paymentPageAction
+}
+
+func renderPaymentPage(w http.ResponseWriter, data paymentPageData) {
+	renderAppTemplate(w, "payment_status.html", data)
+}
+
+func parseRobokassaAmountToKopeks(raw string) (int64, error) {
+	value := strings.TrimSpace(strings.ReplaceAll(raw, ",", "."))
+	if value == "" {
+		return 0, fmt.Errorf("amount is empty")
+	}
+	if strings.HasPrefix(value, "-") {
+		return 0, fmt.Errorf("negative amount")
+	}
+	parts := strings.SplitN(value, ".", 2)
+	rubles, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || rubles < 0 {
+		return 0, fmt.Errorf("invalid rubles part")
+	}
+	var kopeks int64
+	if len(parts) == 2 {
+		fraction := parts[1]
+		if fraction == "" {
+			return 0, fmt.Errorf("invalid fractional part")
+		}
+		if len(fraction) > 2 {
+			if strings.Trim(fraction[2:], "0") != "" {
+				return 0, fmt.Errorf("too many fractional digits")
+			}
+			fraction = fraction[:2]
+		}
+		if len(fraction) == 1 {
+			fraction += "0"
+		}
+		kopeks, err = strconv.ParseInt(fraction, 10, 64)
+		if err != nil || kopeks < 0 {
+			return 0, fmt.Errorf("invalid kopeks part")
+		}
+	}
+	return rubles*100 + kopeks, nil
+}
+
+type mockCheckoutPageData struct {
+	Token       string
+	ConnectorID int64
+	UserID      string
+	Amount      string
+	SuccessURL  string
+}
+
+type mockPaymentSuccessPageData struct {
+	Token string
 }

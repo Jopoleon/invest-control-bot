@@ -70,6 +70,9 @@ func (s *RobokassaService) CreateCheckoutURL(_ context.Context, req Request) (st
 	q.Set("InvId", invID)
 	q.Set("Description", strings.TrimSpace(req.Description))
 	q.Set("SignatureValue", signature)
+	if req.EnableRecurring {
+		q.Set("Recurring", "true")
+	}
 	if s.isTest {
 		q.Set("IsTest", "1")
 	}

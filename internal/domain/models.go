@@ -105,6 +105,7 @@ type Payment struct {
 	TelegramID        int64
 	ConnectorID       int64
 	AmountRUB         int64
+	AutoPayEnabled    bool
 	CheckoutURL       string
 	CreatedAt         time.Time
 	PaidAt            *time.Time
@@ -127,6 +128,7 @@ type Subscription struct {
 	ConnectorID    int64
 	PaymentID      int64
 	Status         SubscriptionStatus
+	AutoPayEnabled bool
 	StartsAt       time.Time
 	EndsAt         time.Time
 	ReminderSentAt *time.Time

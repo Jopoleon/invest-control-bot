@@ -41,22 +41,7 @@
 </head>
 <body>
 <main class="container">
-  <header class="topbar">
-    <nav>
-      <ul>
-        <li><a href="/admin/connectors?lang={{.Lang}}"><strong>{{index .I18N "nav.connectors"}}</strong></a></li>
-        <li><a href="/admin/billing?lang={{.Lang}}">{{index .I18N "nav.billing"}}</a></li>
-        <li><a href="/admin/events?lang={{.Lang}}">{{index .I18N "nav.events"}}</a></li>
-        <li><a href="/admin/help?lang={{.Lang}}">{{index .I18N "nav.guide"}}</a></li>
-      </ul>
-    </nav>
-    <nav class="langs">
-      <ul>
-        <li><a href="/admin/connectors?lang=ru" {{if eq .Lang "ru"}}aria-current="true"{{end}}>{{index .I18N "lang.ru"}}</a></li>
-        <li><a href="/admin/connectors?lang=en" {{if eq .Lang "en"}}aria-current="true"{{end}}>{{index .I18N "lang.en"}}</a></li>
-      </ul>
-    </nav>
-  </header>
+  {{template "topbar" .}}
 
   <article>
     <h1>{{index .I18N "connectors.title"}}</h1>
@@ -66,6 +51,7 @@
 
   <article>
     <form method="POST" action="/admin/connectors?lang={{.Lang}}">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
       <div class="grid">
         <label>
           {{index .I18N "connectors.form.name"}}
@@ -155,6 +141,7 @@
             <td>{{.IsActive}}</td>
             <td class="actions">
               <form method="POST" action="/admin/connectors/toggle?lang={{$.Lang}}">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                 <input type="hidden" name="id" value="{{.ID}}">
                 <input type="hidden" name="active" value="{{.ToggleTo}}">
                 <button type="submit" class="secondary">{{.ToggleLabel}}</button>

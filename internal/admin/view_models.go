@@ -2,8 +2,11 @@ package admin
 
 // basePageData contains shared localization context for all admin templates.
 type basePageData struct {
-	Lang string
-	I18N map[string]string
+	Lang       string
+	I18N       map[string]string
+	CSRFToken  string
+	TopbarPath string
+	ActiveNav  string
 }
 
 // connectorView is a template-friendly representation of connector row.
@@ -37,6 +40,13 @@ type helpPageData struct {
 	basePageData
 
 	BotUsername string
+}
+
+type loginPageData struct {
+	basePageData
+
+	Notice string
+	Next   string
 }
 
 // auditEventView is a template-friendly representation of audit event row.
@@ -84,6 +94,7 @@ type paymentView struct {
 	Provider          string
 	ProviderPaymentID string
 	Status            string
+	AutoPayEnabled    bool
 	TelegramID        int64
 	ConnectorID       int64
 	Connector         string
@@ -93,15 +104,16 @@ type paymentView struct {
 }
 
 type subscriptionView struct {
-	ID          int64
-	Status      string
-	TelegramID  int64
-	ConnectorID int64
-	Connector   string
-	PaymentID   int64
-	StartsAt    string
-	EndsAt      string
-	CreatedAt   string
+	ID             int64
+	Status         string
+	AutoPayEnabled bool
+	TelegramID     int64
+	ConnectorID    int64
+	Connector      string
+	PaymentID      int64
+	StartsAt       string
+	EndsAt         string
+	CreatedAt      string
 }
 
 type billingPageData struct {

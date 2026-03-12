@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}}</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f4f7fb;margin:0;padding:24px}
+    .card{max-width:620px;margin:36px auto;background:#fff;border:1px solid #e5eaf2;border-radius:14px;padding:24px}
+    h2{margin:0 0 10px}.muted{color:#5b6472}.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+    .btn{display:inline-block;padding:10px 14px;border-radius:10px;background:#111827;color:#fff;text-decoration:none}
+    .btn.secondary{background:#4b5563}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>{{.Title}}</h2>
+    <p class="muted">{{.Message}}</p>
+    <div class="row">
+      {{range .Actions}}
+      {{if .URL}}
+      <a class="btn{{if .Secondary}} secondary{{end}}" href="{{.URL}}">{{.Label}}</a>
+      {{end}}
+      {{end}}
+    </div>
+  </div>
+</body>
+</html>

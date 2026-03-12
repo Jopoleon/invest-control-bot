@@ -22,26 +22,29 @@ var (
 
 // connectorsPage handles list/create connector operations.
 func (h *Handler) connectorsPage(w http.ResponseWriter, r *http.Request) {
-	if !h.authorized(r) {
-		h.unauthorized(w)
+	if !h.requireAuth(w, r) {
 		return
 	}
-	h.persistTokenCookie(w, r)
 	lang := h.resolveLang(w, r)
 
 	switch r.Method {
 	case http.MethodGet:
-		h.renderConnectorsPage(r.Context(), w, lang, "")
+		h.renderConnectorsPage(r.Context(), w, r, lang, "")
 	case http.MethodPost:
 		if err := r.ParseForm(); err != nil {
-			h.renderConnectorsPage(r.Context(), w, lang, t(lang, "connectors.bad_form"))
+			h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "connectors.bad_form"))
+			return
+		}
+		if !h.verifyCSRF(r) {
+			w.WriteHeader(http.StatusForbidden)
+			h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "csrf.invalid"))
 			return
 		}
 		if err := h.createConnector(r.Context(), r); err != nil {
-			h.renderConnectorsPage(r.Context(), w, lang, h.localizeCreateConnectorError(lang, err))
+			h.renderConnectorsPage(r.Context(), w, r, lang, h.localizeCreateConnectorError(lang, err))
 			return
 		}
-		h.renderConnectorsPage(r.Context(), w, lang, t(lang, "connectors.created"))
+		h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "connectors.created"))
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
@@ -49,11 +52,9 @@ func (h *Handler) connectorsPage(w http.ResponseWriter, r *http.Request) {
 
 // toggleConnector switches connector active state without deleting history.
 func (h *Handler) toggleConnector(w http.ResponseWriter, r *http.Request) {
-	if !h.authorized(r) {
-		h.unauthorized(w)
+	if !h.requireAuth(w, r) {
 		return
 	}
-	h.persistTokenCookie(w, r)
 	lang := h.resolveLang(w, r)
 
 	if r.Method != http.MethodPost {
@@ -64,6 +65,11 @@ func (h *Handler) toggleConnector(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte("bad form"))
+		return
+	}
+	if !h.verifyCSRF(r) {
+		w.WriteHeader(http.StatusForbidden)
+		h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "csrf.invalid"))
 		return
 	}
 	idRaw := strings.TrimSpace(r.FormValue("id"))
@@ -85,7 +91,7 @@ func (h *Handler) toggleConnector(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.renderConnectorsPage(r.Context(), w, lang, t(lang, "connectors.updated"))
+	h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "connectors.updated"))
 }
 
 // createConnector parses HTML form and persists connector entity.
@@ -147,7 +153,7 @@ func (h *Handler) createConnector(ctx context.Context, r *http.Request) error {
 }
 
 // renderConnectorsPage maps domain models to view models and renders template.
-func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWriter, lang, notice string) {
+func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWriter, r *http.Request, lang, notice string) {
 	connectors, _ := h.store.ListConnectors(ctx)
 
 	botUsername := h.botUsername
@@ -181,8 +187,11 @@ func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWrite
 
 	h.renderer.render(w, "connectors.html", connectorsPageData{
 		basePageData: basePageData{
-			Lang: lang,
-			I18N: dictForLang(lang),
+			Lang:       lang,
+			I18N:       dictForLang(lang),
+			CSRFToken:  h.ensureCSRFToken(w, r),
+			TopbarPath: "/admin/connectors",
+			ActiveNav:  "connectors",
 		},
 		Notice:          notice,
 		RequiredMessage: t(lang, "connectors.required"),

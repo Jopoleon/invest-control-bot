@@ -233,6 +233,39 @@ func (s *Store) GetUser(ctx context.Context, telegramID int64) (domain.User, boo
 	return u, true, nil
 }
 
+// SetUserAutoPayEnabled stores user recurring preference used for future payment creation.
+func (s *Store) SetUserAutoPayEnabled(ctx context.Context, telegramID int64, enabled bool, updatedAt time.Time) error {
+	if updatedAt.IsZero() {
+		updatedAt = time.Now().UTC()
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO user_settings (telegram_id, auto_pay_enabled, updated_at)
+		VALUES ($1,$2,$3)
+		ON CONFLICT (telegram_id)
+		DO UPDATE SET
+			auto_pay_enabled = EXCLUDED.auto_pay_enabled,
+			updated_at = EXCLUDED.updated_at
+	`, telegramID, enabled, updatedAt)
+	return err
+}
+
+// GetUserAutoPayEnabled returns user recurring preference if record exists.
+func (s *Store) GetUserAutoPayEnabled(ctx context.Context, telegramID int64) (bool, bool, error) {
+	var enabled bool
+	err := s.db.QueryRowContext(ctx, `
+		SELECT auto_pay_enabled
+		FROM user_settings
+		WHERE telegram_id = $1
+	`, telegramID).Scan(&enabled)
+	if err == sql.ErrNoRows {
+		return false, false, nil
+	}
+	if err != nil {
+		return false, false, err
+	}
+	return enabled, true, nil
+}
+
 // SaveRegistrationState upserts registration FSM state.
 func (s *Store) SaveRegistrationState(ctx context.Context, state domain.RegistrationState) error {
 	now := time.Now().UTC()
@@ -398,9 +431,9 @@ func (s *Store) CreatePayment(ctx context.Context, payment domain.Payment) error
 	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO payments (
-			provider, provider_payment_id, status, token, telegram_id, connector_id,
+			provider, provider_payment_id, status, token, telegram_id, connector_id, auto_pay_enabled,
 			amount_rub, checkout_url, created_at, paid_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 	`,
 		payment.Provider,
 		payment.ProviderPaymentID,
@@ -408,6 +441,7 @@ func (s *Store) CreatePayment(ctx context.Context, payment domain.Payment) error
 		payment.Token,
 		payment.TelegramID,
 		payment.ConnectorID,
+		payment.AutoPayEnabled,
 		payment.AmountRUB,
 		payment.CheckoutURL,
 		payment.CreatedAt,
@@ -422,7 +456,7 @@ func (s *Store) GetPaymentByToken(ctx context.Context, token string) (domain.Pay
 	var payment domain.Payment
 	var status string
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, provider, provider_payment_id, status, token, telegram_id, connector_id,
+		SELECT id, provider, provider_payment_id, status, token, telegram_id, connector_id, auto_pay_enabled,
 		       amount_rub, checkout_url, created_at, paid_at, updated_at
 		FROM payments
 		WHERE token = $1
@@ -434,6 +468,7 @@ func (s *Store) GetPaymentByToken(ctx context.Context, token string) (domain.Pay
 		&payment.Token,
 		&payment.TelegramID,
 		&payment.ConnectorID,
+		&payment.AutoPayEnabled,
 		&payment.AmountRUB,
 		&payment.CheckoutURL,
 		&payment.CreatedAt,
@@ -451,7 +486,8 @@ func (s *Store) GetPaymentByToken(ctx context.Context, token string) (domain.Pay
 }
 
 // UpdatePaymentPaid marks payment as paid and stores provider payment reference.
-func (s *Store) UpdatePaymentPaid(ctx context.Context, paymentID int64, providerPaymentID string, paidAt time.Time) error {
+// Returns true only when row changed from non-paid to paid.
+func (s *Store) UpdatePaymentPaid(ctx context.Context, paymentID int64, providerPaymentID string, paidAt time.Time) (bool, error) {
 	if paidAt.IsZero() {
 		paidAt = time.Now().UTC()
 	}
@@ -459,18 +495,26 @@ func (s *Store) UpdatePaymentPaid(ctx context.Context, paymentID int64, provider
 		UPDATE payments
 		SET status = $2, provider_payment_id = $3, paid_at = $4, updated_at = $5
 		WHERE id = $1
+		  AND status <> $2
 	`, paymentID, string(domain.PaymentStatusPaid), providerPaymentID, paidAt, time.Now().UTC())
 	if err != nil {
-		return err
+		return false, err
 	}
 	affected, err := res.RowsAffected()
 	if err != nil {
-		return err
+		return false, err
 	}
-	if affected == 0 {
-		return errors.New("payment not found")
+	if affected > 0 {
+		return true, nil
 	}
-	return nil
+	var exists bool
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM payments WHERE id = $1)`, paymentID).Scan(&exists); err != nil {
+		return false, err
+	}
+	if !exists {
+		return false, errors.New("payment not found")
+	}
+	return false, nil
 }
 
 // UpsertSubscriptionByPayment creates/updates access period bound to unique payment.
@@ -484,11 +528,12 @@ func (s *Store) UpsertSubscriptionByPayment(ctx context.Context, sub domain.Subs
 	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO subscriptions (
-			telegram_id, connector_id, payment_id, status, starts_at, ends_at, reminder_sent_at, created_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+			telegram_id, connector_id, payment_id, status, auto_pay_enabled, starts_at, ends_at, reminder_sent_at, created_at, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
 		ON CONFLICT (payment_id)
 		DO UPDATE SET
 			status = EXCLUDED.status,
+			auto_pay_enabled = EXCLUDED.auto_pay_enabled,
 			starts_at = EXCLUDED.starts_at,
 			ends_at = EXCLUDED.ends_at,
 			reminder_sent_at = EXCLUDED.reminder_sent_at,
@@ -498,6 +543,7 @@ func (s *Store) UpsertSubscriptionByPayment(ctx context.Context, sub domain.Subs
 		sub.ConnectorID,
 		sub.PaymentID,
 		string(sub.Status),
+		sub.AutoPayEnabled,
 		sub.StartsAt,
 		sub.EndsAt,
 		sub.ReminderSentAt,
@@ -541,7 +587,7 @@ func (s *Store) ListPayments(ctx context.Context, query domain.PaymentListQuery)
 	}
 	whereClause := strings.Join(where, " AND ")
 	sqlText := fmt.Sprintf(`
-		SELECT id, provider, provider_payment_id, status, token, telegram_id, connector_id,
+		SELECT id, provider, provider_payment_id, status, token, telegram_id, connector_id, auto_pay_enabled,
 		       amount_rub, checkout_url, created_at, paid_at, updated_at
 		FROM payments
 		WHERE %s
@@ -567,6 +613,7 @@ func (s *Store) ListPayments(ctx context.Context, query domain.PaymentListQuery)
 			&item.Token,
 			&item.TelegramID,
 			&item.ConnectorID,
+			&item.AutoPayEnabled,
 			&item.AmountRUB,
 			&item.CheckoutURL,
 			&item.CreatedAt,
@@ -615,7 +662,7 @@ func (s *Store) ListSubscriptions(ctx context.Context, query domain.Subscription
 	}
 	whereClause := strings.Join(where, " AND ")
 	sqlText := fmt.Sprintf(`
-		SELECT id, telegram_id, connector_id, payment_id, status, starts_at, ends_at, reminder_sent_at, created_at, updated_at
+		SELECT id, telegram_id, connector_id, payment_id, status, auto_pay_enabled, starts_at, ends_at, reminder_sent_at, created_at, updated_at
 		FROM subscriptions
 		WHERE %s
 		ORDER BY created_at DESC, id DESC
@@ -638,6 +685,7 @@ func (s *Store) ListSubscriptions(ctx context.Context, query domain.Subscription
 			&item.ConnectorID,
 			&item.PaymentID,
 			&status,
+			&item.AutoPayEnabled,
 			&item.StartsAt,
 			&item.EndsAt,
 			&item.ReminderSentAt,
@@ -662,7 +710,7 @@ func (s *Store) ListSubscriptionsForReminder(ctx context.Context, remindBefore t
 	}
 	now := time.Now().UTC()
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, telegram_id, connector_id, payment_id, status, starts_at, ends_at, reminder_sent_at, created_at, updated_at
+		SELECT id, telegram_id, connector_id, payment_id, status, auto_pay_enabled, starts_at, ends_at, reminder_sent_at, created_at, updated_at
 		FROM subscriptions
 		WHERE status = $1
 		  AND reminder_sent_at IS NULL
@@ -686,6 +734,7 @@ func (s *Store) ListSubscriptionsForReminder(ctx context.Context, remindBefore t
 			&item.ConnectorID,
 			&item.PaymentID,
 			&status,
+			&item.AutoPayEnabled,
 			&item.StartsAt,
 			&item.EndsAt,
 			&item.ReminderSentAt,
@@ -735,7 +784,7 @@ func (s *Store) ListExpiredActiveSubscriptions(ctx context.Context, now time.Tim
 		now = time.Now().UTC()
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, telegram_id, connector_id, payment_id, status, starts_at, ends_at, reminder_sent_at, created_at, updated_at
+		SELECT id, telegram_id, connector_id, payment_id, status, auto_pay_enabled, starts_at, ends_at, reminder_sent_at, created_at, updated_at
 		FROM subscriptions
 		WHERE status = $1
 		  AND ends_at <= $2
@@ -757,6 +806,7 @@ func (s *Store) ListExpiredActiveSubscriptions(ctx context.Context, now time.Tim
 			&item.ConnectorID,
 			&item.PaymentID,
 			&status,
+			&item.AutoPayEnabled,
 			&item.StartsAt,
 			&item.EndsAt,
 			&item.ReminderSentAt,

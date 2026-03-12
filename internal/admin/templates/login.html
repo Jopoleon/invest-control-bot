@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin · {{index .I18N "login.title"}}</title>
+  <link rel="stylesheet" href="/admin/assets/css/pico.min.css">
+  <style>
+    :root {
+      --pico-font-family: "Manrope", "Segoe UI", sans-serif;
+      --pico-font-size: 90%;
+    }
+    body { background: linear-gradient(180deg, #f5f8fc, #eef3f9); }
+    main.container { max-width: 520px; margin-top: 10vh; }
+    .notice {
+      padding: .75rem 1rem;
+      border: 1px solid #ffd8a8;
+      border-radius: .75rem;
+      background: #fff4e6;
+      color: #8f4b00;
+      margin: .75rem 0 0;
+      font-weight: 600;
+    }
+    .langs { margin-top: .75rem; text-align: right; }
+    .langs a[aria-current="true"] { font-weight: 700; text-decoration: underline; }
+  </style>
+</head>
+<body>
+<main class="container">
+  <article>
+    <h1>{{index .I18N "login.title"}}</h1>
+    <p>{{index .I18N "login.subtitle"}}</p>
+    {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+    <form method="POST" action="/admin/login?lang={{.Lang}}">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <label>
+        {{index .I18N "login.token"}}
+        <input type="password" name="token" autocomplete="current-password" required>
+      </label>
+      <input type="hidden" name="next" value="{{.Next}}">
+      <button type="submit">{{index .I18N "login.submit"}}</button>
+    </form>
+    <p><small>{{index .I18N "login.hint"}}</small></p>
+    <div class="langs">
+      <a href="/admin/login?lang=ru{{if .Next}}&next={{urlquery .Next}}{{end}}" {{if eq .Lang "ru"}}aria-current="true"{{end}}>{{index .I18N "lang.ru"}}</a>
+      ·
+      <a href="/admin/login?lang=en{{if .Next}}&next={{urlquery .Next}}{{end}}" {{if eq .Lang "en"}}aria-current="true"{{end}}>{{index .I18N "lang.en"}}</a>
+    </div>
+  </article>
+</main>
+</body>
+</html>
