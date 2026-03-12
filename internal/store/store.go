@@ -35,4 +35,8 @@ type Store interface {
 
 	UpsertSubscriptionByPayment(ctx context.Context, sub domain.Subscription) error
 	ListSubscriptions(ctx context.Context, query domain.SubscriptionListQuery) ([]domain.Subscription, error)
+	ListSubscriptionsForReminder(ctx context.Context, remindBefore time.Time, limit int) ([]domain.Subscription, error)
+	MarkSubscriptionReminderSent(ctx context.Context, subscriptionID int64, sentAt time.Time) error
+	ListExpiredActiveSubscriptions(ctx context.Context, now time.Time, limit int) ([]domain.Subscription, error)
+	UpdateSubscriptionStatus(ctx context.Context, subscriptionID int64, status domain.SubscriptionStatus, updatedAt time.Time) error
 }

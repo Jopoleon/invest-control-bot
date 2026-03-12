@@ -2,9 +2,10 @@ package bot
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"fmt"
 	"log/slog"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -36,23 +37,21 @@ func (h *Handler) handlePay(ctx context.Context, cb *models.CallbackQuery) {
 		h.send(ctx, cb.From.ID, "Платежный провайдер пока не настроен.")
 		return
 	}
+	invoiceID := generateInvoiceID()
 
 	checkoutURL, err := h.payment.CreateCheckoutURL(ctx, payment.Request{
 		UserTelegramID: cb.From.ID,
 		ConnectorID:    connectorID,
 		AmountRUB:      connector.PriceRUB,
+		InvoiceID:      invoiceID,
+		Description:    connector.Name,
 	})
 	if err != nil {
 		slog.Error("create checkout url failed", "error", err, "connector_id", connectorID, "telegram_id", cb.From.ID)
 		h.send(ctx, cb.From.ID, "Не удалось сформировать ссылку оплаты. Попробуйте позже.")
 		return
 	}
-	token := paymentTokenFromURL(checkoutURL)
-	if token == "" {
-		slog.Error("checkout url does not contain payment token", "connector_id", connectorID, "telegram_id", cb.From.ID)
-		h.send(ctx, cb.From.ID, "Не удалось сформировать ссылку оплаты. Попробуйте позже.")
-		return
-	}
+	token := invoiceID
 	err = h.store.CreatePayment(ctx, domain.Payment{
 		Provider:    h.payment.ProviderName(),
 		Status:      domain.PaymentStatusPending,
@@ -84,10 +83,14 @@ func (h *Handler) handlePay(ctx context.Context, cb *models.CallbackQuery) {
 	h.logAuditEvent(ctx, cb.From.ID, connectorID, "pay_link_sent", h.payment.ProviderName())
 }
 
-func paymentTokenFromURL(raw string) string {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return ""
+func generateInvoiceID() string {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 10)
 	}
-	return strings.TrimSpace(u.Query().Get("token"))
+	v := int64(binary.BigEndian.Uint64(b[:]) & 0x7fffffffffffffff)
+	if v < 1_000_000_000 {
+		v += 1_000_000_000
+	}
+	return strconv.FormatInt(v, 10)
 }

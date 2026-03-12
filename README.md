@@ -49,6 +49,9 @@ go run ./cmd/server
 - `POST /telegram/webhook`
 - `GET /mock/pay`
 - `GET /mock/pay/success`
+- `POST /payment/result`
+- `POST /payment/success`
+- `POST /payment/fail`
 - `GET /admin/connectors`
 - `GET /admin/billing`
 - `GET /admin/events`
@@ -76,6 +79,18 @@ go run ./cmd/server
 - Пока платежный шлюз не выбран, используется `PAYMENT_PROVIDER=mock`.
 - Кнопка `Оплатить` ведет на тестовую страницу checkout (`/mock/pay`).
 - Для публичного теста укажи `PAYMENT_MOCK_BASE_URL` (обычно URL ngrok).
+
+## Robokassa
+- Для включения: `PAYMENT_PROVIDER=robokassa`.
+- Обязательные env:
+  - `ROBOKASSA_MERCHANT_LOGIN`
+  - `ROBOKASSA_PASS1`
+  - `ROBOKASSA_PASS2`
+  - `ROBOKASSA_IS_TEST_MODE=true` (для тестов)
+- URL callbacks:
+  - `POST /payment/result` (подтверждение платежа, источник истины)
+  - `POST /payment/success`
+  - `POST /payment/fail`
 
 ## Логирование
 - Используется `log/slog` (structured logs).

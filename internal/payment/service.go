@@ -7,6 +7,8 @@ type Request struct {
 	UserTelegramID int64
 	ConnectorID    int64
 	AmountRUB      int64
+	InvoiceID      string
+	Description    string
 }
 
 // Service abstracts payment provider integration behind uniform API.

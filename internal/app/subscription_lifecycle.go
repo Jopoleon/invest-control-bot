@@ -1,0 +1,175 @@
+package app
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
+	"github.com/Jopoleon/telega-bot-fedor/internal/store"
+	"github.com/Jopoleon/telega-bot-fedor/internal/telegram"
+	"github.com/go-telegram/bot/models"
+)
+
+const (
+	reminderDaysBeforeEnd = 5
+	subscriptionJobLimit  = 200
+)
+
+func startSubscriptionLifecycleWorker(st store.Store, tg *telegram.Client, botUsername string) {
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+
+		for {
+			processSubscriptionReminders(context.Background(), st, tg, botUsername)
+			processExpiredSubscriptions(context.Background(), st, tg, botUsername)
+			<-ticker.C
+		}
+	}()
+}
+
+func processSubscriptionReminders(ctx context.Context, st store.Store, tg *telegram.Client, botUsername string) {
+	now := time.Now().UTC()
+	remindBefore := now.AddDate(0, 0, reminderDaysBeforeEnd)
+	subs, err := st.ListSubscriptionsForReminder(ctx, remindBefore, subscriptionJobLimit)
+	if err != nil {
+		slog.Error("list reminder due subscriptions failed", "error", err)
+		return
+	}
+	for _, sub := range subs {
+		connector, ok, err := st.GetConnector(ctx, sub.ConnectorID)
+		if err != nil {
+			slog.Error("load connector for reminder failed", "error", err, "subscription_id", sub.ID, "connector_id", sub.ConnectorID)
+			continue
+		}
+		if !ok {
+			continue
+		}
+
+		renewURL := buildBotStartURL(botUsername, connector.StartPayload)
+		text := fmt.Sprintf("🔔 Напоминание: подписка закончится %s. Чтобы продлить доступ, нажмите кнопку ниже.",
+			sub.EndsAt.In(time.Local).Format("02.01.2006 15:04"),
+		)
+		var keyboard *models.InlineKeyboardMarkup
+		if renewURL != "" {
+			keyboard = &models.InlineKeyboardMarkup{
+				InlineKeyboard: [][]models.InlineKeyboardButton{{
+					{Text: "Продлить подписку", URL: renewURL},
+				}},
+			}
+		}
+		if err := tg.SendMessage(ctx, sub.TelegramID, text, keyboard); err != nil {
+			slog.Error("send subscription reminder failed", "error", err, "subscription_id", sub.ID, "telegram_id", sub.TelegramID)
+			continue
+		}
+		if err := st.MarkSubscriptionReminderSent(ctx, sub.ID, now); err != nil {
+			slog.Error("mark subscription reminder sent failed", "error", err, "subscription_id", sub.ID)
+		}
+		_ = st.SaveAuditEvent(ctx, domain.AuditEvent{
+			TelegramID:  sub.TelegramID,
+			ConnectorID: sub.ConnectorID,
+			Action:      "subscription_reminder_sent",
+			Details:     "subscription_id=" + strconv.FormatInt(sub.ID, 10),
+			CreatedAt:   now,
+		})
+	}
+}
+
+func processExpiredSubscriptions(ctx context.Context, st store.Store, tg *telegram.Client, botUsername string) {
+	now := time.Now().UTC()
+	subs, err := st.ListExpiredActiveSubscriptions(ctx, now, subscriptionJobLimit)
+	if err != nil {
+		slog.Error("list expired subscriptions failed", "error", err)
+		return
+	}
+	for _, sub := range subs {
+		connector, connectorFound, err := st.GetConnector(ctx, sub.ConnectorID)
+		if err != nil {
+			slog.Error("load connector for expiration failed", "error", err, "subscription_id", sub.ID, "connector_id", sub.ConnectorID)
+		}
+
+		// Business status transition to expired.
+		if err := st.UpdateSubscriptionStatus(ctx, sub.ID, domain.SubscriptionStatusExpired, now); err != nil {
+			slog.Error("update subscription status failed", "error", err, "subscription_id", sub.ID)
+			continue
+		}
+
+		// Best-effort revoke from chat when chat_id is configured and bot has rights.
+		if connectorFound {
+			if chatID, ok := normalizeTelegramChatID(connector.ChatID); ok {
+				if err := tg.RemoveChatMember(ctx, chatID, sub.TelegramID); err != nil {
+					slog.Error("remove chat member failed", "error", err, "subscription_id", sub.ID, "telegram_id", sub.TelegramID, "chat_id", chatID)
+					_ = st.SaveAuditEvent(ctx, domain.AuditEvent{
+						TelegramID:  sub.TelegramID,
+						ConnectorID: sub.ConnectorID,
+						Action:      "subscription_revoke_failed",
+						Details:     "subscription_id=" + strconv.FormatInt(sub.ID, 10),
+						CreatedAt:   now,
+					})
+				} else {
+					_ = st.SaveAuditEvent(ctx, domain.AuditEvent{
+						TelegramID:  sub.TelegramID,
+						ConnectorID: sub.ConnectorID,
+						Action:      "subscription_revoked_from_chat",
+						Details:     "subscription_id=" + strconv.FormatInt(sub.ID, 10),
+						CreatedAt:   now,
+					})
+				}
+			}
+		}
+
+		renewURL := ""
+		if connectorFound {
+			renewURL = buildBotStartURL(botUsername, connector.StartPayload)
+		}
+		text := "⏰ Срок подписки истек. Чтобы восстановить доступ, оформите продление."
+		var keyboard *models.InlineKeyboardMarkup
+		if renewURL != "" {
+			keyboard = &models.InlineKeyboardMarkup{
+				InlineKeyboard: [][]models.InlineKeyboardButton{{
+					{Text: "Продлить подписку", URL: renewURL},
+				}},
+			}
+		}
+		if err := tg.SendMessage(ctx, sub.TelegramID, text, keyboard); err != nil {
+			slog.Error("send subscription expired message failed", "error", err, "subscription_id", sub.ID, "telegram_id", sub.TelegramID)
+		}
+		_ = st.SaveAuditEvent(ctx, domain.AuditEvent{
+			TelegramID:  sub.TelegramID,
+			ConnectorID: sub.ConnectorID,
+			Action:      "subscription_expired",
+			Details:     "subscription_id=" + strconv.FormatInt(sub.ID, 10),
+			CreatedAt:   now,
+		})
+	}
+}
+
+func buildBotStartURL(botUsername, startPayload string) string {
+	username := strings.TrimSpace(strings.TrimPrefix(botUsername, "@"))
+	payload := strings.TrimSpace(startPayload)
+	if username == "" || payload == "" {
+		return ""
+	}
+	return "https://t.me/" + username + "?start=" + payload
+}
+
+func normalizeTelegramChatID(chatIDRaw string) (int64, bool) {
+	raw := strings.TrimSpace(chatIDRaw)
+	if raw == "" {
+		return 0, false
+	}
+	// Admin UI stores chat IDs without minus; convert to Telegram expected negative IDs.
+	raw = strings.TrimPrefix(raw, "+")
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value == 0 {
+		return 0, false
+	}
+	if value < 0 {
+		return value, true
+	}
+	return -value, true
+}

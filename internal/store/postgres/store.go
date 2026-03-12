@@ -484,13 +484,14 @@ func (s *Store) UpsertSubscriptionByPayment(ctx context.Context, sub domain.Subs
 	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO subscriptions (
-			telegram_id, connector_id, payment_id, status, starts_at, ends_at, created_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+			telegram_id, connector_id, payment_id, status, starts_at, ends_at, reminder_sent_at, created_at, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		ON CONFLICT (payment_id)
 		DO UPDATE SET
 			status = EXCLUDED.status,
 			starts_at = EXCLUDED.starts_at,
 			ends_at = EXCLUDED.ends_at,
+			reminder_sent_at = EXCLUDED.reminder_sent_at,
 			updated_at = EXCLUDED.updated_at
 	`,
 		sub.TelegramID,
@@ -499,6 +500,7 @@ func (s *Store) UpsertSubscriptionByPayment(ctx context.Context, sub domain.Subs
 		string(sub.Status),
 		sub.StartsAt,
 		sub.EndsAt,
+		sub.ReminderSentAt,
 		sub.CreatedAt,
 		sub.UpdatedAt,
 	)
@@ -613,7 +615,7 @@ func (s *Store) ListSubscriptions(ctx context.Context, query domain.Subscription
 	}
 	whereClause := strings.Join(where, " AND ")
 	sqlText := fmt.Sprintf(`
-		SELECT id, telegram_id, connector_id, payment_id, status, starts_at, ends_at, created_at, updated_at
+		SELECT id, telegram_id, connector_id, payment_id, status, starts_at, ends_at, reminder_sent_at, created_at, updated_at
 		FROM subscriptions
 		WHERE %s
 		ORDER BY created_at DESC, id DESC
@@ -638,6 +640,7 @@ func (s *Store) ListSubscriptions(ctx context.Context, query domain.Subscription
 			&status,
 			&item.StartsAt,
 			&item.EndsAt,
+			&item.ReminderSentAt,
 			&item.CreatedAt,
 			&item.UpdatedAt,
 		); err != nil {
@@ -647,4 +650,146 @@ func (s *Store) ListSubscriptions(ctx context.Context, query domain.Subscription
 		result = append(result, item)
 	}
 	return result, rows.Err()
+}
+
+// ListSubscriptionsForReminder returns active subscriptions that need 5-day reminder.
+func (s *Store) ListSubscriptionsForReminder(ctx context.Context, remindBefore time.Time, limit int) ([]domain.Subscription, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	now := time.Now().UTC()
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, telegram_id, connector_id, payment_id, status, starts_at, ends_at, reminder_sent_at, created_at, updated_at
+		FROM subscriptions
+		WHERE status = $1
+		  AND reminder_sent_at IS NULL
+		  AND ends_at > $2
+		  AND ends_at <= $3
+		ORDER BY ends_at ASC
+		LIMIT $4
+	`, string(domain.SubscriptionStatusActive), now, remindBefore, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]domain.Subscription, 0, limit)
+	for rows.Next() {
+		var item domain.Subscription
+		var status string
+		if err := rows.Scan(
+			&item.ID,
+			&item.TelegramID,
+			&item.ConnectorID,
+			&item.PaymentID,
+			&status,
+			&item.StartsAt,
+			&item.EndsAt,
+			&item.ReminderSentAt,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		item.Status = domain.SubscriptionStatus(status)
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
+// MarkSubscriptionReminderSent stores timestamp when reminder was delivered.
+func (s *Store) MarkSubscriptionReminderSent(ctx context.Context, subscriptionID int64, sentAt time.Time) error {
+	if sentAt.IsZero() {
+		sentAt = time.Now().UTC()
+	}
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE subscriptions
+		SET reminder_sent_at = $2, updated_at = $3
+		WHERE id = $1
+	`, subscriptionID, sentAt, time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return errors.New("subscription not found")
+	}
+	return nil
+}
+
+// ListExpiredActiveSubscriptions returns active subscriptions that already ended.
+func (s *Store) ListExpiredActiveSubscriptions(ctx context.Context, now time.Time, limit int) ([]domain.Subscription, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, telegram_id, connector_id, payment_id, status, starts_at, ends_at, reminder_sent_at, created_at, updated_at
+		FROM subscriptions
+		WHERE status = $1
+		  AND ends_at <= $2
+		ORDER BY ends_at ASC
+		LIMIT $3
+	`, string(domain.SubscriptionStatusActive), now, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]domain.Subscription, 0, limit)
+	for rows.Next() {
+		var item domain.Subscription
+		var status string
+		if err := rows.Scan(
+			&item.ID,
+			&item.TelegramID,
+			&item.ConnectorID,
+			&item.PaymentID,
+			&status,
+			&item.StartsAt,
+			&item.EndsAt,
+			&item.ReminderSentAt,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		item.Status = domain.SubscriptionStatus(status)
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
+// UpdateSubscriptionStatus updates subscription status and touched timestamp.
+func (s *Store) UpdateSubscriptionStatus(ctx context.Context, subscriptionID int64, status domain.SubscriptionStatus, updatedAt time.Time) error {
+	if updatedAt.IsZero() {
+		updatedAt = time.Now().UTC()
+	}
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE subscriptions
+		SET status = $2, updated_at = $3
+		WHERE id = $1
+	`, subscriptionID, string(status), updatedAt)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return errors.New("subscription not found")
+	}
+	return nil
 }

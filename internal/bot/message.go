@@ -16,6 +16,10 @@ func (h *Handler) handleMessage(ctx context.Context, msg *models.Message) {
 	}
 
 	text := strings.TrimSpace(msg.Text)
+	if strings.EqualFold(text, "/menu") {
+		h.sendMenu(ctx, msg.Chat.ID)
+		return
+	}
 	if strings.HasPrefix(text, "/start") {
 		h.handleStart(ctx, msg)
 		return

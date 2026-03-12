@@ -24,6 +24,8 @@ func (h *Handler) handleCallback(ctx context.Context, cb *models.CallbackQuery) 
 	if !strings.HasPrefix(cb.Data, "accept_terms:") {
 		if strings.HasPrefix(cb.Data, "pay:") {
 			h.handlePay(ctx, cb)
+		} else if strings.HasPrefix(cb.Data, menuCallbackPrefix) {
+			h.handleMenuCallback(ctx, cb)
 		}
 		return
 	}

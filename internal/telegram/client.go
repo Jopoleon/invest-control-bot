@@ -2,7 +2,9 @@ package telegram
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"strings"
 
 	tgbot "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -60,5 +62,95 @@ func (c *Client) AnswerCallbackQuery(ctx context.Context, callbackQueryID string
 	}
 
 	_, err := c.bot.AnswerCallbackQuery(ctx, &tgbot.AnswerCallbackQueryParams{CallbackQueryID: callbackQueryID})
+	return err
+}
+
+// EnsureWebhook compares Telegram-side webhook URL with desired URL and updates it when mismatched.
+func (c *Client) EnsureWebhook(ctx context.Context, desiredURL, secretToken string) error {
+	desiredURL = strings.TrimSpace(desiredURL)
+	if desiredURL == "" {
+		return nil
+	}
+	if !c.enabled {
+		slog.Debug("telegram client disabled, skip ensureWebhook", "desired_url", desiredURL)
+		return nil
+	}
+
+	info, err := c.bot.GetWebhookInfo(ctx)
+	if err != nil {
+		return fmt.Errorf("get webhook info: %w", err)
+	}
+	currentURL := strings.TrimSpace(info.URL)
+	if currentURL == desiredURL {
+		slog.Info("telegram webhook is up to date", "url", currentURL)
+		return nil
+	}
+
+	ok, err := c.bot.SetWebhook(ctx, &tgbot.SetWebhookParams{
+		URL:         desiredURL,
+		SecretToken: strings.TrimSpace(secretToken),
+	})
+	if err != nil {
+		return fmt.Errorf("set webhook: %w", err)
+	}
+	if !ok {
+		return fmt.Errorf("set webhook returned false")
+	}
+	slog.Info("telegram webhook updated", "from", currentURL, "to", desiredURL)
+	return nil
+}
+
+// EnsureDefaultMenu configures default command list and menu button ("commands") in Telegram client UI.
+func (c *Client) EnsureDefaultMenu(ctx context.Context) error {
+	if !c.enabled {
+		slog.Debug("telegram client disabled, skip ensureDefaultMenu")
+		return nil
+	}
+
+	commands := []models.BotCommand{
+		{Command: "start", Description: "Запустить бота по ссылке"},
+		{Command: "menu", Description: "Открыть личный кабинет"},
+		{Command: "help", Description: "Помощь по использованию"},
+	}
+	ok, err := c.bot.SetMyCommands(ctx, &tgbot.SetMyCommandsParams{Commands: commands})
+	if err != nil {
+		return fmt.Errorf("set my commands: %w", err)
+	}
+	if !ok {
+		return fmt.Errorf("set my commands returned false")
+	}
+
+	menu, err := c.bot.GetChatMenuButton(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("get chat menu button: %w", err)
+	}
+	if menu.Type == models.MenuButtonTypeCommands {
+		slog.Info("telegram chat menu button is up to date", "type", menu.Type)
+		return nil
+	}
+
+	ok, err = c.bot.SetChatMenuButton(ctx, &tgbot.SetChatMenuButtonParams{
+		MenuButton: models.MenuButtonCommands{Type: models.MenuButtonTypeCommands},
+	})
+	if err != nil {
+		return fmt.Errorf("set chat menu button: %w", err)
+	}
+	if !ok {
+		return fmt.Errorf("set chat menu button returned false")
+	}
+	slog.Info("telegram chat menu button updated", "type", models.MenuButtonTypeCommands)
+	return nil
+}
+
+// RemoveChatMember removes user from chat/channel (requires bot admin permissions).
+func (c *Client) RemoveChatMember(ctx context.Context, chatID, userID int64) error {
+	if !c.enabled {
+		slog.Debug("telegram client disabled, skip removeChatMember", "chat_id", chatID, "user_id", userID)
+		return nil
+	}
+	_, err := c.bot.BanChatMember(ctx, &tgbot.BanChatMemberParams{
+		ChatID: chatID,
+		UserID: userID,
+	})
 	return err
 }

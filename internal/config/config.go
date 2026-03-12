@@ -81,6 +81,16 @@ type YookassaConfig struct {
 type PaymentConfig struct {
 	Provider    string
 	MockBaseURL string
+	Robokassa   RobokassaPaymentConfig
+}
+
+// RobokassaPaymentConfig stores Robokassa credentials and mode flags.
+type RobokassaPaymentConfig struct {
+	MerchantLogin string
+	Password1     string
+	Password2     string
+	IsTestMode    bool
+	CheckoutURL   string
 }
 
 // LoggingConfig controls verbosity of structured logs.
@@ -145,6 +155,13 @@ func Load() (Config, error) {
 		Payment: PaymentConfig{
 			Provider:    strings.ToLower(getEnv("PAYMENT_PROVIDER", "mock")),
 			MockBaseURL: strings.TrimSpace(os.Getenv("PAYMENT_MOCK_BASE_URL")),
+			Robokassa: RobokassaPaymentConfig{
+				MerchantLogin: strings.TrimSpace(os.Getenv("ROBOKASSA_MERCHANT_LOGIN")),
+				Password1:     strings.TrimSpace(os.Getenv("ROBOKASSA_PASS1")),
+				Password2:     strings.TrimSpace(os.Getenv("ROBOKASSA_PASS2")),
+				IsTestMode:    getBoolEnv("ROBOKASSA_IS_TEST_MODE", true),
+				CheckoutURL:   strings.TrimSpace(os.Getenv("ROBOKASSA_CHECKOUT_URL")),
+			},
 		},
 		Logging: LoggingConfig{
 			Level:    strings.ToLower(getEnv("LOG_LEVEL", "info")),
@@ -184,6 +201,17 @@ func (c Config) Validate() error {
 	if c.Payment.Provider == "" {
 		errs = append(errs, "PAYMENT_PROVIDER is required")
 	}
+	if c.Payment.Provider == "robokassa" {
+		if c.Payment.Robokassa.MerchantLogin == "" {
+			errs = append(errs, "ROBOKASSA_MERCHANT_LOGIN is required when PAYMENT_PROVIDER=robokassa")
+		}
+		if c.Payment.Robokassa.Password1 == "" {
+			errs = append(errs, "ROBOKASSA_PASS1 is required when PAYMENT_PROVIDER=robokassa")
+		}
+		if c.Payment.Robokassa.Password2 == "" {
+			errs = append(errs, "ROBOKASSA_PASS2 is required when PAYMENT_PROVIDER=robokassa")
+		}
+	}
 	switch c.Logging.Level {
 	case "debug", "info", "warn", "error":
 	default:
@@ -215,8 +243,8 @@ func (c Config) Validate() error {
 		if c.Telegram.BotToken == "" {
 			errs = append(errs, "TELEGRAM_BOT_TOKEN is required for non-local environments")
 		}
-		if c.Yookassa.ShopID == "" || c.Yookassa.SecretKey == "" {
-			errs = append(errs, "YOOKASSA_SHOP_ID and YOOKASSA_SECRET_KEY are required for non-local environments")
+		if c.Payment.Provider == "yookassa" && (c.Yookassa.ShopID == "" || c.Yookassa.SecretKey == "") {
+			errs = append(errs, "YOOKASSA_SHOP_ID and YOOKASSA_SECRET_KEY are required when PAYMENT_PROVIDER=yookassa")
 		}
 		if c.Security.EncryptionKey == "" {
 			errs = append(errs, "APP_ENCRYPTION_KEY is required for non-local environments")

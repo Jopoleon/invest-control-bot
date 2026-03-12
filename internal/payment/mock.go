@@ -28,9 +28,13 @@ func (m *MockService) ProviderName() string { return "mock" }
 
 // CreateCheckoutURL builds test checkout URL with request payload in query params.
 func (m *MockService) CreateCheckoutURL(_ context.Context, req Request) (string, error) {
-	token, err := randomToken(8)
-	if err != nil {
-		return "", err
+	token := strings.TrimSpace(req.InvoiceID)
+	if token == "" {
+		var err error
+		token, err = randomToken(8)
+		if err != nil {
+			return "", err
+		}
 	}
 	q := url.Values{}
 	q.Set("token", token)

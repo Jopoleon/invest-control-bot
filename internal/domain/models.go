@@ -122,15 +122,16 @@ const (
 
 // Subscription stores purchased access period linked to successful payment.
 type Subscription struct {
-	ID          int64
-	TelegramID  int64
-	ConnectorID int64
-	PaymentID   int64
-	Status      SubscriptionStatus
-	StartsAt    time.Time
-	EndsAt      time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID             int64
+	TelegramID     int64
+	ConnectorID    int64
+	PaymentID      int64
+	Status         SubscriptionStatus
+	StartsAt       time.Time
+	EndsAt         time.Time
+	ReminderSentAt *time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 // PaymentListQuery describes admin filters for payment list.

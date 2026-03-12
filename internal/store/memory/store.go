@@ -375,6 +375,8 @@ func (s *Store) UpsertSubscriptionByPayment(_ context.Context, sub domain.Subscr
 	if sub.CreatedAt.IsZero() {
 		sub.CreatedAt = now
 	}
+	// Re-activation means reminder should be sent again for the new period.
+	sub.ReminderSentAt = nil
 	if sub.ID <= 0 {
 		sub.ID = s.nextSubscrID
 		s.nextSubscrID++
@@ -470,6 +472,122 @@ func (s *Store) ListSubscriptions(_ context.Context, query domain.SubscriptionLi
 		filtered = filtered[:limit]
 	}
 	return filtered, nil
+}
+
+// ListSubscriptionsForReminder returns active subscriptions that are ending in <=5 days and not yet notified.
+func (s *Store) ListSubscriptionsForReminder(_ context.Context, remindBefore time.Time, limit int) ([]domain.Subscription, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if limit <= 0 {
+		limit = 200
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	now := time.Now().UTC()
+	filtered := make([]domain.Subscription, 0, len(s.subsByPayID))
+	for _, item := range s.subsByPayID {
+		if item.Status != domain.SubscriptionStatusActive {
+			continue
+		}
+		if item.ReminderSentAt != nil {
+			continue
+		}
+		if !item.EndsAt.After(now) {
+			continue
+		}
+		if item.EndsAt.After(remindBefore) {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	sort.Slice(filtered, func(i, j int) bool {
+		if filtered[i].EndsAt.Equal(filtered[j].EndsAt) {
+			return filtered[i].ID < filtered[j].ID
+		}
+		return filtered[i].EndsAt.Before(filtered[j].EndsAt)
+	})
+	if len(filtered) > limit {
+		filtered = filtered[:limit]
+	}
+	return filtered, nil
+}
+
+// MarkSubscriptionReminderSent stores reminder timestamp.
+func (s *Store) MarkSubscriptionReminderSent(_ context.Context, subscriptionID int64, sentAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if sentAt.IsZero() {
+		sentAt = time.Now().UTC()
+	}
+	for paymentID, sub := range s.subsByPayID {
+		if sub.ID != subscriptionID {
+			continue
+		}
+		sub.ReminderSentAt = &sentAt
+		sub.UpdatedAt = time.Now().UTC()
+		s.subsByPayID[paymentID] = sub
+		return nil
+	}
+	return errors.New("subscription not found")
+}
+
+// ListExpiredActiveSubscriptions returns active subscriptions whose end time is in the past.
+func (s *Store) ListExpiredActiveSubscriptions(_ context.Context, now time.Time, limit int) ([]domain.Subscription, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if limit <= 0 {
+		limit = 200
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	filtered := make([]domain.Subscription, 0, len(s.subsByPayID))
+	for _, item := range s.subsByPayID {
+		if item.Status != domain.SubscriptionStatusActive {
+			continue
+		}
+		if item.EndsAt.After(now) {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	sort.Slice(filtered, func(i, j int) bool {
+		if filtered[i].EndsAt.Equal(filtered[j].EndsAt) {
+			return filtered[i].ID < filtered[j].ID
+		}
+		return filtered[i].EndsAt.Before(filtered[j].EndsAt)
+	})
+	if len(filtered) > limit {
+		filtered = filtered[:limit]
+	}
+	return filtered, nil
+}
+
+// UpdateSubscriptionStatus updates status by subscription ID.
+func (s *Store) UpdateSubscriptionStatus(_ context.Context, subscriptionID int64, status domain.SubscriptionStatus, updatedAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if updatedAt.IsZero() {
+		updatedAt = time.Now().UTC()
+	}
+	for paymentID, sub := range s.subsByPayID {
+		if sub.ID != subscriptionID {
+			continue
+		}
+		sub.Status = status
+		sub.UpdatedAt = updatedAt
+		s.subsByPayID[paymentID] = sub
+		return nil
+	}
+	return errors.New("subscription not found")
 }
 
 // consentKey builds deterministic compound key for consent map.
