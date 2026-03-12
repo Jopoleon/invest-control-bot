@@ -6,6 +6,8 @@
 - Выполнена итерация 0: базовая структура проекта, стратегия конфигурации и секретов, фиксация окружений.
 - Выполнена итерация 2 (MVP-часть): коннекторы в админке, `/start payload`, акцепт условий и FSM регистрации.
 - Telegram stack переведен на `github.com/go-telegram/bot` (webhook на нашем Go-сервере).
+- Реализованы PostgreSQL-миграции и хранение платежей/подписок.
+- Добавлены админ-экраны `billing` и `events`.
 
 ## Структура
 - `cmd/server` - точка входа backend сервиса.
@@ -13,9 +15,9 @@
 - `internal/app` - HTTP-сервер и маршрутизация.
 - `internal/admin` - минимальная админка (коннекторы).
 - `internal/bot` - обработчик Telegram flow.
-- `internal/store/memory` - временное in-memory хранилище.
+- `internal/store/memory` - in-memory хранилище для локальных тестов.
+- `internal/store/postgres` - PostgreSQL хранилище (основной режим).
 - `migrations` - SQL-миграции БД.
-- `web` - шаблоны и статические файлы админки.
 - `docs` - техническая документация.
 
 ## Окружения
@@ -48,9 +50,12 @@ go run ./cmd/server
 - `GET /mock/pay`
 - `GET /mock/pay/success`
 - `GET /admin/connectors`
+- `GET /admin/billing`
+- `GET /admin/events`
 - `POST /admin/connectors`
 - `POST /admin/connectors/toggle`
 - `GET /admin/help`
+- `GET /admin/assets/*`
 
 ## Авторизация админки
 - `?token=<ADMIN_AUTH_TOKEN>` или `Authorization: Bearer <ADMIN_AUTH_TOKEN>`.
@@ -61,7 +66,7 @@ go run ./cmd/server
 - `start_payload` (например `in-94db7d6813507bc`)
 - стоимость
 - период
-- чат
+- `channel_url` и/или `chat_id` (хотя бы одно поле должно быть заполнено)
 - ссылки оферты/политики
 
 Ссылка для пользователя:

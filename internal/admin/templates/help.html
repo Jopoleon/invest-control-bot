@@ -4,52 +4,75 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Admin · {{index .I18N "nav.guide"}}</title>
+  <link rel="stylesheet" href="/admin/assets/css/pico.min.css">
   <style>
-    body { margin:0; background:#f5f7fb; color:#101828; font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
-    .wrap { max-width: 980px; margin: 24px auto; padding: 0 16px 24px; }
-    .nav, .card { background:#fff; border:1px solid #e3e8f1; border-radius:12px; box-shadow:0 3px 14px rgba(16,24,40,.05); }
-    .nav { padding:10px 14px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; }
-    .nav a { color:#0f172a; text-decoration:none; font-weight:600; margin-right:16px; }
-    .langs a { margin-right: 8px; font-size: 12px; }
-    .card { padding:18px; }
-    h2 { margin-top:0; }
-    h3 { margin-bottom:6px; }
-    p { margin: 6px 0; color:#344054; line-height:1.45; }
-    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background:#f2f4f7; padding:1px 4px; border-radius:6px; }
+    :root {
+      --pico-font-family: "Manrope", "Segoe UI", sans-serif;
+      --pico-font-size: 87.5%;
+      --pico-spacing: .8rem;
+      --pico-form-element-spacing-vertical: .45rem;
+      --pico-form-element-spacing-horizontal: .6rem;
+    }
+    body { background: linear-gradient(180deg, #f5f8fc, #eef3f9); }
+    main.container { max-width: 980px; }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: .75rem;
+      flex-wrap: wrap;
+      margin: 1rem 0;
+    }
+    .topbar nav ul { align-items: center; }
+    .langs a[aria-current="true"] { font-weight: 700; text-decoration: underline; }
+    article section + section { margin-top: 1.1rem; padding-top: 1rem; border-top: 1px dashed #cdd7e5; }
   </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="nav">
-    <div>
-      <a href="/admin/connectors?lang={{.Lang}}">{{index .I18N "nav.connectors"}}</a>
-      <a href="/admin/events?lang={{.Lang}}">{{index .I18N "nav.events"}}</a>
-      <a href="/admin/help?lang={{.Lang}}">{{index .I18N "nav.guide"}}</a>
-    </div>
-    <div class="langs">
-      <a href="/admin/help?lang=ru">{{index .I18N "lang.ru"}}</a>
-      <a href="/admin/help?lang=en">{{index .I18N "lang.en"}}</a>
-    </div>
-  </div>
-  <div class="card">
-    <h2>{{index .I18N "guide.title"}}</h2>
-    <h3>{{index .I18N "guide.s1"}}</h3>
-    <p>{{index .I18N "guide.s1.p"}}</p>
+<main class="container">
+  <header class="topbar">
+    <nav>
+      <ul>
+        <li><a href="/admin/connectors?lang={{.Lang}}">{{index .I18N "nav.connectors"}}</a></li>
+        <li><a href="/admin/billing?lang={{.Lang}}">{{index .I18N "nav.billing"}}</a></li>
+        <li><a href="/admin/events?lang={{.Lang}}">{{index .I18N "nav.events"}}</a></li>
+        <li><a href="/admin/help?lang={{.Lang}}"><strong>{{index .I18N "nav.guide"}}</strong></a></li>
+      </ul>
+    </nav>
+    <nav class="langs">
+      <ul>
+        <li><a href="/admin/help?lang=ru" {{if eq .Lang "ru"}}aria-current="true"{{end}}>{{index .I18N "lang.ru"}}</a></li>
+        <li><a href="/admin/help?lang=en" {{if eq .Lang "en"}}aria-current="true"{{end}}>{{index .I18N "lang.en"}}</a></li>
+      </ul>
+    </nav>
+  </header>
 
-    <h3>{{index .I18N "guide.s2"}}</h3>
-    <p>{{index .I18N "guide.s2.p1"}}</p>
-    <p>{{index .I18N "guide.s2.p2"}}</p>
-    <p>{{index .I18N "guide.s2.p3"}}</p>
-    <p>{{index .I18N "guide.s2.p4"}}</p>
-    <p>{{index .I18N "guide.s2.p5"}}</p>
-    <p>{{index .I18N "guide.s2.p6"}}</p>
-    <p>{{index .I18N "guide.s2.p7"}}</p>
-    <p>{{index .I18N "guide.s2.p8"}}</p>
+  <article>
+    <h1>{{index .I18N "guide.title"}}</h1>
 
-    <h3>{{index .I18N "guide.s3"}}</h3>
-    <p>{{index .I18N "guide.s3.p1"}}</p>
-    <p>{{index .I18N "guide.s3.p2"}}</p>
-  </div>
-</div>
+    <section>
+      <h3>{{index .I18N "guide.s1"}}</h3>
+      <p>{{index .I18N "guide.s1.p"}}</p>
+    </section>
+
+    <section>
+      <h3>{{index .I18N "guide.s2"}}</h3>
+      <p>{{index .I18N "guide.s2.p1"}}</p>
+      <p>{{index .I18N "guide.s2.p2"}}</p>
+      <p>{{index .I18N "guide.s2.p3"}}</p>
+      <p>{{index .I18N "guide.s2.p4"}}</p>
+      <p>{{index .I18N "guide.s2.p5"}}</p>
+      <p>{{index .I18N "guide.s2.p6"}}</p>
+      <p>{{index .I18N "guide.s2.p7"}}</p>
+      <p>{{index .I18N "guide.s2.p8"}}</p>
+    </section>
+
+    <section>
+      <h3>{{index .I18N "guide.s3"}}</h3>
+      <p>{{index .I18N "guide.s3.p1"}}</p>
+      <p>{{index .I18N "guide.s3.p2"}}</p>
+    </section>
+  </article>
+</main>
 </body>
 </html>

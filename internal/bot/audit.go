@@ -9,7 +9,7 @@ import (
 )
 
 // logAuditEvent persists business-significant user actions for support and compliance.
-func (h *Handler) logAuditEvent(ctx context.Context, telegramID int64, connectorID, action, details string) {
+func (h *Handler) logAuditEvent(ctx context.Context, telegramID, connectorID int64, action, details string) {
 	if action == "" {
 		return
 	}

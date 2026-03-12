@@ -14,9 +14,10 @@ import (
 )
 
 var (
-	errCreateConnectorRequired = errors.New("create_connector_required")
-	errCreateConnectorPrice    = errors.New("create_connector_price")
-	errCreateConnectorPeriod   = errors.New("create_connector_period")
+	errCreateConnectorRequired  = errors.New("create_connector_required")
+	errCreateConnectorPrice     = errors.New("create_connector_price")
+	errCreateConnectorPeriod    = errors.New("create_connector_period")
+	errCreateConnectorChatOrURL = errors.New("create_connector_chat_or_url_required")
 )
 
 // connectorsPage handles list/create connector operations.
@@ -65,11 +66,17 @@ func (h *Handler) toggleConnector(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("bad form"))
 		return
 	}
-	id := strings.TrimSpace(r.FormValue("id"))
+	idRaw := strings.TrimSpace(r.FormValue("id"))
 	active := r.FormValue("active") == "true"
-	if id == "" {
+	if idRaw == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte("id is required"))
+		return
+	}
+	id, err := strconv.ParseInt(idRaw, 10, 64)
+	if err != nil || id <= 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte("invalid id"))
 		return
 	}
 	if err := h.store.SetConnectorActive(r.Context(), id, active); err != nil {
@@ -83,7 +90,6 @@ func (h *Handler) toggleConnector(w http.ResponseWriter, r *http.Request) {
 
 // createConnector parses HTML form and persists connector entity.
 func (h *Handler) createConnector(ctx context.Context, r *http.Request) error {
-	id := strings.TrimSpace(r.FormValue("id"))
 	startPayload := strings.TrimSpace(r.FormValue("start_payload"))
 	name := strings.TrimSpace(r.FormValue("name"))
 	description := strings.TrimSpace(r.FormValue("description"))
@@ -92,10 +98,8 @@ func (h *Handler) createConnector(ctx context.Context, r *http.Request) error {
 	periodRaw := strings.TrimSpace(r.FormValue("period_days"))
 	offerURL := strings.TrimSpace(r.FormValue("offer_url"))
 	privacyURL := strings.TrimSpace(r.FormValue("privacy_url"))
+	channelURL := strings.TrimSpace(r.FormValue("channel_url"))
 
-	if id == "" {
-		id = generateToken(8)
-	}
 	if startPayload == "" {
 		startPayload = "in-" + generateToken(8)
 	}
@@ -103,8 +107,11 @@ func (h *Handler) createConnector(ctx context.Context, r *http.Request) error {
 		periodRaw = "30"
 	}
 
-	if name == "" || chatID == "" || priceRaw == "" {
+	if name == "" || priceRaw == "" {
 		return errCreateConnectorRequired
+	}
+	if chatID == "" && channelURL == "" {
+		return errCreateConnectorChatOrURL
 	}
 	// Keep chat ID in unsigned form to stay consistent with current admin input convention.
 	chatID = strings.TrimPrefix(chatID, "-")
@@ -119,11 +126,11 @@ func (h *Handler) createConnector(ctx context.Context, r *http.Request) error {
 	}
 
 	connector := domain.Connector{
-		ID:           id,
 		StartPayload: startPayload,
 		Name:         name,
 		Description:  description,
 		ChatID:       chatID,
+		ChannelURL:   channelURL,
 		PriceRUB:     price,
 		PeriodDays:   periodDays,
 		OfferURL:     offerURL,
@@ -160,6 +167,7 @@ func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWrite
 			StartPayload: c.StartPayload,
 			Name:         c.Name,
 			ChatID:       c.ChatID,
+			ChannelURL:   c.ChannelURL,
 			PriceRUB:     c.PriceRUB,
 			PeriodDays:   c.PeriodDays,
 			OfferURL:     c.OfferURL,
@@ -190,6 +198,8 @@ func (h *Handler) localizeCreateConnectorError(lang string, err error) string {
 		return t(lang, "connector.validation.price")
 	case errors.Is(err, errCreateConnectorPeriod):
 		return t(lang, "connector.validation.period")
+	case errors.Is(err, errCreateConnectorChatOrURL):
+		return t(lang, "connector.validation.chat_or_url")
 	default:
 		return err.Error()
 	}

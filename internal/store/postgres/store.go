@@ -24,11 +24,8 @@ func New(db *sqlx.DB) *Store {
 
 // CreateConnector inserts connector row.
 func (s *Store) CreateConnector(ctx context.Context, c domain.Connector) error {
-	if c.ID == "" {
-		return errors.New("connector ID is required")
-	}
 	if c.StartPayload == "" {
-		c.StartPayload = c.ID
+		return errors.New("start payload is required")
 	}
 	if c.CreatedAt.IsZero() {
 		c.CreatedAt = time.Now().UTC()
@@ -36,15 +33,15 @@ func (s *Store) CreateConnector(ctx context.Context, c domain.Connector) error {
 
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO connectors (
-			id, start_payload, name, description, chat_id, price_rub, period_days,
+			start_payload, name, description, chat_id, channel_url, price_rub, period_days,
 			offer_url, privacy_url, is_active, created_at
 		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 	`,
-		c.ID,
 		c.StartPayload,
 		c.Name,
 		c.Description,
 		c.ChatID,
+		c.ChannelURL,
 		c.PriceRUB,
 		c.PeriodDays,
 		c.OfferURL,
@@ -58,7 +55,7 @@ func (s *Store) CreateConnector(ctx context.Context, c domain.Connector) error {
 // ListConnectors returns connectors ordered by created_at.
 func (s *Store) ListConnectors(ctx context.Context) ([]domain.Connector, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, start_payload, name, description, chat_id, price_rub, period_days,
+		SELECT id, start_payload, name, description, chat_id, channel_url, price_rub, period_days,
 		       offer_url, privacy_url, is_active, created_at
 		FROM connectors
 		ORDER BY created_at ASC
@@ -77,6 +74,7 @@ func (s *Store) ListConnectors(ctx context.Context) ([]domain.Connector, error) 
 			&c.Name,
 			&c.Description,
 			&c.ChatID,
+			&c.ChannelURL,
 			&c.PriceRUB,
 			&c.PeriodDays,
 			&c.OfferURL,
@@ -92,10 +90,10 @@ func (s *Store) ListConnectors(ctx context.Context) ([]domain.Connector, error) 
 }
 
 // GetConnector fetches connector by ID.
-func (s *Store) GetConnector(ctx context.Context, connectorID string) (domain.Connector, bool, error) {
+func (s *Store) GetConnector(ctx context.Context, connectorID int64) (domain.Connector, bool, error) {
 	var c domain.Connector
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, start_payload, name, description, chat_id, price_rub, period_days,
+		SELECT id, start_payload, name, description, chat_id, channel_url, price_rub, period_days,
 		       offer_url, privacy_url, is_active, created_at
 		FROM connectors
 		WHERE id = $1
@@ -105,6 +103,7 @@ func (s *Store) GetConnector(ctx context.Context, connectorID string) (domain.Co
 		&c.Name,
 		&c.Description,
 		&c.ChatID,
+		&c.ChannelURL,
 		&c.PriceRUB,
 		&c.PeriodDays,
 		&c.OfferURL,
@@ -125,7 +124,7 @@ func (s *Store) GetConnector(ctx context.Context, connectorID string) (domain.Co
 func (s *Store) GetConnectorByStartPayload(ctx context.Context, payload string) (domain.Connector, bool, error) {
 	var c domain.Connector
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, start_payload, name, description, chat_id, price_rub, period_days,
+		SELECT id, start_payload, name, description, chat_id, channel_url, price_rub, period_days,
 		       offer_url, privacy_url, is_active, created_at
 		FROM connectors
 		WHERE start_payload = $1
@@ -135,6 +134,7 @@ func (s *Store) GetConnectorByStartPayload(ctx context.Context, payload string) 
 		&c.Name,
 		&c.Description,
 		&c.ChatID,
+		&c.ChannelURL,
 		&c.PriceRUB,
 		&c.PeriodDays,
 		&c.OfferURL,
@@ -152,7 +152,7 @@ func (s *Store) GetConnectorByStartPayload(ctx context.Context, payload string) 
 }
 
 // SetConnectorActive toggles connector active status.
-func (s *Store) SetConnectorActive(ctx context.Context, connectorID string, active bool) error {
+func (s *Store) SetConnectorActive(ctx context.Context, connectorID int64, active bool) error {
 	res, err := s.db.ExecContext(ctx, `UPDATE connectors SET is_active = $2 WHERE id = $1`, connectorID, active)
 	if err != nil {
 		return err
@@ -182,7 +182,7 @@ func (s *Store) SaveConsent(ctx context.Context, consent domain.Consent) error {
 }
 
 // GetConsent returns stored consent.
-func (s *Store) GetConsent(ctx context.Context, telegramID int64, connectorID string) (domain.Consent, bool, error) {
+func (s *Store) GetConsent(ctx context.Context, telegramID int64, connectorID int64) (domain.Consent, bool, error) {
 	var c domain.Consent
 	err := s.db.QueryRowContext(ctx, `
 		SELECT telegram_id, connector_id, offer_accepted_at, privacy_accepted_at
@@ -330,7 +330,7 @@ func (s *Store) ListAuditEvents(ctx context.Context, query domain.AuditEventList
 	if query.TelegramID > 0 {
 		where = append(where, "telegram_id = "+addArg(query.TelegramID))
 	}
-	if query.ConnectorID != "" {
+	if query.ConnectorID > 0 {
 		where = append(where, "connector_id = "+addArg(query.ConnectorID))
 	}
 	if query.Action != "" {
@@ -385,4 +385,266 @@ func (s *Store) ListAuditEvents(ctx context.Context, query domain.AuditEventList
 		result = append(result, event)
 	}
 	return result, total, rows.Err()
+}
+
+// CreatePayment inserts pending payment transaction.
+func (s *Store) CreatePayment(ctx context.Context, payment domain.Payment) error {
+	now := time.Now().UTC()
+	if payment.CreatedAt.IsZero() {
+		payment.CreatedAt = now
+	}
+	if payment.UpdatedAt.IsZero() {
+		payment.UpdatedAt = now
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO payments (
+			provider, provider_payment_id, status, token, telegram_id, connector_id,
+			amount_rub, checkout_url, created_at, paid_at, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+	`,
+		payment.Provider,
+		payment.ProviderPaymentID,
+		string(payment.Status),
+		payment.Token,
+		payment.TelegramID,
+		payment.ConnectorID,
+		payment.AmountRUB,
+		payment.CheckoutURL,
+		payment.CreatedAt,
+		payment.PaidAt,
+		payment.UpdatedAt,
+	)
+	return err
+}
+
+// GetPaymentByToken returns payment by externally visible checkout token.
+func (s *Store) GetPaymentByToken(ctx context.Context, token string) (domain.Payment, bool, error) {
+	var payment domain.Payment
+	var status string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, provider, provider_payment_id, status, token, telegram_id, connector_id,
+		       amount_rub, checkout_url, created_at, paid_at, updated_at
+		FROM payments
+		WHERE token = $1
+	`, token).Scan(
+		&payment.ID,
+		&payment.Provider,
+		&payment.ProviderPaymentID,
+		&status,
+		&payment.Token,
+		&payment.TelegramID,
+		&payment.ConnectorID,
+		&payment.AmountRUB,
+		&payment.CheckoutURL,
+		&payment.CreatedAt,
+		&payment.PaidAt,
+		&payment.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return domain.Payment{}, false, nil
+	}
+	if err != nil {
+		return domain.Payment{}, false, err
+	}
+	payment.Status = domain.PaymentStatus(status)
+	return payment, true, nil
+}
+
+// UpdatePaymentPaid marks payment as paid and stores provider payment reference.
+func (s *Store) UpdatePaymentPaid(ctx context.Context, paymentID int64, providerPaymentID string, paidAt time.Time) error {
+	if paidAt.IsZero() {
+		paidAt = time.Now().UTC()
+	}
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE payments
+		SET status = $2, provider_payment_id = $3, paid_at = $4, updated_at = $5
+		WHERE id = $1
+	`, paymentID, string(domain.PaymentStatusPaid), providerPaymentID, paidAt, time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return errors.New("payment not found")
+	}
+	return nil
+}
+
+// UpsertSubscriptionByPayment creates/updates access period bound to unique payment.
+func (s *Store) UpsertSubscriptionByPayment(ctx context.Context, sub domain.Subscription) error {
+	now := time.Now().UTC()
+	if sub.CreatedAt.IsZero() {
+		sub.CreatedAt = now
+	}
+	if sub.UpdatedAt.IsZero() {
+		sub.UpdatedAt = now
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO subscriptions (
+			telegram_id, connector_id, payment_id, status, starts_at, ends_at, created_at, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		ON CONFLICT (payment_id)
+		DO UPDATE SET
+			status = EXCLUDED.status,
+			starts_at = EXCLUDED.starts_at,
+			ends_at = EXCLUDED.ends_at,
+			updated_at = EXCLUDED.updated_at
+	`,
+		sub.TelegramID,
+		sub.ConnectorID,
+		sub.PaymentID,
+		string(sub.Status),
+		sub.StartsAt,
+		sub.EndsAt,
+		sub.CreatedAt,
+		sub.UpdatedAt,
+	)
+	return err
+}
+
+// ListPayments returns recent payments with optional admin filters.
+func (s *Store) ListPayments(ctx context.Context, query domain.PaymentListQuery) ([]domain.Payment, error) {
+	limit := query.Limit
+	if limit <= 0 {
+		limit = 200
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+
+	where := make([]string, 0, 6)
+	args := make([]any, 0, 8)
+	where = append(where, "1=1")
+	addArg := func(v any) string {
+		args = append(args, v)
+		return fmt.Sprintf("$%d", len(args))
+	}
+	if query.TelegramID > 0 {
+		where = append(where, "telegram_id = "+addArg(query.TelegramID))
+	}
+	if query.ConnectorID > 0 {
+		where = append(where, "connector_id = "+addArg(query.ConnectorID))
+	}
+	if query.Status != "" {
+		where = append(where, "status = "+addArg(string(query.Status)))
+	}
+	if query.CreatedFrom != nil {
+		where = append(where, "created_at >= "+addArg(*query.CreatedFrom))
+	}
+	if query.CreatedToExclude != nil {
+		where = append(where, "created_at < "+addArg(*query.CreatedToExclude))
+	}
+	whereClause := strings.Join(where, " AND ")
+	sqlText := fmt.Sprintf(`
+		SELECT id, provider, provider_payment_id, status, token, telegram_id, connector_id,
+		       amount_rub, checkout_url, created_at, paid_at, updated_at
+		FROM payments
+		WHERE %s
+		ORDER BY created_at DESC, id DESC
+		LIMIT %s
+	`, whereClause, addArg(limit))
+
+	rows, err := s.db.QueryContext(ctx, sqlText, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make([]domain.Payment, 0, limit)
+	for rows.Next() {
+		var item domain.Payment
+		var status string
+		if err := rows.Scan(
+			&item.ID,
+			&item.Provider,
+			&item.ProviderPaymentID,
+			&status,
+			&item.Token,
+			&item.TelegramID,
+			&item.ConnectorID,
+			&item.AmountRUB,
+			&item.CheckoutURL,
+			&item.CreatedAt,
+			&item.PaidAt,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		item.Status = domain.PaymentStatus(status)
+		result = append(result, item)
+	}
+	return result, rows.Err()
+}
+
+// ListSubscriptions returns recent subscriptions with optional admin filters.
+func (s *Store) ListSubscriptions(ctx context.Context, query domain.SubscriptionListQuery) ([]domain.Subscription, error) {
+	limit := query.Limit
+	if limit <= 0 {
+		limit = 200
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+
+	where := make([]string, 0, 6)
+	args := make([]any, 0, 8)
+	where = append(where, "1=1")
+	addArg := func(v any) string {
+		args = append(args, v)
+		return fmt.Sprintf("$%d", len(args))
+	}
+	if query.TelegramID > 0 {
+		where = append(where, "telegram_id = "+addArg(query.TelegramID))
+	}
+	if query.ConnectorID > 0 {
+		where = append(where, "connector_id = "+addArg(query.ConnectorID))
+	}
+	if query.Status != "" {
+		where = append(where, "status = "+addArg(string(query.Status)))
+	}
+	if query.CreatedFrom != nil {
+		where = append(where, "created_at >= "+addArg(*query.CreatedFrom))
+	}
+	if query.CreatedToExclude != nil {
+		where = append(where, "created_at < "+addArg(*query.CreatedToExclude))
+	}
+	whereClause := strings.Join(where, " AND ")
+	sqlText := fmt.Sprintf(`
+		SELECT id, telegram_id, connector_id, payment_id, status, starts_at, ends_at, created_at, updated_at
+		FROM subscriptions
+		WHERE %s
+		ORDER BY created_at DESC, id DESC
+		LIMIT %s
+	`, whereClause, addArg(limit))
+
+	rows, err := s.db.QueryContext(ctx, sqlText, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make([]domain.Subscription, 0, limit)
+	for rows.Next() {
+		var item domain.Subscription
+		var status string
+		if err := rows.Scan(
+			&item.ID,
+			&item.TelegramID,
+			&item.ConnectorID,
+			&item.PaymentID,
+			&status,
+			&item.StartsAt,
+			&item.EndsAt,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		item.Status = domain.SubscriptionStatus(status)
+		result = append(result, item)
+	}
+	return result, rows.Err()
 }

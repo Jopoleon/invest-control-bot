@@ -8,10 +8,11 @@ type basePageData struct {
 
 // connectorView is a template-friendly representation of connector row.
 type connectorView struct {
-	ID           string
+	ID           int64
 	StartPayload string
 	Name         string
 	ChatID       string
+	ChannelURL   string
 	PriceRUB     int64
 	PeriodDays   int
 	OfferURL     string
@@ -42,7 +43,8 @@ type helpPageData struct {
 type auditEventView struct {
 	CreatedAt   string
 	TelegramID  int64
-	ConnectorID string
+	ConnectorID int64
+	Connector   string
 	Action      string
 	Details     string
 }
@@ -75,4 +77,45 @@ type eventsPageData struct {
 	PrevURL  string
 	NextURL  string
 	LastURL  string
+}
+
+type paymentView struct {
+	ID                int64
+	Provider          string
+	ProviderPaymentID string
+	Status            string
+	TelegramID        int64
+	ConnectorID       int64
+	Connector         string
+	AmountRUB         int64
+	CreatedAt         string
+	PaidAt            string
+}
+
+type subscriptionView struct {
+	ID          int64
+	Status      string
+	TelegramID  int64
+	ConnectorID int64
+	Connector   string
+	PaymentID   int64
+	StartsAt    string
+	EndsAt      string
+	CreatedAt   string
+}
+
+type billingPageData struct {
+	basePageData
+
+	Notice string
+
+	TelegramID         string
+	ConnectorID        string
+	PaymentStatus      string
+	SubscriptionStatus string
+	DateFrom           string
+	DateTo             string
+
+	Payments      []paymentView
+	Subscriptions []subscriptionView
 }

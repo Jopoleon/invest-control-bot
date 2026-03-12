@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,7 +28,12 @@ func (h *Handler) handleCallback(ctx context.Context, cb *models.CallbackQuery) 
 		return
 	}
 
-	connectorID := strings.TrimPrefix(cb.Data, "accept_terms:")
+	connectorIDRaw := strings.TrimPrefix(cb.Data, "accept_terms:")
+	connectorID, err := strconv.ParseInt(connectorIDRaw, 10, 64)
+	if err != nil || connectorID <= 0 {
+		h.send(ctx, cb.From.ID, "Коннектор не найден или отключен.")
+		return
+	}
 	connector, ok, err := h.store.GetConnector(ctx, connectorID)
 	if err != nil {
 		slog.Error("load connector failed", "error", err, "connector_id", connectorID)

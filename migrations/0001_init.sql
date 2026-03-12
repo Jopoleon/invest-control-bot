@@ -1,6 +1,6 @@
 -- +migrate Up
 CREATE TABLE IF NOT EXISTS connectors (
-    id TEXT PRIMARY KEY,
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     start_payload TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS user_consents (
     telegram_id BIGINT NOT NULL,
-    connector_id TEXT NOT NULL,
+    connector_id BIGINT NOT NULL REFERENCES connectors(id),
     offer_accepted_at TIMESTAMPTZ NOT NULL,
     privacy_accepted_at TIMESTAMPTZ NOT NULL,
     PRIMARY KEY (telegram_id, connector_id)
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS user_consents (
 
 CREATE TABLE IF NOT EXISTS registration_states (
     telegram_id BIGINT PRIMARY KEY,
-    connector_id TEXT NOT NULL,
+    connector_id BIGINT NOT NULL REFERENCES connectors(id),
     step TEXT NOT NULL,
     telegram_username TEXT NOT NULL DEFAULT '',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

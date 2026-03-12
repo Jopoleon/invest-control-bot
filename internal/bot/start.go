@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	"github.com/go-telegram/bot/models"
@@ -24,10 +25,12 @@ func (h *Handler) handleStart(ctx context.Context, msg *models.Message) {
 		return
 	}
 	if !ok {
-		connector, ok, err = h.store.GetConnector(ctx, payload)
-		if err != nil {
-			slog.Error("fallback load connector by id failed", "error", err, "connector_id", payload)
-			return
+		if id, parseErr := strconv.ParseInt(payload, 10, 64); parseErr == nil && id > 0 {
+			connector, ok, err = h.store.GetConnector(ctx, id)
+			if err != nil {
+				slog.Error("fallback load connector by id failed", "error", err, "connector_id", payload)
+				return
+			}
 		}
 	}
 	if !ok || !connector.IsActive {
@@ -55,7 +58,7 @@ func (h *Handler) handleStart(ctx context.Context, msg *models.Message) {
 	)
 
 	keyboard := &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{
-		{Text: "Принимаю условия", CallbackData: "accept_terms:" + connector.ID},
+		{Text: "Принимаю условия", CallbackData: "accept_terms:" + strconv.FormatInt(connector.ID, 10)},
 	}}}
 
 	if err := h.tg.SendMessage(ctx, msg.Chat.ID, text, keyboard); err != nil {

@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin · {{index .I18N "billing.title"}}</title>
+  <link rel="stylesheet" href="/admin/assets/css/pico.min.css">
+  <link rel="stylesheet" href="/admin/assets/css/gridjs-mermaid.min.css">
+  <style>
+    :root {
+      --pico-font-family: "Manrope", "Segoe UI", sans-serif;
+      --pico-font-size: 87.5%;
+      --pico-spacing: .8rem;
+      --pico-form-element-spacing-vertical: .45rem;
+      --pico-form-element-spacing-horizontal: .6rem;
+    }
+    body { background: linear-gradient(180deg, #f5f8fc, #eef3f9); }
+    main.container { max-width: 1320px; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; gap: .75rem; flex-wrap: wrap; margin: 1rem 0; }
+    .topbar nav ul { align-items: center; }
+    .langs a[aria-current="true"] { font-weight: 700; text-decoration: underline; }
+    .notice { padding: .75rem 1rem; border: 1px solid #ffd8a8; border-radius: .75rem; background: #fff4e6; color: #8f4b00; margin: .75rem 0 0; font-weight: 600; }
+    .table-wrap { overflow: auto; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: .8rem; }
+    #paymentsSource, #subsSource { display: none; }
+    .gridjs-wrapper table td, .gridjs-wrapper table th { white-space: nowrap; }
+  </style>
+</head>
+<body>
+<main class="container">
+  <header class="topbar">
+    <nav>
+      <ul>
+        <li><a href="/admin/connectors?lang={{.Lang}}">{{index .I18N "nav.connectors"}}</a></li>
+        <li><a href="/admin/billing?lang={{.Lang}}"><strong>{{index .I18N "nav.billing"}}</strong></a></li>
+        <li><a href="/admin/events?lang={{.Lang}}">{{index .I18N "nav.events"}}</a></li>
+        <li><a href="/admin/help?lang={{.Lang}}">{{index .I18N "nav.guide"}}</a></li>
+      </ul>
+    </nav>
+    <nav class="langs">
+      <ul>
+        <li><a href="/admin/billing?lang=ru" {{if eq .Lang "ru"}}aria-current="true"{{end}}>{{index .I18N "lang.ru"}}</a></li>
+        <li><a href="/admin/billing?lang=en" {{if eq .Lang "en"}}aria-current="true"{{end}}>{{index .I18N "lang.en"}}</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <article>
+    <h1>{{index .I18N "billing.title"}}</h1>
+    <p>{{index .I18N "billing.subtitle"}}</p>
+    {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+  </article>
+
+  <article>
+    <form method="GET" action="/admin/billing">
+      <div class="grid">
+        <label>
+          {{index .I18N "billing.filter.telegram_id"}}
+          <input name="telegram_id" value="{{.TelegramID}}" placeholder="264704572">
+        </label>
+        <label>
+          {{index .I18N "billing.filter.connector_id"}}
+          <input name="connector_id" value="{{.ConnectorID}}" placeholder="ec7ec353ca27a51c">
+        </label>
+        <label>
+          {{index .I18N "billing.filter.payment_status"}}
+          <select name="payment_status">
+            <option value="" {{if eq .PaymentStatus ""}}selected{{end}}>{{index .I18N "billing.payment_status.any"}}</option>
+            <option value="pending" {{if eq .PaymentStatus "pending"}}selected{{end}}>{{index .I18N "billing.payment_status.pending"}}</option>
+            <option value="paid" {{if eq .PaymentStatus "paid"}}selected{{end}}>{{index .I18N "billing.payment_status.paid"}}</option>
+            <option value="failed" {{if eq .PaymentStatus "failed"}}selected{{end}}>{{index .I18N "billing.payment_status.failed"}}</option>
+          </select>
+        </label>
+        <label>
+          {{index .I18N "billing.filter.subscription_status"}}
+          <select name="subscription_status">
+            <option value="" {{if eq .SubscriptionStatus ""}}selected{{end}}>{{index .I18N "billing.sub_status.any"}}</option>
+            <option value="active" {{if eq .SubscriptionStatus "active"}}selected{{end}}>{{index .I18N "billing.sub_status.active"}}</option>
+            <option value="expired" {{if eq .SubscriptionStatus "expired"}}selected{{end}}>{{index .I18N "billing.sub_status.expired"}}</option>
+            <option value="revoked" {{if eq .SubscriptionStatus "revoked"}}selected{{end}}>{{index .I18N "billing.sub_status.revoked"}}</option>
+          </select>
+        </label>
+      </div>
+      <div class="grid">
+        <label>
+          {{index .I18N "billing.filter.date_from"}}
+          <input type="date" name="date_from" value="{{.DateFrom}}">
+        </label>
+        <label>
+          {{index .I18N "billing.filter.date_to"}}
+          <input type="date" name="date_to" value="{{.DateTo}}">
+        </label>
+      </div>
+      <input type="hidden" name="lang" value="{{.Lang}}">
+      <button type="submit">{{index .I18N "billing.apply"}}</button>
+      <a href="/admin/billing?lang={{.Lang}}" role="button" class="secondary">{{index .I18N "billing.reset"}}</a>
+    </form>
+  </article>
+
+  <article>
+    <h3>{{index .I18N "billing.payments.title"}} ({{len .Payments}})</h3>
+    <div class="table-wrap">
+      <div id="paymentsGrid"></div>
+      <table id="paymentsSource">
+        <thead>
+          <tr>
+            <th>{{index .I18N "billing.table.payment.id"}}</th>
+            <th>{{index .I18N "billing.table.payment.provider"}}</th>
+            <th>{{index .I18N "billing.table.payment.status"}}</th>
+            <th>{{index .I18N "billing.table.payment.telegram"}}</th>
+            <th>{{index .I18N "billing.table.payment.connector"}}</th>
+            <th>{{index .I18N "billing.table.payment.amount"}}</th>
+            <th>{{index .I18N "billing.table.payment.created"}}</th>
+            <th>{{index .I18N "billing.table.payment.paid_at"}}</th>
+          </tr>
+        </thead>
+        <tbody>
+        {{range .Payments}}
+          <tr>
+            <td class="mono">{{.ID}}</td>
+            <td>{{.Provider}}</td>
+            <td>{{.Status}}</td>
+            <td class="mono">{{.TelegramID}}</td>
+            <td>{{.Connector}}</td>
+            <td>{{.AmountRUB}}</td>
+            <td class="mono">{{.CreatedAt}}</td>
+            <td class="mono">{{.PaidAt}}</td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </article>
+
+  <article>
+    <h3>{{index .I18N "billing.subscriptions.title"}} ({{len .Subscriptions}})</h3>
+    <div class="table-wrap">
+      <div id="subsGrid"></div>
+      <table id="subsSource">
+        <thead>
+          <tr>
+            <th>{{index .I18N "billing.table.subscription.id"}}</th>
+            <th>{{index .I18N "billing.table.subscription.status"}}</th>
+            <th>{{index .I18N "billing.table.subscription.telegram"}}</th>
+            <th>{{index .I18N "billing.table.subscription.connector"}}</th>
+            <th>{{index .I18N "billing.table.subscription.payment"}}</th>
+            <th>{{index .I18N "billing.table.subscription.starts"}}</th>
+            <th>{{index .I18N "billing.table.subscription.ends"}}</th>
+            <th>{{index .I18N "billing.table.subscription.created"}}</th>
+          </tr>
+        </thead>
+        <tbody>
+        {{range .Subscriptions}}
+          <tr>
+            <td class="mono">{{.ID}}</td>
+            <td>{{.Status}}</td>
+            <td class="mono">{{.TelegramID}}</td>
+            <td>{{.Connector}}</td>
+            <td class="mono">{{.PaymentID}}</td>
+            <td class="mono">{{.StartsAt}}</td>
+            <td class="mono">{{.EndsAt}}</td>
+            <td class="mono">{{.CreatedAt}}</td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </article>
+</main>
+<script src="/admin/assets/js/gridjs.umd.js" defer></script>
+<script>
+  window.addEventListener("DOMContentLoaded", function () {
+    if (!window.gridjs) return;
+
+    const lang = "{{.Lang}}";
+    const labels = lang === "ru" ? {
+      search: {
+        placeholder: "Поиск..."
+      },
+      pagination: {
+        previous: "Назад",
+        next: "Вперед",
+        showing: "Показано",
+        results: () => "записей"
+      },
+      sort: {
+        sortAsc: "Сортировать по возрастанию",
+        sortDesc: "Сортировать по убыванию"
+      }
+    } : {
+      search: {
+        placeholder: "Search..."
+      },
+      pagination: {
+        previous: "Previous",
+        next: "Next",
+        showing: "Showing",
+        results: () => "records"
+      }
+    };
+
+    const paymentsSource = document.querySelector("#paymentsSource");
+    const paymentsGrid = document.querySelector("#paymentsGrid");
+    if (paymentsSource && paymentsGrid) {
+      new window.gridjs.Grid({
+        from: paymentsSource,
+        search: true,
+        sort: true,
+        pagination: { limit: 20 },
+        language: labels
+      }).render(paymentsGrid);
+    }
+
+    const subsSource = document.querySelector("#subsSource");
+    const subsGrid = document.querySelector("#subsGrid");
+    if (subsSource && subsGrid) {
+      new window.gridjs.Grid({
+        from: subsSource,
+        search: true,
+        sort: true,
+        pagination: { limit: 20 },
+        language: labels
+      }).render(subsGrid);
+    }
+  });
+</script>
+</body>
+</html>

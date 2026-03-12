@@ -31,8 +31,10 @@ func NewHandler(st store.Store, adminToken, botUsername string) *Handler {
 
 // Register mounts admin routes into provided mux.
 func (h *Handler) Register(mux *http.ServeMux) {
+	mux.Handle("/admin/assets/", http.StripPrefix("/admin/assets/", staticHandler()))
 	mux.HandleFunc("/admin/connectors", h.connectorsPage)
 	mux.HandleFunc("/admin/connectors/toggle", h.toggleConnector)
+	mux.HandleFunc("/admin/billing", h.billingPage)
 	mux.HandleFunc("/admin/events", h.eventsPage)
 	mux.HandleFunc("/admin/help", h.helpPage)
 }

@@ -5,7 +5,7 @@ import "context"
 // Request contains minimum data needed to create checkout URL.
 type Request struct {
 	UserTelegramID int64
-	ConnectorID    string
+	ConnectorID    int64
 	AmountRUB      int64
 }
 

@@ -16,25 +16,37 @@ import (
 type Store struct {
 	mu sync.RWMutex
 
-	connectors   map[string]domain.Connector
-	payloadIndex map[string]string
-	users        map[int64]domain.User
-	consents     map[string]domain.Consent
-	states       map[int64]domain.RegistrationState
-	events       []domain.AuditEvent
-	nextEventID  int64
+	connectors      map[int64]domain.Connector
+	payloadIndex    map[string]int64
+	nextConnectorID int64
+	users           map[int64]domain.User
+	consents        map[string]domain.Consent
+	states          map[int64]domain.RegistrationState
+	events          []domain.AuditEvent
+	nextEventID     int64
+	payments        map[int64]domain.Payment
+	paymentToken    map[string]int64
+	nextPaymentID   int64
+	subsByPayID     map[int64]domain.Subscription
+	nextSubscrID    int64
 }
 
 // New creates empty in-memory store.
 func New() *Store {
 	return &Store{
-		connectors:   make(map[string]domain.Connector),
-		payloadIndex: make(map[string]string),
-		users:        make(map[int64]domain.User),
-		consents:     make(map[string]domain.Consent),
-		states:       make(map[int64]domain.RegistrationState),
-		events:       make([]domain.AuditEvent, 0, 128),
-		nextEventID:  1,
+		connectors:      make(map[int64]domain.Connector),
+		payloadIndex:    make(map[string]int64),
+		nextConnectorID: 1,
+		users:           make(map[int64]domain.User),
+		consents:        make(map[string]domain.Consent),
+		states:          make(map[int64]domain.RegistrationState),
+		events:          make([]domain.AuditEvent, 0, 128),
+		nextEventID:     1,
+		payments:        make(map[int64]domain.Payment),
+		paymentToken:    make(map[string]int64),
+		nextPaymentID:   1,
+		subsByPayID:     make(map[int64]domain.Subscription),
+		nextSubscrID:    1,
 	}
 }
 
@@ -43,14 +55,8 @@ func (s *Store) CreateConnector(_ context.Context, c domain.Connector) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if c.ID == "" {
-		return errors.New("connector ID is required")
-	}
-	if _, exists := s.connectors[c.ID]; exists {
-		return errors.New("connector already exists")
-	}
 	if c.StartPayload == "" {
-		c.StartPayload = c.ID
+		return errors.New("start payload is required")
 	}
 	payloadKey := strings.TrimSpace(c.StartPayload)
 	if payloadKey == "" {
@@ -63,6 +69,8 @@ func (s *Store) CreateConnector(_ context.Context, c domain.Connector) error {
 	if c.CreatedAt.IsZero() {
 		c.CreatedAt = time.Now().UTC()
 	}
+	c.ID = s.nextConnectorID
+	s.nextConnectorID++
 	s.connectors[c.ID] = c
 	s.payloadIndex[payloadKey] = c.ID
 	return nil
@@ -84,7 +92,7 @@ func (s *Store) ListConnectors(_ context.Context) ([]domain.Connector, error) {
 }
 
 // GetConnector fetches connector by internal ID.
-func (s *Store) GetConnector(_ context.Context, connectorID string) (domain.Connector, bool, error) {
+func (s *Store) GetConnector(_ context.Context, connectorID int64) (domain.Connector, bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -109,7 +117,7 @@ func (s *Store) GetConnectorByStartPayload(_ context.Context, payload string) (d
 }
 
 // SetConnectorActive toggles connector active state.
-func (s *Store) SetConnectorActive(_ context.Context, connectorID string, active bool) error {
+func (s *Store) SetConnectorActive(_ context.Context, connectorID int64, active bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -132,7 +140,7 @@ func (s *Store) SaveConsent(_ context.Context, consent domain.Consent) error {
 }
 
 // GetConsent returns stored consent by user and connector.
-func (s *Store) GetConsent(_ context.Context, telegramID int64, connectorID string) (domain.Consent, bool, error) {
+func (s *Store) GetConsent(_ context.Context, telegramID int64, connectorID int64) (domain.Consent, bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -218,7 +226,7 @@ func (s *Store) ListAuditEvents(_ context.Context, query domain.AuditEventListQu
 		if query.TelegramID > 0 && event.TelegramID != query.TelegramID {
 			continue
 		}
-		if query.ConnectorID != "" && event.ConnectorID != query.ConnectorID {
+		if query.ConnectorID > 0 && event.ConnectorID != query.ConnectorID {
 			continue
 		}
 		if query.Action != "" && event.Action != query.Action {
@@ -255,7 +263,12 @@ func (s *Store) ListAuditEvents(_ context.Context, query domain.AuditEventListQu
 				cmp = 1
 			}
 		case "connector_id":
-			cmp = strings.Compare(left.ConnectorID, right.ConnectorID)
+			switch {
+			case left.ConnectorID < right.ConnectorID:
+				cmp = -1
+			case left.ConnectorID > right.ConnectorID:
+				cmp = 1
+			}
 		case "action":
 			cmp = strings.Compare(left.Action, right.Action)
 		default:
@@ -291,9 +304,177 @@ func (s *Store) ListAuditEvents(_ context.Context, query domain.AuditEventListQu
 	return filtered[offset:end], total, nil
 }
 
+// CreatePayment stores pending payment transaction by ID and token.
+func (s *Store) CreatePayment(_ context.Context, payment domain.Payment) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if payment.Token == "" {
+		return errors.New("payment token is required")
+	}
+	if _, exists := s.paymentToken[payment.Token]; exists {
+		return errors.New("payment token already exists")
+	}
+	now := time.Now().UTC()
+	if payment.CreatedAt.IsZero() {
+		payment.CreatedAt = now
+	}
+	payment.ID = s.nextPaymentID
+	s.nextPaymentID++
+	payment.UpdatedAt = now
+	s.payments[payment.ID] = payment
+	s.paymentToken[payment.Token] = payment.ID
+	return nil
+}
+
+// GetPaymentByToken finds payment by externally visible token.
+func (s *Store) GetPaymentByToken(_ context.Context, token string) (domain.Payment, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	paymentID, ok := s.paymentToken[token]
+	if !ok {
+		return domain.Payment{}, false, nil
+	}
+	payment, exists := s.payments[paymentID]
+	if !exists {
+		return domain.Payment{}, false, nil
+	}
+	return payment, true, nil
+}
+
+// UpdatePaymentPaid moves payment into paid state and stores provider reference.
+func (s *Store) UpdatePaymentPaid(_ context.Context, paymentID int64, providerPaymentID string, paidAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	payment, ok := s.payments[paymentID]
+	if !ok {
+		return errors.New("payment not found")
+	}
+	if paidAt.IsZero() {
+		paidAt = time.Now().UTC()
+	}
+	payment.Status = domain.PaymentStatusPaid
+	payment.ProviderPaymentID = providerPaymentID
+	payment.PaidAt = &paidAt
+	payment.UpdatedAt = time.Now().UTC()
+	s.payments[paymentID] = payment
+	return nil
+}
+
+// UpsertSubscriptionByPayment creates or updates subscription by unique payment ID.
+func (s *Store) UpsertSubscriptionByPayment(_ context.Context, sub domain.Subscription) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if sub.PaymentID <= 0 {
+		return errors.New("payment ID is required")
+	}
+	now := time.Now().UTC()
+	if sub.CreatedAt.IsZero() {
+		sub.CreatedAt = now
+	}
+	if sub.ID <= 0 {
+		sub.ID = s.nextSubscrID
+		s.nextSubscrID++
+	}
+	sub.UpdatedAt = now
+	s.subsByPayID[sub.PaymentID] = sub
+	return nil
+}
+
+// ListPayments returns recent payments using admin filters.
+func (s *Store) ListPayments(_ context.Context, query domain.PaymentListQuery) ([]domain.Payment, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	limit := query.Limit
+	if limit <= 0 {
+		limit = 200
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+
+	filtered := make([]domain.Payment, 0, len(s.payments))
+	for _, item := range s.payments {
+		if query.TelegramID > 0 && item.TelegramID != query.TelegramID {
+			continue
+		}
+		if query.ConnectorID > 0 && item.ConnectorID != query.ConnectorID {
+			continue
+		}
+		if query.Status != "" && item.Status != query.Status {
+			continue
+		}
+		if query.CreatedFrom != nil && item.CreatedAt.Before(*query.CreatedFrom) {
+			continue
+		}
+		if query.CreatedToExclude != nil && !item.CreatedAt.Before(*query.CreatedToExclude) {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	sort.Slice(filtered, func(i, j int) bool {
+		if filtered[i].CreatedAt.Equal(filtered[j].CreatedAt) {
+			return filtered[i].ID > filtered[j].ID
+		}
+		return filtered[i].CreatedAt.After(filtered[j].CreatedAt)
+	})
+	if len(filtered) > limit {
+		filtered = filtered[:limit]
+	}
+	return filtered, nil
+}
+
+// ListSubscriptions returns recent subscriptions using admin filters.
+func (s *Store) ListSubscriptions(_ context.Context, query domain.SubscriptionListQuery) ([]domain.Subscription, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	limit := query.Limit
+	if limit <= 0 {
+		limit = 200
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+
+	filtered := make([]domain.Subscription, 0, len(s.subsByPayID))
+	for _, item := range s.subsByPayID {
+		if query.TelegramID > 0 && item.TelegramID != query.TelegramID {
+			continue
+		}
+		if query.ConnectorID > 0 && item.ConnectorID != query.ConnectorID {
+			continue
+		}
+		if query.Status != "" && item.Status != query.Status {
+			continue
+		}
+		if query.CreatedFrom != nil && item.CreatedAt.Before(*query.CreatedFrom) {
+			continue
+		}
+		if query.CreatedToExclude != nil && !item.CreatedAt.Before(*query.CreatedToExclude) {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	sort.Slice(filtered, func(i, j int) bool {
+		if filtered[i].CreatedAt.Equal(filtered[j].CreatedAt) {
+			return filtered[i].ID > filtered[j].ID
+		}
+		return filtered[i].CreatedAt.After(filtered[j].CreatedAt)
+	})
+	if len(filtered) > limit {
+		filtered = filtered[:limit]
+	}
+	return filtered, nil
+}
+
 // consentKey builds deterministic compound key for consent map.
-func consentKey(telegramID int64, connectorID string) string {
-	return connectorID + ":" + int64ToString(telegramID)
+func consentKey(telegramID, connectorID int64) string {
+	return int64ToString(connectorID) + ":" + int64ToString(telegramID)
 }
 
 // int64ToString converts int64 values for map key composition.

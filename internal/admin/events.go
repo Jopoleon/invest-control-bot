@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -45,7 +46,11 @@ func (h *Handler) eventsPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data.ConnectorID = strings.TrimSpace(params.Get("connector_id"))
-	query.ConnectorID = data.ConnectorID
+	if data.ConnectorID != "" {
+		if id, err := strconv.ParseInt(data.ConnectorID, 10, 64); err == nil && id > 0 {
+			query.ConnectorID = id
+		}
+	}
 
 	data.Action = strings.TrimSpace(params.Get("action"))
 	query.Action = data.Action
@@ -109,6 +114,7 @@ func (h *Handler) eventsPage(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	connectorNames := h.loadConnectorNames(r.Context())
 
 	rows := make([]auditEventView, 0, len(events))
 	for _, event := range events {
@@ -116,6 +122,7 @@ func (h *Handler) eventsPage(w http.ResponseWriter, r *http.Request) {
 			CreatedAt:   event.CreatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
 			TelegramID:  event.TelegramID,
 			ConnectorID: event.ConnectorID,
+			Connector:   connectorDisplayName(connectorNames, event.ConnectorID),
 			Action:      event.Action,
 			Details:     event.Details,
 		})
@@ -179,4 +186,26 @@ func buildEventsPageURL(base url.Values, page int) string {
 	}
 	v.Set("page", strconv.Itoa(page))
 	return "/admin/events?" + v.Encode()
+}
+
+func (h *Handler) loadConnectorNames(ctx context.Context) map[int64]string {
+	connectors, err := h.store.ListConnectors(ctx)
+	if err != nil {
+		return map[int64]string{}
+	}
+	names := make(map[int64]string, len(connectors))
+	for _, c := range connectors {
+		names[c.ID] = c.Name
+	}
+	return names
+}
+
+func connectorDisplayName(names map[int64]string, connectorID int64) string {
+	if name := strings.TrimSpace(names[connectorID]); name != "" {
+		return name
+	}
+	if connectorID <= 0 {
+		return ""
+	}
+	return strconv.FormatInt(connectorID, 10)
 }

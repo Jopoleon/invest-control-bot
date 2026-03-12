@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
 )
@@ -10,12 +11,12 @@ import (
 type Store interface {
 	CreateConnector(ctx context.Context, c domain.Connector) error
 	ListConnectors(ctx context.Context) ([]domain.Connector, error)
-	GetConnector(ctx context.Context, connectorID string) (domain.Connector, bool, error)
+	GetConnector(ctx context.Context, connectorID int64) (domain.Connector, bool, error)
 	GetConnectorByStartPayload(ctx context.Context, payload string) (domain.Connector, bool, error)
-	SetConnectorActive(ctx context.Context, connectorID string, active bool) error
+	SetConnectorActive(ctx context.Context, connectorID int64, active bool) error
 
 	SaveConsent(ctx context.Context, consent domain.Consent) error
-	GetConsent(ctx context.Context, telegramID int64, connectorID string) (domain.Consent, bool, error)
+	GetConsent(ctx context.Context, telegramID int64, connectorID int64) (domain.Consent, bool, error)
 
 	SaveUser(ctx context.Context, user domain.User) error
 	GetUser(ctx context.Context, telegramID int64) (domain.User, bool, error)
@@ -26,4 +27,12 @@ type Store interface {
 
 	SaveAuditEvent(ctx context.Context, event domain.AuditEvent) error
 	ListAuditEvents(ctx context.Context, query domain.AuditEventListQuery) ([]domain.AuditEvent, int, error)
+
+	CreatePayment(ctx context.Context, payment domain.Payment) error
+	GetPaymentByToken(ctx context.Context, token string) (domain.Payment, bool, error)
+	UpdatePaymentPaid(ctx context.Context, paymentID int64, providerPaymentID string, paidAt time.Time) error
+	ListPayments(ctx context.Context, query domain.PaymentListQuery) ([]domain.Payment, error)
+
+	UpsertSubscriptionByPayment(ctx context.Context, sub domain.Subscription) error
+	ListSubscriptions(ctx context.Context, query domain.SubscriptionListQuery) ([]domain.Subscription, error)
 }

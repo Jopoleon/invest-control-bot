@@ -2,7 +2,7 @@
 CREATE TABLE IF NOT EXISTS audit_events (
     id BIGSERIAL PRIMARY KEY,
     telegram_id BIGINT NOT NULL DEFAULT 0,
-    connector_id TEXT NOT NULL DEFAULT '',
+    connector_id BIGINT NOT NULL DEFAULT 0,
     action TEXT NOT NULL,
     details TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

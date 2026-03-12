@@ -4,191 +4,196 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Admin · {{index .I18N "connectors.title"}}</title>
+  <link rel="stylesheet" href="/admin/assets/css/pico.min.css">
   <style>
     :root {
-      --bg: #f4f7fb;
-      --card: #ffffff;
-      --line: #e3e8f1;
-      --text: #182230;
-      --muted: #475467;
-      --accent-2: #0b5cab;
+      --pico-font-family: "Manrope", "Segoe UI", sans-serif;
+      --pico-font-size: 87.5%;
+      --pico-spacing: .8rem;
+      --pico-form-element-spacing-vertical: .45rem;
+      --pico-form-element-spacing-horizontal: .6rem;
     }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      color: var(--text);
-      background: radial-gradient(1200px 500px at 10% -20%, #d9f0ff 0%, transparent 70%), var(--bg);
-      font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    body { background: linear-gradient(180deg, #f5f8fc, #eef3f9); }
+    main.container { max-width: 1220px; }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: .75rem;
+      flex-wrap: wrap;
+      margin: 1rem 0;
     }
-    .wrap { max-width: 1160px; margin: 24px auto; padding: 0 16px 24px; }
-    .nav, .card {
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      box-shadow: 0 3px 14px rgba(16,24,40,.05);
-    }
-    .nav { padding: 10px 14px; margin-bottom: 12px; display:flex; justify-content:space-between; align-items:center; }
-    .nav a { color: #0f172a; text-decoration: none; font-weight: 600; margin-right: 16px; }
-    .langs a { margin-right: 8px; font-size: 12px; }
-    .card { padding: 16px; margin-bottom: 14px; }
-    h1 { margin: 0 0 8px; font-size: 24px; }
-    h3 { margin: 0 0 6px; font-size: 18px; }
-    .sub { color: var(--muted); margin: 0 0 10px; }
+    .topbar nav ul { align-items: center; }
+    .langs a[aria-current="true"] { font-weight: 700; text-decoration: underline; }
     .notice {
-      background: #edf6ff;
-      border: 1px solid #cfe5ff;
-      color: var(--accent-2);
-      border-radius: 8px;
-      padding: 10px 12px;
-      margin-bottom: 10px;
+      padding: .75rem 1rem;
+      border: 1px solid #ffd8a8;
+      border-radius: .75rem;
+      background: #fff4e6;
+      color: #8f4b00;
+      margin: .75rem 0 0;
       font-weight: 600;
     }
-    .hint { color: #667085; font-size: 12px; margin-top: 4px; }
-    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-    label { display: block; font-size: 13px; color: #344054; margin-bottom: 4px; }
-    input {
-      width: 100%;
-      border: 1px solid #ccd5e3;
-      border-radius: 8px;
-      padding: 9px 10px;
-      background: #fff;
-      color: #111827;
-    }
-    .actions { margin-top: 14px; }
-    button {
-      border: 0;
-      border-radius: 8px;
-      padding: 9px 14px;
-      background: #111827;
-      color: #fff;
-      cursor: pointer;
-      font-weight: 600;
-    }
-    button:hover { opacity: .92; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td {
-      border-bottom: 1px solid #edf1f7;
-      text-align: left;
-      padding: 10px;
-      vertical-align: top;
-      font-size: 13px;
-    }
-    th { background: #f8fafc; color: #475467; position: sticky; top: 0; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: 12px; }
-    .table-wrap { overflow: auto; max-height: 54vh; }
-    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+    .table-wrap { overflow: auto; }
+    td.mono, th.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: .8rem; }
+    .actions form { margin: 0; }
   </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="nav">
-    <div>
-      <a href="/admin/connectors?lang={{.Lang}}">{{index .I18N "nav.connectors"}}</a>
-      <a href="/admin/events?lang={{.Lang}}">{{index .I18N "nav.events"}}</a>
-      <a href="/admin/help?lang={{.Lang}}">{{index .I18N "nav.guide"}}</a>
-    </div>
-    <div class="langs">
-      <a href="/admin/connectors?lang=ru">{{index .I18N "lang.ru"}}</a>
-      <a href="/admin/connectors?lang=en">{{index .I18N "lang.en"}}</a>
-    </div>
-  </div>
+<main class="container">
+  <header class="topbar">
+    <nav>
+      <ul>
+        <li><a href="/admin/connectors?lang={{.Lang}}"><strong>{{index .I18N "nav.connectors"}}</strong></a></li>
+        <li><a href="/admin/billing?lang={{.Lang}}">{{index .I18N "nav.billing"}}</a></li>
+        <li><a href="/admin/events?lang={{.Lang}}">{{index .I18N "nav.events"}}</a></li>
+        <li><a href="/admin/help?lang={{.Lang}}">{{index .I18N "nav.guide"}}</a></li>
+      </ul>
+    </nav>
+    <nav class="langs">
+      <ul>
+        <li><a href="/admin/connectors?lang=ru" {{if eq .Lang "ru"}}aria-current="true"{{end}}>{{index .I18N "lang.ru"}}</a></li>
+        <li><a href="/admin/connectors?lang=en" {{if eq .Lang "en"}}aria-current="true"{{end}}>{{index .I18N "lang.en"}}</a></li>
+      </ul>
+    </nav>
+  </header>
 
-  <div class="card">
+  <article>
     <h1>{{index .I18N "connectors.title"}}</h1>
-    <p class="sub">{{index .I18N "connectors.subtitle"}}</p>
+    <p>{{index .I18N "connectors.subtitle"}}</p>
     {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+  </article>
 
+  <article>
     <form method="POST" action="/admin/connectors?lang={{.Lang}}">
       <div class="grid">
-        <div>
-          <label>{{index .I18N "connectors.form.name"}}</label>
+        <label>
+          {{index .I18N "connectors.form.name"}}
           <input name="name" required>
-        </div>
-        <div>
-          <label>{{index .I18N "connectors.form.chat_id"}}</label>
-          <input name="chat_id" required>
-        </div>
-        <div>
-          <label>{{index .I18N "connectors.form.price_rub"}}</label>
+        </label>
+        <label>
+          {{index .I18N "connectors.form.chat_id"}}
+          <input name="chat_id" id="chat_id">
+        </label>
+        <label>
+          {{index .I18N "connectors.form.price_rub"}}
           <input name="price_rub" placeholder="{{index .I18N "connectors.form.price_ph"}}" required>
-        </div>
-        <div>
-          <label>{{index .I18N "connectors.form.period_days"}}</label>
+        </label>
+        <label>
+          {{index .I18N "connectors.form.period_days"}}
           <input name="period_days" value="30">
-        </div>
-        <div>
-          <label>{{index .I18N "connectors.form.start_payload"}}</label>
+        </label>
+      </div>
+
+      <div class="grid">
+        <label>
+          {{index .I18N "connectors.form.start_payload"}}
           <input name="start_payload" placeholder="in-94db7d6813507bc">
-          <div class="hint">{{index .I18N "connectors.form.payload_hint"}}</div>
-        </div>
-        <div>
-          <label>{{index .I18N "connectors.form.internal_id"}}</label>
-          <input name="id" placeholder="auto-generated">
-          <div class="hint">{{index .I18N "connectors.form.id_hint"}}</div>
-        </div>
-        <div>
-          <label>{{index .I18N "connectors.form.offer_url"}}</label>
+          <small>{{index .I18N "connectors.form.payload_hint"}}</small>
+        </label>
+        <label>
+          {{index .I18N "connectors.form.offer_url"}}
           <input name="offer_url" placeholder="https://...">
-        </div>
-        <div>
-          <label>{{index .I18N "connectors.form.privacy_url"}}</label>
+        </label>
+        <label>
+          {{index .I18N "connectors.form.privacy_url"}}
           <input name="privacy_url" placeholder="https://...">
-        </div>
+        </label>
+        <label>
+          {{index .I18N "connectors.form.channel_url"}}
+          <input name="channel_url" id="channel_url" placeholder="https://t.me/testtestinvest">
+        </label>
       </div>
-      <div style="margin-top:12px;">
-        <label>{{index .I18N "connectors.form.description"}}</label>
+
+      <label>
+        {{index .I18N "connectors.form.description"}}
         <input name="description" placeholder="{{index .I18N "connectors.form.description_ph"}}">
-      </div>
-      <div class="actions"><button type="submit">{{index .I18N "connectors.create"}}</button></div>
+      </label>
+
+      <button type="submit">{{index .I18N "connectors.create"}}</button>
     </form>
-  </div>
+  </article>
 
-  <div class="card">
+  <article>
     <h3>{{index .I18N "connectors.hint_title"}}</h3>
-    <p class="sub" style="margin:0">{{.RequiredMessage}}</p>
-  </div>
+    <small>{{.RequiredMessage}}</small>
+  </article>
 
-  <div class="card">
-    <h3 style="margin-bottom:10px;">{{index .I18N "connectors.table_title"}}</h3>
+  <article>
+    <h3>{{index .I18N "connectors.table_title"}}</h3>
     <div class="table-wrap">
       <table>
-        <tr>
-          <th>{{index .I18N "connectors.table.id"}}</th>
-          <th>{{index .I18N "connectors.table.payload"}}</th>
-          <th>{{index .I18N "connectors.table.name"}}</th>
-          <th>{{index .I18N "connectors.table.chat"}}</th>
-          <th>{{index .I18N "connectors.table.price"}}</th>
-          <th>{{index .I18N "connectors.table.period"}}</th>
-          <th>{{index .I18N "connectors.table.offer"}}</th>
-          <th>{{index .I18N "connectors.table.privacy"}}</th>
-          <th>{{index .I18N "connectors.table.bot_link"}}</th>
-          <th>{{index .I18N "connectors.table.active"}}</th>
-          <th>{{index .I18N "connectors.table.action"}}</th>
-        </tr>
+        <thead>
+          <tr>
+            <th class="mono">{{index .I18N "connectors.table.id"}}</th>
+            <th class="mono">{{index .I18N "connectors.table.payload"}}</th>
+            <th>{{index .I18N "connectors.table.name"}}</th>
+            <th class="mono">{{index .I18N "connectors.table.chat"}}</th>
+            <th>{{index .I18N "connectors.table.price"}}</th>
+            <th>{{index .I18N "connectors.table.period"}}</th>
+            <th>{{index .I18N "connectors.table.offer"}}</th>
+            <th>{{index .I18N "connectors.table.privacy"}}</th>
+            <th>{{index .I18N "connectors.table.channel"}}</th>
+            <th class="mono">{{index .I18N "connectors.table.bot_link"}}</th>
+            <th>{{index .I18N "connectors.table.active"}}</th>
+            <th>{{index .I18N "connectors.table.action"}}</th>
+          </tr>
+        </thead>
+        <tbody>
         {{range .Connectors}}
-        <tr>
-          <td class="mono">{{.ID}}</td>
-          <td class="mono">{{.StartPayload}}</td>
-          <td>{{.Name}}</td>
-          <td class="mono">{{.ChatID}}</td>
-          <td>{{.PriceRUB}} ₽</td>
-          <td>{{.PeriodDays}}</td>
-          <td class="mono">{{.OfferURL}}</td>
-          <td class="mono">{{.PrivacyURL}}</td>
-          <td class="mono">{{.BotLink}}</td>
-          <td>{{.IsActive}}</td>
-          <td>
-            <form method="POST" action="/admin/connectors/toggle?lang={{$.Lang}}">
-              <input type="hidden" name="id" value="{{.ID}}">
-              <input type="hidden" name="active" value="{{.ToggleTo}}">
-              <button type="submit">{{.ToggleLabel}}</button>
-            </form>
-          </td>
-        </tr>
+          <tr>
+            <td class="mono">{{.ID}}</td>
+            <td class="mono">{{.StartPayload}}</td>
+            <td>{{.Name}}</td>
+            <td class="mono">{{.ChatID}}</td>
+            <td>{{.PriceRUB}} ₽</td>
+            <td>{{.PeriodDays}}</td>
+            <td>{{.OfferURL}}</td>
+            <td>{{.PrivacyURL}}</td>
+            <td>{{.ChannelURL}}</td>
+            <td class="mono">{{.BotLink}}</td>
+            <td>{{.IsActive}}</td>
+            <td class="actions">
+              <form method="POST" action="/admin/connectors/toggle?lang={{$.Lang}}">
+                <input type="hidden" name="id" value="{{.ID}}">
+                <input type="hidden" name="active" value="{{.ToggleTo}}">
+                <button type="submit" class="secondary">{{.ToggleLabel}}</button>
+              </form>
+            </td>
+          </tr>
         {{end}}
+        </tbody>
       </table>
     </div>
-  </div>
-</div>
+  </article>
+</main>
+<script>
+  window.addEventListener("DOMContentLoaded", function () {
+    const form = document.querySelector('form[action^="/admin/connectors"]');
+    if (!form) return;
+    const chat = form.querySelector("#chat_id");
+    const channel = form.querySelector("#channel_url");
+    if (!chat || !channel) return;
+
+    const message = "Заполните Chat ID или Channel URL";
+    const syncValidity = () => {
+      const hasChat = chat.value.trim().length > 0;
+      const hasChannel = channel.value.trim().length > 0;
+      if (hasChat || hasChannel) {
+        chat.setCustomValidity("");
+        channel.setCustomValidity("");
+      } else {
+        chat.setCustomValidity(message);
+        channel.setCustomValidity(message);
+      }
+    };
+
+    chat.addEventListener("input", syncValidity);
+    channel.addEventListener("input", syncValidity);
+    form.addEventListener("submit", function () {
+      syncValidity();
+    });
+  });
+</script>
 </body>
 </html>

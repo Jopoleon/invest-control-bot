@@ -4,11 +4,12 @@ import "time"
 
 // Connector describes a tariff and start payload used to enter the bot flow.
 type Connector struct {
-	ID           string
+	ID           int64
 	StartPayload string
 	Name         string
 	Description  string
 	ChatID       string
+	ChannelURL   string
 	PriceRUB     int64
 	PeriodDays   int
 	OfferURL     string
@@ -30,7 +31,7 @@ type User struct {
 // Consent stores acceptance metadata for offer/privacy terms.
 type Consent struct {
 	TelegramID        int64
-	ConnectorID       string
+	ConnectorID       int64
 	OfferAcceptedAt   time.Time
 	PrivacyAcceptedAt time.Time
 }
@@ -51,7 +52,7 @@ const (
 // RegistrationState stores in-progress registration context for user.
 type RegistrationState struct {
 	TelegramID       int64
-	ConnectorID      string
+	ConnectorID      int64
 	Step             RegistrationStep
 	TelegramUsername string
 	UpdatedAt        time.Time
@@ -61,7 +62,7 @@ type RegistrationState struct {
 type AuditEvent struct {
 	ID          int64
 	TelegramID  int64
-	ConnectorID string
+	ConnectorID int64
 	Action      string
 	Details     string
 	CreatedAt   time.Time
@@ -71,7 +72,7 @@ type AuditEvent struct {
 type AuditEventListQuery struct {
 	TelegramID int64
 
-	ConnectorID string
+	ConnectorID int64
 	Action      string
 	Search      string
 
@@ -83,4 +84,77 @@ type AuditEventListQuery struct {
 
 	Page     int
 	PageSize int
+}
+
+// PaymentStatus is lifecycle state of payment transaction.
+type PaymentStatus string
+
+const (
+	PaymentStatusPending PaymentStatus = "pending"
+	PaymentStatusPaid    PaymentStatus = "paid"
+	PaymentStatusFailed  PaymentStatus = "failed"
+)
+
+// Payment stores provider checkout attempt and final state.
+type Payment struct {
+	ID                int64
+	Provider          string
+	ProviderPaymentID string
+	Status            PaymentStatus
+	Token             string
+	TelegramID        int64
+	ConnectorID       int64
+	AmountRUB         int64
+	CheckoutURL       string
+	CreatedAt         time.Time
+	PaidAt            *time.Time
+	UpdatedAt         time.Time
+}
+
+// SubscriptionStatus is lifecycle state for user access period.
+type SubscriptionStatus string
+
+const (
+	SubscriptionStatusActive  SubscriptionStatus = "active"
+	SubscriptionStatusExpired SubscriptionStatus = "expired"
+	SubscriptionStatusRevoked SubscriptionStatus = "revoked"
+)
+
+// Subscription stores purchased access period linked to successful payment.
+type Subscription struct {
+	ID          int64
+	TelegramID  int64
+	ConnectorID int64
+	PaymentID   int64
+	Status      SubscriptionStatus
+	StartsAt    time.Time
+	EndsAt      time.Time
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// PaymentListQuery describes admin filters for payment list.
+type PaymentListQuery struct {
+	TelegramID int64
+
+	ConnectorID int64
+	Status      PaymentStatus
+
+	CreatedFrom      *time.Time
+	CreatedToExclude *time.Time
+
+	Limit int
+}
+
+// SubscriptionListQuery describes admin filters for subscription list.
+type SubscriptionListQuery struct {
+	TelegramID int64
+
+	ConnectorID int64
+	Status      SubscriptionStatus
+
+	CreatedFrom      *time.Time
+	CreatedToExclude *time.Time
+
+	Limit int
 }
