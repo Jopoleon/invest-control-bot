@@ -22,19 +22,20 @@ const (
 )
 
 func (h *Handler) sendMenu(ctx context.Context, chatID int64) {
-	keyboard := &models.InlineKeyboardMarkup{
-		InlineKeyboard: [][]models.InlineKeyboardButton{
-			{
-				{Text: "📄 Моя подписка", CallbackData: menuCallbackSubscription},
-			},
-			{
-				{Text: "💳 Платежи", CallbackData: menuCallbackPayments},
-			},
-			{
-				{Text: "🔁 Автоплатеж", CallbackData: menuCallbackAutopay},
-			},
+	rows := [][]models.InlineKeyboardButton{
+		{
+			{Text: "📄 Моя подписка", CallbackData: menuCallbackSubscription},
+		},
+		{
+			{Text: "💳 Платежи", CallbackData: menuCallbackPayments},
 		},
 	}
+	if h.recurringEnabled {
+		rows = append(rows, []models.InlineKeyboardButton{
+			{Text: "🔁 Автоплатеж", CallbackData: menuCallbackAutopay},
+		})
+	}
+	keyboard := &models.InlineKeyboardMarkup{InlineKeyboard: rows}
 	if err := h.tg.SendMessage(ctx, chatID, "Личный кабинет:", keyboard); err != nil {
 		slog.Error("send menu failed", "error", err, "chat_id", chatID)
 	}
@@ -144,6 +145,10 @@ func (h *Handler) sendPaymentHistory(ctx context.Context, chatID, telegramID int
 }
 
 func (h *Handler) sendAutopayInfo(ctx context.Context, chatID, telegramID int64) {
+	if !h.recurringEnabled {
+		h.send(ctx, chatID, "Автоплатеж временно недоступен. Подключим его после активации recurring в Robokassa.")
+		return
+	}
 	enabled, _, err := h.store.GetUserAutoPayEnabled(ctx, telegramID)
 	if err != nil {
 		slog.Error("load user autopay preference failed", "error", err, "telegram_id", telegramID)
@@ -172,6 +177,10 @@ func (h *Handler) sendAutopayInfo(ctx context.Context, chatID, telegramID int64)
 }
 
 func (h *Handler) setAutopayPreference(ctx context.Context, chatID, telegramID int64, enabled bool) {
+	if !h.recurringEnabled {
+		h.send(ctx, chatID, "Автоплатеж временно недоступен. Подключим его после активации recurring в Robokassa.")
+		return
+	}
 	if err := h.store.SetUserAutoPayEnabled(ctx, telegramID, enabled, time.Now().UTC()); err != nil {
 		slog.Error("save user autopay preference failed", "error", err, "telegram_id", telegramID, "enabled", enabled)
 		h.send(ctx, chatID, "Не удалось изменить настройку автоплатежа.")

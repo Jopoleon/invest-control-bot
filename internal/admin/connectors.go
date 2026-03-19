@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
+	storepkg "github.com/Jopoleon/telega-bot-fedor/internal/store"
 )
 
 var (
@@ -92,6 +93,43 @@ func (h *Handler) toggleConnector(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "connectors.updated"))
+}
+
+// deleteConnector hard-deletes connector if it has no dependent history.
+func (h *Handler) deleteConnector(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAuth(w, r) {
+		return
+	}
+	lang := h.resolveLang(w, r)
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "connectors.bad_form"))
+		return
+	}
+	if !h.verifyCSRF(r) {
+		w.WriteHeader(http.StatusForbidden)
+		h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "csrf.invalid"))
+		return
+	}
+
+	id, err := parseConnectorID(r.FormValue("id"))
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "connectors.invalid_id"))
+		return
+	}
+
+	if err := h.store.DeleteConnector(r.Context(), id); err != nil {
+		h.renderConnectorsPage(r.Context(), w, r, lang, h.localizeDeleteConnectorError(lang, err))
+		return
+	}
+
+	h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "connectors.deleted"))
 }
 
 // createConnector parses HTML form and persists connector entity.
@@ -212,6 +250,29 @@ func (h *Handler) localizeCreateConnectorError(lang string, err error) string {
 	default:
 		return err.Error()
 	}
+}
+
+func (h *Handler) localizeDeleteConnectorError(lang string, err error) string {
+	switch {
+	case errors.Is(err, storepkg.ErrConnectorNotFound):
+		return t(lang, "connectors.not_found")
+	case errors.Is(err, storepkg.ErrConnectorInUse):
+		return t(lang, "connectors.delete_in_use")
+	default:
+		return err.Error()
+	}
+}
+
+func parseConnectorID(raw string) (int64, error) {
+	idRaw := strings.TrimSpace(raw)
+	if idRaw == "" {
+		return 0, errors.New("empty id")
+	}
+	id, err := strconv.ParseInt(idRaw, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, errors.New("invalid id")
+	}
+	return id, nil
 }
 
 // generateToken creates random hex token for IDs/payloads in admin form defaults.

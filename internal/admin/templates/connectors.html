@@ -34,9 +34,49 @@
       margin: .75rem 0 0;
       font-weight: 600;
     }
-    .table-wrap { overflow: auto; }
-    td.mono, th.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: .8rem; }
+    .table-panel {
+      width: calc(100vw - 2rem);
+      margin-left: calc(50% - 50vw + 1rem);
+      margin-right: calc(50% - 50vw + 1rem);
+      border-radius: 1rem;
+    }
+    .table-wrap { overflow-x: auto; }
+    .table-wrap table {
+      width: 100%;
+      min-width: 1220px;
+      table-layout: auto;
+    }
+    td.mono, th.mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
+      font-size: .8rem;
+    }
+    .table-wrap th,
+    .table-wrap td {
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    .table-wrap td.name-cell {
+      white-space: normal;
+      min-width: 11rem;
+    }
+    .table-wrap td.price-cell,
+    .table-wrap td.chat-cell,
+    .table-wrap td.period-cell,
+    .table-wrap td.status-cell {
+      white-space: nowrap;
+    }
+    .table-wrap a { color: #0d61ff; text-decoration: underline; }
+    .table-wrap td.link-cell a {
+      display: inline-block;
+      max-width: 9rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    .actions { display: flex; gap: .45rem; flex-wrap: wrap; }
     .actions form { margin: 0; }
+    .actions .danger { background: #d92d20; border-color: #d92d20; color: #fff; }
   </style>
 </head>
 <body>
@@ -105,14 +145,13 @@
     <small>{{.RequiredMessage}}</small>
   </article>
 
-  <article>
+  <article class="table-panel">
     <h3>{{index .I18N "connectors.table_title"}}</h3>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
             <th class="mono">{{index .I18N "connectors.table.id"}}</th>
-            <th class="mono">{{index .I18N "connectors.table.payload"}}</th>
             <th>{{index .I18N "connectors.table.name"}}</th>
             <th class="mono">{{index .I18N "connectors.table.chat"}}</th>
             <th>{{index .I18N "connectors.table.price"}}</th>
@@ -129,22 +168,26 @@
         {{range .Connectors}}
           <tr>
             <td class="mono">{{.ID}}</td>
-            <td class="mono">{{.StartPayload}}</td>
-            <td>{{.Name}}</td>
-            <td class="mono">{{.ChatID}}</td>
-            <td>{{.PriceRUB}} ₽</td>
-            <td>{{.PeriodDays}}</td>
-            <td>{{.OfferURL}}</td>
-            <td>{{.PrivacyURL}}</td>
-            <td>{{.ChannelURL}}</td>
-            <td class="mono">{{.BotLink}}</td>
-            <td>{{.IsActive}}</td>
+            <td class="name-cell">{{.Name}}</td>
+            <td class="mono chat-cell">{{.ChatID}}</td>
+            <td class="price-cell">{{.PriceRUB}} ₽</td>
+            <td class="period-cell">{{.PeriodDays}}</td>
+            <td class="link-cell">{{if .OfferURL}}<a href="{{.OfferURL}}" target="_blank" rel="noreferrer">{{index $.I18N "connectors.table.open_link"}}</a>{{end}}</td>
+            <td class="link-cell">{{if .PrivacyURL}}<a href="{{.PrivacyURL}}" target="_blank" rel="noreferrer">{{index $.I18N "connectors.table.open_link"}}</a>{{end}}</td>
+            <td class="link-cell">{{if .ChannelURL}}<a href="{{.ChannelURL}}" target="_blank" rel="noreferrer">{{index $.I18N "connectors.table.open_link"}}</a>{{end}}</td>
+            <td class="mono link-cell"><a href="{{.BotLink}}" target="_blank" rel="noreferrer">{{.BotLink}}</a></td>
+            <td class="status-cell">{{.IsActive}}</td>
             <td class="actions">
               <form method="POST" action="/admin/connectors/toggle?lang={{$.Lang}}">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                 <input type="hidden" name="id" value="{{.ID}}">
                 <input type="hidden" name="active" value="{{.ToggleTo}}">
                 <button type="submit" class="secondary">{{.ToggleLabel}}</button>
+              </form>
+              <form method="POST" action="/admin/connectors/delete?lang={{$.Lang}}" onsubmit="return confirm('{{index $.I18N "connectors.delete_confirm"}}');">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="id" value="{{.ID}}">
+                <button type="submit" class="danger">{{index $.I18N "connectors.table.delete"}}</button>
               </form>
             </td>
           </tr>

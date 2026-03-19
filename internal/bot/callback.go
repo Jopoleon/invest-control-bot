@@ -58,17 +58,43 @@ func (h *Handler) handleCallback(ctx context.Context, cb *models.CallbackQuery) 
 	}
 	h.logAuditEvent(ctx, cb.From.ID, connectorID, "consent_accepted", "")
 
+	user, exists, err := h.store.GetUser(ctx, cb.From.ID)
+	if err != nil {
+		slog.Error("load user before registration flow failed", "error", err, "telegram_id", cb.From.ID, "connector_id", connectorID)
+		return
+	}
+	if !exists {
+		user = domain.User{TelegramID: cb.From.ID}
+	}
+	updatedUsername := applyCurrentTelegramUsername(&user, cb.From.Username)
+	if updatedUsername || !exists {
+		if err := h.store.SaveUser(ctx, user); err != nil {
+			slog.Error("save user before registration flow failed", "error", err, "telegram_id", cb.From.ID, "connector_id", connectorID)
+			return
+		}
+	}
+
+	nextStep := nextRegistrationStep(user)
+	if nextStep == domain.StepDone {
+		if err := h.store.DeleteRegistrationState(ctx, cb.From.ID); err != nil {
+			slog.Error("delete registration state failed", "error", err, "telegram_id", cb.From.ID)
+		}
+		h.logAuditEvent(ctx, cb.From.ID, connectorID, "registration_reused_existing_profile", "")
+		h.sendFinalRegistrationMessage(ctx, cb.From.ID, connectorID)
+		return
+	}
+
 	state := domain.RegistrationState{
 		TelegramID:       cb.From.ID,
 		ConnectorID:      connectorID,
-		Step:             domain.StepFullName,
-		TelegramUsername: cb.From.Username,
+		Step:             nextStep,
+		TelegramUsername: user.TelegramUsername,
 	}
 	if err := h.store.SaveRegistrationState(ctx, state); err != nil {
 		slog.Error("save registration state failed", "error", err, "telegram_id", cb.From.ID, "connector_id", connectorID)
 		return
 	}
-	h.logAuditEvent(ctx, cb.From.ID, connectorID, "registration_step_requested", string(domain.StepFullName))
+	h.logAuditEvent(ctx, cb.From.ID, connectorID, "registration_step_requested", string(nextStep))
 
-	h.send(ctx, cb.From.ID, "ФИО")
+	h.send(ctx, cb.From.ID, registrationPrompt(nextStep))
 }

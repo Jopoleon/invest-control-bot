@@ -41,6 +41,7 @@ func (h *Handler) handlePay(ctx context.Context, cb *models.CallbackQuery) {
 	if err != nil {
 		slog.Error("load user autopay preference failed", "error", err, "telegram_id", cb.From.ID)
 	}
+	effectiveRecurring := h.recurringEnabled && autoPayEnabled
 	invoiceID := generateInvoiceID()
 
 	checkoutURL, err := h.payment.CreateCheckoutURL(ctx, payment.Request{
@@ -49,7 +50,7 @@ func (h *Handler) handlePay(ctx context.Context, cb *models.CallbackQuery) {
 		AmountRUB:       connector.PriceRUB,
 		InvoiceID:       invoiceID,
 		Description:     connector.Name,
-		EnableRecurring: autoPayEnabled,
+		EnableRecurring: effectiveRecurring,
 	})
 	if err != nil {
 		slog.Error("create checkout url failed", "error", err, "connector_id", connectorID, "telegram_id", cb.From.ID)
@@ -64,7 +65,7 @@ func (h *Handler) handlePay(ctx context.Context, cb *models.CallbackQuery) {
 		TelegramID:     cb.From.ID,
 		ConnectorID:    connectorID,
 		AmountRUB:      connector.PriceRUB,
-		AutoPayEnabled: autoPayEnabled,
+		AutoPayEnabled: effectiveRecurring,
 		CheckoutURL:    checkoutURL,
 		CreatedAt:      time.Now().UTC(),
 		UpdatedAt:      time.Now().UTC(),
@@ -87,7 +88,7 @@ func (h *Handler) handlePay(ctx context.Context, cb *models.CallbackQuery) {
 		return
 	}
 	details := h.payment.ProviderName()
-	if autoPayEnabled {
+	if effectiveRecurring {
 		details += ";autopay=on"
 	}
 	h.logAuditEvent(ctx, cb.From.ID, connectorID, "pay_link_sent", details)

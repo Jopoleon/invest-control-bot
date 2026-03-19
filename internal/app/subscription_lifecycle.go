@@ -17,6 +17,7 @@ import (
 
 const (
 	reminderDaysBeforeEnd = 3
+	expiryNoticeWindow    = 24 * time.Hour
 	subscriptionJobLimit  = 200
 	subscriptionJobEvery  = time.Minute
 )
@@ -44,6 +45,16 @@ func newSubscriptionLifecycleScheduler(st store.Store, tg *telegram.Client, botU
 	if _, err := scheduler.NewJob(
 		gocron.DurationJob(subscriptionJobEvery),
 		gocron.NewTask(func() {
+			processSubscriptionExpiryNotices(context.Background(), st, tg, botUsername)
+		}),
+		jobOptions...,
+	); err != nil {
+		_ = scheduler.Shutdown()
+		return nil, fmt.Errorf("register subscription expiry notice job: %w", err)
+	}
+	if _, err := scheduler.NewJob(
+		gocron.DurationJob(subscriptionJobEvery),
+		gocron.NewTask(func() {
 			processExpiredSubscriptions(context.Background(), st, tg, botUsername)
 		}),
 		jobOptions...,
@@ -58,6 +69,7 @@ func newSubscriptionLifecycleScheduler(st store.Store, tg *telegram.Client, botU
 // runSubscriptionLifecyclePass executes both lifecycle phases once.
 func runSubscriptionLifecyclePass(ctx context.Context, st store.Store, tg *telegram.Client, botUsername string) {
 	processSubscriptionReminders(ctx, st, tg, botUsername)
+	processSubscriptionExpiryNotices(ctx, st, tg, botUsername)
 	processExpiredSubscriptions(ctx, st, tg, botUsername)
 }
 
@@ -102,6 +114,53 @@ func processSubscriptionReminders(ctx context.Context, st store.Store, tg *teleg
 			TelegramID:  sub.TelegramID,
 			ConnectorID: sub.ConnectorID,
 			Action:      "subscription_reminder_sent",
+			Details:     "subscription_id=" + strconv.FormatInt(sub.ID, 10),
+			CreatedAt:   now,
+		})
+	}
+}
+
+func processSubscriptionExpiryNotices(ctx context.Context, st store.Store, tg *telegram.Client, botUsername string) {
+	now := time.Now().UTC()
+	noticeBefore := now.Add(expiryNoticeWindow)
+	subs, err := st.ListSubscriptionsForExpiryNotice(ctx, noticeBefore, subscriptionJobLimit)
+	if err != nil {
+		slog.Error("list expiry notice subscriptions failed", "error", err)
+		return
+	}
+	for _, sub := range subs {
+		connector, ok, err := st.GetConnector(ctx, sub.ConnectorID)
+		if err != nil {
+			slog.Error("load connector for expiry notice failed", "error", err, "subscription_id", sub.ID, "connector_id", sub.ConnectorID)
+			continue
+		}
+		if !ok {
+			continue
+		}
+
+		renewURL := buildBotStartURL(botUsername, connector.StartPayload)
+		text := fmt.Sprintf("⏰ Сегодня заканчивается подписка. Доступ будет отключен %s, если продление не поступит.",
+			sub.EndsAt.In(time.Local).Format("02.01.2006 15:04"),
+		)
+		var keyboard *models.InlineKeyboardMarkup
+		if renewURL != "" {
+			keyboard = &models.InlineKeyboardMarkup{
+				InlineKeyboard: [][]models.InlineKeyboardButton{{
+					{Text: "Продлить подписку", URL: renewURL},
+				}},
+			}
+		}
+		if err := tg.SendMessage(ctx, sub.TelegramID, text, keyboard); err != nil {
+			slog.Error("send subscription expiry notice failed", "error", err, "subscription_id", sub.ID, "telegram_id", sub.TelegramID)
+			continue
+		}
+		if err := st.MarkSubscriptionExpiryNoticeSent(ctx, sub.ID, now); err != nil {
+			slog.Error("mark subscription expiry notice sent failed", "error", err, "subscription_id", sub.ID)
+		}
+		_ = st.SaveAuditEvent(ctx, domain.AuditEvent{
+			TelegramID:  sub.TelegramID,
+			ConnectorID: sub.ConnectorID,
+			Action:      "subscription_expiry_notice_sent",
 			Details:     "subscription_id=" + strconv.FormatInt(sub.ID, 10),
 			CreatedAt:   now,
 		})

@@ -91,6 +91,7 @@ go run ./cmd/server
   - `ROBOKASSA_PASS1`
   - `ROBOKASSA_PASS2`
   - `ROBOKASSA_IS_TEST_MODE=true` (для тестов)
+  - `ROBOKASSA_RECURRING_ENABLED=false` (держим `false`, пока Robokassa не активирует recurring для магазина)
   - `ROBOKASSA_REBILL_URL` (по умолчанию `https://auth.robokassa.ru/Merchant/Recurring`)
 - URL callbacks:
   - `POST /payment/result` (подтверждение платежа, источник истины)

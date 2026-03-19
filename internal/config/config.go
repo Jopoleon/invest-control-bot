@@ -86,12 +86,13 @@ type PaymentConfig struct {
 
 // RobokassaPaymentConfig stores Robokassa credentials and mode flags.
 type RobokassaPaymentConfig struct {
-	MerchantLogin string
-	Password1     string
-	Password2     string
-	IsTestMode    bool
-	CheckoutURL   string
-	RebillURL     string
+	MerchantLogin    string
+	Password1        string
+	Password2        string
+	IsTestMode       bool
+	RecurringEnabled bool
+	CheckoutURL      string
+	RebillURL        string
 }
 
 // LoggingConfig controls verbosity of structured logs.
@@ -157,12 +158,13 @@ func Load() (Config, error) {
 			Provider:    strings.ToLower(getEnv("PAYMENT_PROVIDER", "mock")),
 			MockBaseURL: strings.TrimSpace(os.Getenv("PAYMENT_MOCK_BASE_URL")),
 			Robokassa: RobokassaPaymentConfig{
-				MerchantLogin: strings.TrimSpace(os.Getenv("ROBOKASSA_MERCHANT_LOGIN")),
-				Password1:     strings.TrimSpace(os.Getenv("ROBOKASSA_PASS1")),
-				Password2:     strings.TrimSpace(os.Getenv("ROBOKASSA_PASS2")),
-				IsTestMode:    getBoolEnv("ROBOKASSA_IS_TEST_MODE", true),
-				CheckoutURL:   strings.TrimSpace(os.Getenv("ROBOKASSA_CHECKOUT_URL")),
-				RebillURL:     strings.TrimSpace(os.Getenv("ROBOKASSA_REBILL_URL")),
+				MerchantLogin:    strings.TrimSpace(os.Getenv("ROBOKASSA_MERCHANT_LOGIN")),
+				Password1:        strings.TrimSpace(os.Getenv("ROBOKASSA_PASS1")),
+				Password2:        strings.TrimSpace(os.Getenv("ROBOKASSA_PASS2")),
+				IsTestMode:       getBoolEnv("ROBOKASSA_IS_TEST_MODE", true),
+				RecurringEnabled: getBoolEnv("ROBOKASSA_RECURRING_ENABLED", false),
+				CheckoutURL:      strings.TrimSpace(os.Getenv("ROBOKASSA_CHECKOUT_URL")),
+				RebillURL:        strings.TrimSpace(os.Getenv("ROBOKASSA_REBILL_URL")),
 			},
 		},
 		Logging: LoggingConfig{

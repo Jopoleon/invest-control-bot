@@ -25,18 +25,14 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg *models.Messag
 		return
 	}
 	if !exists {
-		user = domain.User{TelegramID: msg.From.ID, TelegramUsername: msg.From.Username}
+		user = domain.User{TelegramID: msg.From.ID}
 	}
-	if msg.From.Username != "" {
-		user.TelegramUsername = msg.From.Username
-	}
+	applyCurrentTelegramUsername(&user, msg.From.Username)
 
 	switch state.Step {
 	case domain.StepFullName:
 		user.FullName = text
-		state.Step = domain.StepPhone
 		h.logAuditEvent(ctx, msg.From.ID, state.ConnectorID, "registration_full_name_saved", "")
-		h.send(ctx, msg.Chat.ID, "Телефон")
 	case domain.StepPhone:
 		phone := normalizePhone(text)
 		if !isValidE164(phone) {
@@ -44,29 +40,18 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg *models.Messag
 			return
 		}
 		user.Phone = phone
-		state.Step = domain.StepEmail
 		h.logAuditEvent(ctx, msg.From.ID, state.ConnectorID, "registration_phone_saved", "")
-		h.send(ctx, msg.Chat.ID, "E-mail")
 	case domain.StepEmail:
 		if _, err := mail.ParseAddress(text); err != nil {
 			h.send(ctx, msg.Chat.ID, "⚠️ Неправильный e-mail")
 			return
 		}
 		user.Email = text
-		state.Step = domain.StepUsername
 		h.logAuditEvent(ctx, msg.From.ID, state.ConnectorID, "registration_email_saved", "")
-		h.send(ctx, msg.Chat.ID, "Ник телеграм")
 	case domain.StepUsername:
 		if text != "-" {
-			user.TelegramUsername = strings.TrimPrefix(text, "@")
+			user.TelegramUsername = normalizeTelegramUsername(text)
 		}
-		state.Step = domain.StepDone
-		if err := h.store.DeleteRegistrationState(ctx, msg.From.ID); err != nil {
-			slog.Error("delete registration state failed", "error", err, "telegram_id", msg.From.ID)
-		}
-
-		h.sendFinalRegistrationMessage(ctx, msg.Chat.ID, state.ConnectorID)
-		h.logAuditEvent(ctx, msg.From.ID, state.ConnectorID, "registration_completed", "")
 	default:
 		return
 	}
@@ -76,11 +61,21 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg *models.Messag
 		return
 	}
 
-	if state.Step != domain.StepDone {
-		if err := h.store.SaveRegistrationState(ctx, state); err != nil {
-			slog.Error("save registration step failed", "error", err, "telegram_id", msg.From.ID, "step", state.Step)
+	state.Step = nextRegistrationStep(user)
+	if state.Step == domain.StepDone {
+		if err := h.store.DeleteRegistrationState(ctx, msg.From.ID); err != nil {
+			slog.Error("delete registration state failed", "error", err, "telegram_id", msg.From.ID)
 		}
+		h.sendFinalRegistrationMessage(ctx, msg.Chat.ID, state.ConnectorID)
+		h.logAuditEvent(ctx, msg.From.ID, state.ConnectorID, "registration_completed", "")
+		return
 	}
+
+	if err := h.store.SaveRegistrationState(ctx, state); err != nil {
+		slog.Error("save registration step failed", "error", err, "telegram_id", msg.From.ID, "step", state.Step)
+		return
+	}
+	h.send(ctx, msg.Chat.ID, registrationPrompt(state.Step))
 }
 
 // sendFinalRegistrationMessage sends completion text and pay button.

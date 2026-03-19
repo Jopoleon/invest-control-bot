@@ -40,6 +40,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/logout", h.logout)
 	mux.HandleFunc("/admin/connectors", h.connectorsPage)
 	mux.HandleFunc("/admin/connectors/toggle", h.toggleConnector)
+	mux.HandleFunc("/admin/connectors/delete", h.deleteConnector)
 	mux.HandleFunc("/admin/billing", h.billingPage)
 	mux.HandleFunc("/admin/events", h.eventsPage)
 	mux.HandleFunc("/admin/help", h.helpPage)

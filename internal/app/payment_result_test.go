@@ -279,6 +279,226 @@ func TestPaymentRebill_CreatesPendingRecurringPayment(t *testing.T) {
 	}
 }
 
+func TestPaymentRebill_ReturnsExistingPendingPayment(t *testing.T) {
+	t.Helper()
+
+	const (
+		adminToken = "admin-secret"
+		pass2      = "test-pass2"
+		parentInv  = "1000009002"
+	)
+
+	ctx := context.Background()
+	st := memory.New()
+	connectorID := seedConnector(t, ctx, st, "in-rebill-existing")
+
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPaid,
+		Token:          parentInv,
+		TelegramID:     778002,
+		ConnectorID:    connectorID,
+		AmountRUB:      2322,
+		AutoPayEnabled: true,
+		CreatedAt:      time.Now().UTC().Add(-24 * time.Hour),
+		UpdatedAt:      time.Now().UTC().Add(-24 * time.Hour),
+	})
+	parentPayment, found, err := st.GetPaymentByToken(ctx, parentInv)
+	if err != nil || !found {
+		t.Fatalf("parent payment not found: found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		TelegramID:     parentPayment.TelegramID,
+		ConnectorID:    parentPayment.ConnectorID,
+		PaymentID:      parentPayment.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       time.Now().UTC().Add(-24 * time.Hour),
+		EndsAt:         time.Now().UTC().Add(24 * time.Hour),
+		CreatedAt:      time.Now().UTC().Add(-24 * time.Hour),
+		UpdatedAt:      time.Now().UTC().Add(-24 * time.Hour),
+	}); err != nil {
+		t.Fatalf("seed subscription: %v", err)
+	}
+	subscriptions, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{TelegramID: parentPayment.TelegramID, Limit: 20})
+	if err != nil || len(subscriptions) != 1 {
+		t.Fatalf("expected one subscription, got=%d err=%v", len(subscriptions), err)
+	}
+
+	existingInvoice := "1000009003"
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:          "robokassa",
+		Status:            domain.PaymentStatusPending,
+		Token:             existingInvoice,
+		TelegramID:        parentPayment.TelegramID,
+		ConnectorID:       parentPayment.ConnectorID,
+		SubscriptionID:    subscriptions[0].ID,
+		ParentPaymentID:   parentPayment.ID,
+		AmountRUB:         2322,
+		AutoPayEnabled:    true,
+		ProviderPaymentID: "rebill_parent:" + parentInv,
+		CreatedAt:         time.Now().UTC(),
+		UpdatedAt:         time.Now().UTC(),
+	})
+
+	rebillCalls := 0
+	rebillMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rebillCalls++
+		_, _ = w.Write([]byte("OK+should-not-be-called"))
+	}))
+	defer rebillMock.Close()
+
+	cfg := config.Config{
+		AppName:     "telega-bot-fedor-test",
+		Environment: config.EnvLocal,
+		HTTP:        config.HTTPConfig{Address: ":0", ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second},
+		Postgres:    config.PostgresConfig{Driver: "memory"},
+		Payment: config.PaymentConfig{
+			Provider: "robokassa",
+			Robokassa: config.RobokassaPaymentConfig{
+				MerchantLogin: "test-merchant",
+				Password1:     "test-pass1",
+				Password2:     pass2,
+				IsTestMode:    true,
+				RebillURL:     rebillMock.URL,
+			},
+		},
+		Security: config.SecurityConfig{AdminToken: adminToken},
+	}
+	handler := testServerHandlerWithConfig(t, st, cfg)
+
+	form := url.Values{"subscription_id": {fmt.Sprintf("%d", subscriptions[0].ID)}}
+	req := httptest.NewRequest(http.MethodPost, "/payment/rebill", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		body, _ := io.ReadAll(rr.Body)
+		t.Fatalf("rebill status=%d body=%q", rr.Code, string(body))
+	}
+
+	var payload struct {
+		OK        bool   `json:"ok"`
+		InvoiceID string `json:"invoice_id"`
+		Existing  bool   `json:"existing"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode rebill response: %v", err)
+	}
+	if !payload.OK || !payload.Existing || payload.InvoiceID != existingInvoice {
+		t.Fatalf("unexpected rebill payload: %+v", payload)
+	}
+	if rebillCalls != 0 {
+		t.Fatalf("rebill provider called %d times, want 0", rebillCalls)
+	}
+}
+
+func TestPaymentRebill_MarksPaymentFailedWhenProviderFails(t *testing.T) {
+	t.Helper()
+
+	const (
+		adminToken = "admin-secret"
+		pass2      = "test-pass2"
+		parentInv  = "1000009010"
+	)
+
+	ctx := context.Background()
+	st := memory.New()
+	connectorID := seedConnector(t, ctx, st, "in-rebill-fail")
+
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPaid,
+		Token:          parentInv,
+		TelegramID:     778010,
+		ConnectorID:    connectorID,
+		AmountRUB:      2322,
+		AutoPayEnabled: true,
+		CreatedAt:      time.Now().UTC().Add(-24 * time.Hour),
+		UpdatedAt:      time.Now().UTC().Add(-24 * time.Hour),
+	})
+	parentPayment, found, err := st.GetPaymentByToken(ctx, parentInv)
+	if err != nil || !found {
+		t.Fatalf("parent payment not found: found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		TelegramID:     parentPayment.TelegramID,
+		ConnectorID:    parentPayment.ConnectorID,
+		PaymentID:      parentPayment.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       time.Now().UTC().Add(-24 * time.Hour),
+		EndsAt:         time.Now().UTC().Add(24 * time.Hour),
+		CreatedAt:      time.Now().UTC().Add(-24 * time.Hour),
+		UpdatedAt:      time.Now().UTC().Add(-24 * time.Hour),
+	}); err != nil {
+		t.Fatalf("seed subscription: %v", err)
+	}
+	subscriptions, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{TelegramID: parentPayment.TelegramID, Limit: 20})
+	if err != nil || len(subscriptions) != 1 {
+		t.Fatalf("expected one subscription, got=%d err=%v", len(subscriptions), err)
+	}
+
+	rebillMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("boom"))
+	}))
+	defer rebillMock.Close()
+
+	cfg := config.Config{
+		AppName:     "telega-bot-fedor-test",
+		Environment: config.EnvLocal,
+		HTTP:        config.HTTPConfig{Address: ":0", ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second},
+		Postgres:    config.PostgresConfig{Driver: "memory"},
+		Payment: config.PaymentConfig{
+			Provider: "robokassa",
+			Robokassa: config.RobokassaPaymentConfig{
+				MerchantLogin: "test-merchant",
+				Password1:     "test-pass1",
+				Password2:     pass2,
+				IsTestMode:    true,
+				RebillURL:     rebillMock.URL,
+			},
+		},
+		Security: config.SecurityConfig{AdminToken: adminToken},
+	}
+	handler := testServerHandlerWithConfig(t, st, cfg)
+
+	form := url.Values{"subscription_id": {fmt.Sprintf("%d", subscriptions[0].ID)}}
+	req := httptest.NewRequest(http.MethodPost, "/payment/rebill", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadGateway {
+		body, _ := io.ReadAll(rr.Body)
+		t.Fatalf("rebill status=%d body=%q", rr.Code, string(body))
+	}
+
+	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{TelegramID: parentPayment.TelegramID, Limit: 20})
+	if err != nil {
+		t.Fatalf("list payments: %v", err)
+	}
+	failedRebillCount := 0
+	for _, item := range payments {
+		if item.SubscriptionID == subscriptions[0].ID && item.Status == domain.PaymentStatusFailed {
+			failedRebillCount++
+		}
+	}
+	if failedRebillCount != 1 {
+		t.Fatalf("failed rebill payments=%d want=1", failedRebillCount)
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if got := countAuditEvents(events, "rebill_request_failed"); got != 1 {
+		t.Fatalf("rebill_request_failed count=%d want=1", got)
+	}
+}
+
 func testServerHandler(t *testing.T, st store.Store, pass2 string) http.Handler {
 	t.Helper()
 

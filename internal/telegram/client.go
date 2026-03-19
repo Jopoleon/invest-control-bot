@@ -142,7 +142,7 @@ func (c *Client) EnsureDefaultMenu(ctx context.Context) error {
 	return nil
 }
 
-// RemoveChatMember removes user from chat/channel (requires bot admin permissions).
+// RemoveChatMember removes user from chat and immediately unbans them so they can rejoin later.
 func (c *Client) RemoveChatMember(ctx context.Context, chatID, userID int64) error {
 	if !c.enabled {
 		slog.Debug("telegram client disabled, skip removeChatMember", "chat_id", chatID, "user_id", userID)
@@ -151,6 +151,14 @@ func (c *Client) RemoveChatMember(ctx context.Context, chatID, userID int64) err
 	_, err := c.bot.BanChatMember(ctx, &tgbot.BanChatMemberParams{
 		ChatID: chatID,
 		UserID: userID,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = c.bot.UnbanChatMember(ctx, &tgbot.UnbanChatMemberParams{
+		ChatID:       chatID,
+		UserID:       userID,
+		OnlyIfBanned: true,
 	})
 	return err
 }

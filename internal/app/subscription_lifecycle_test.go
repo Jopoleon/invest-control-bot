@@ -83,6 +83,42 @@ func TestProcessExpiredSubscriptions_ExpiresOnce(t *testing.T) {
 	}
 }
 
+func TestProcessSubscriptionExpiryNotices_MarksNoticeOnce(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	tg, err := telegram.NewClient("", "")
+	if err != nil {
+		t.Fatalf("create telegram client: %v", err)
+	}
+
+	connectorID := seedConnector(t, ctx, st, "in-lifecycle-expiry-notice")
+	subscriptionID := seedActiveSubscription(t, ctx, st, connectorID, 880003, "sub-expiry-notice", time.Now().UTC().Add(12*time.Hour))
+
+	processSubscriptionExpiryNotices(ctx, st, tg, "test_bot")
+	processSubscriptionExpiryNotices(ctx, st, tg, "test_bot")
+
+	sub, found, err := st.GetSubscriptionByID(ctx, subscriptionID)
+	if err != nil {
+		t.Fatalf("get subscription: %v", err)
+	}
+	if !found {
+		t.Fatalf("subscription not found")
+	}
+	if sub.ExpiryNoticeSentAt == nil {
+		t.Fatalf("expiry_notice_sent_at is nil")
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if got := countAuditEvents(events, "subscription_expiry_notice_sent"); got != 1 {
+		t.Fatalf("subscription_expiry_notice_sent count = %d, want 1", got)
+	}
+}
+
 func seedActiveSubscription(t *testing.T, ctx context.Context, st store.Store, connectorID, telegramID int64, paymentToken string, endsAt time.Time) int64 {
 	t.Helper()
 

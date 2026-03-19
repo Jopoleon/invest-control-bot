@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
+	storepkg "github.com/Jopoleon/telega-bot-fedor/internal/store"
 )
 
 // Store is a thread-safe in-memory implementation used for local development.
@@ -125,10 +126,45 @@ func (s *Store) SetConnectorActive(_ context.Context, connectorID int64, active 
 
 	c, ok := s.connectors[connectorID]
 	if !ok {
-		return errors.New("connector not found")
+		return storepkg.ErrConnectorNotFound
 	}
 	c.IsActive = active
 	s.connectors[connectorID] = c
+	return nil
+}
+
+// DeleteConnector removes connector only when there is no dependent state/history.
+func (s *Store) DeleteConnector(_ context.Context, connectorID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	c, ok := s.connectors[connectorID]
+	if !ok {
+		return storepkg.ErrConnectorNotFound
+	}
+	for _, payment := range s.payments {
+		if payment.ConnectorID == connectorID {
+			return storepkg.ErrConnectorInUse
+		}
+	}
+	for _, sub := range s.subsByPayID {
+		if sub.ConnectorID == connectorID {
+			return storepkg.ErrConnectorInUse
+		}
+	}
+	for _, consent := range s.consents {
+		if consent.ConnectorID == connectorID {
+			return storepkg.ErrConnectorInUse
+		}
+	}
+	for _, state := range s.states {
+		if state.ConnectorID == connectorID {
+			return storepkg.ErrConnectorInUse
+		}
+	}
+
+	delete(s.payloadIndex, c.StartPayload)
+	delete(s.connectors, connectorID)
 	return nil
 }
 
@@ -333,6 +369,13 @@ func (s *Store) CreatePayment(_ context.Context, payment domain.Payment) error {
 	if _, exists := s.paymentToken[payment.Token]; exists {
 		return errors.New("payment token already exists")
 	}
+	if payment.SubscriptionID > 0 && payment.Status == domain.PaymentStatusPending {
+		for _, existing := range s.payments {
+			if existing.SubscriptionID == payment.SubscriptionID && existing.Status == domain.PaymentStatusPending {
+				return errors.New("pending rebill already exists for subscription")
+			}
+		}
+	}
 	now := time.Now().UTC()
 	if payment.CreatedAt.IsZero() {
 		payment.CreatedAt = now
@@ -367,6 +410,27 @@ func (s *Store) GetPaymentByID(_ context.Context, paymentID int64) (domain.Payme
 	defer s.mu.RUnlock()
 	p, ok := s.payments[paymentID]
 	return p, ok, nil
+}
+
+// GetPendingRebillPaymentBySubscription returns outstanding recurring attempt for subscription.
+func (s *Store) GetPendingRebillPaymentBySubscription(_ context.Context, subscriptionID int64) (domain.Payment, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var (
+		best  domain.Payment
+		found bool
+	)
+	for _, payment := range s.payments {
+		if payment.SubscriptionID != subscriptionID || payment.Status != domain.PaymentStatusPending {
+			continue
+		}
+		if !found || payment.CreatedAt.After(best.CreatedAt) || (payment.CreatedAt.Equal(best.CreatedAt) && payment.ID > best.ID) {
+			best = payment
+			found = true
+		}
+	}
+	return best, found, nil
 }
 
 // UpdatePaymentPaid moves payment into paid state and stores provider reference.
@@ -432,6 +496,7 @@ func (s *Store) UpsertSubscriptionByPayment(_ context.Context, sub domain.Subscr
 	}
 	// Re-activation means reminder should be sent again for the new period.
 	sub.ReminderSentAt = nil
+	sub.ExpiryNoticeSentAt = nil
 	if sub.ID <= 0 {
 		sub.ID = s.nextSubscrID
 		s.nextSubscrID++
@@ -617,6 +682,66 @@ func (s *Store) MarkSubscriptionReminderSent(_ context.Context, subscriptionID i
 			continue
 		}
 		sub.ReminderSentAt = &sentAt
+		sub.UpdatedAt = time.Now().UTC()
+		s.subsByPayID[paymentID] = sub
+		return nil
+	}
+	return errors.New("subscription not found")
+}
+
+// ListSubscriptionsForExpiryNotice returns active subscriptions that are ending within the next day.
+func (s *Store) ListSubscriptionsForExpiryNotice(_ context.Context, noticeBefore time.Time, limit int) ([]domain.Subscription, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if limit <= 0 {
+		limit = 200
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	now := time.Now().UTC()
+	filtered := make([]domain.Subscription, 0, len(s.subsByPayID))
+	for _, item := range s.subsByPayID {
+		if item.Status != domain.SubscriptionStatusActive {
+			continue
+		}
+		if item.ExpiryNoticeSentAt != nil {
+			continue
+		}
+		if !item.EndsAt.After(now) {
+			continue
+		}
+		if item.EndsAt.After(noticeBefore) {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	sort.Slice(filtered, func(i, j int) bool {
+		if filtered[i].EndsAt.Equal(filtered[j].EndsAt) {
+			return filtered[i].ID < filtered[j].ID
+		}
+		return filtered[i].EndsAt.Before(filtered[j].EndsAt)
+	})
+	if len(filtered) > limit {
+		filtered = filtered[:limit]
+	}
+	return filtered, nil
+}
+
+// MarkSubscriptionExpiryNoticeSent stores same-day notice timestamp.
+func (s *Store) MarkSubscriptionExpiryNoticeSent(_ context.Context, subscriptionID int64, sentAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if sentAt.IsZero() {
+		sentAt = time.Now().UTC()
+	}
+	for paymentID, sub := range s.subsByPayID {
+		if sub.ID != subscriptionID {
+			continue
+		}
+		sub.ExpiryNoticeSentAt = &sentAt
 		sub.UpdatedAt = time.Now().UTC()
 		s.subsByPayID[paymentID] = sub
 		return nil
