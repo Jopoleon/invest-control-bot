@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Jopoleon/telega-bot-fedor/internal/store"
+	"github.com/Jopoleon/telega-bot-fedor/internal/telegram"
 )
 
 // Handler serves admin HTTP pages and operations for connector management.
@@ -12,13 +13,14 @@ type Handler struct {
 	store       store.Store
 	adminToken  string
 	botUsername string
+	tg          *telegram.Client
 	renderer    *renderer
 
 	loginRateLimiter *loginRateLimiter
 }
 
 // NewHandler creates admin handler and preloads HTML templates.
-func NewHandler(st store.Store, adminToken, botUsername string) *Handler {
+func NewHandler(st store.Store, adminToken, botUsername string, tg *telegram.Client) *Handler {
 	r, err := newRenderer()
 	if err != nil {
 		panic(err)
@@ -27,6 +29,7 @@ func NewHandler(st store.Store, adminToken, botUsername string) *Handler {
 		store:       st,
 		adminToken:  adminToken,
 		botUsername: strings.TrimPrefix(strings.TrimSpace(botUsername), "@"),
+		tg:          tg,
 		renderer:    r,
 
 		loginRateLimiter: newLoginRateLimiter(),
@@ -41,6 +44,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("/admin/connectors", h.connectorsPage)
 	mux.HandleFunc("/admin/connectors/toggle", h.toggleConnector)
 	mux.HandleFunc("/admin/connectors/delete", h.deleteConnector)
+	mux.HandleFunc("/admin/users", h.usersPage)
+	mux.HandleFunc("/admin/users/view", h.userDetailPage)
+	mux.HandleFunc("/admin/subscriptions/revoke", h.revokeSubscription)
 	mux.HandleFunc("/admin/billing", h.billingPage)
 	mux.HandleFunc("/admin/events", h.eventsPage)
 	mux.HandleFunc("/admin/help", h.helpPage)

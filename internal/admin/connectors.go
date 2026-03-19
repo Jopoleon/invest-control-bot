@@ -206,6 +206,7 @@ func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWrite
 		if c.IsActive {
 			toggleLabel = t(lang, "connectors.table.disable")
 		}
+		activeLabel, activeClass := connectorActiveBadge(lang, c.IsActive)
 		rows = append(rows, connectorView{
 			ID:           c.ID,
 			StartPayload: c.StartPayload,
@@ -218,6 +219,8 @@ func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWrite
 			PrivacyURL:   c.PrivacyURL,
 			BotLink:      "https://t.me/" + botUsername + "?start=" + c.StartPayload,
 			IsActive:     c.IsActive,
+			ActiveLabel:  activeLabel,
+			ActiveClass:  activeClass,
 			ToggleTo:     toggleTo,
 			ToggleLabel:  toggleLabel,
 		})

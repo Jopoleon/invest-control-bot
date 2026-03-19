@@ -65,7 +65,7 @@ func newApplication(cfg config.Config, st store.Store) (*application, error) {
 		store:            st,
 		telegramClient:   tgClient,
 		botHandler:       bot.NewHandler(st, tgClient, paymentService, cfg.Payment.Provider == "robokassa" && cfg.Payment.Robokassa.RecurringEnabled),
-		adminHandler:     admin.NewHandler(st, cfg.Security.AdminToken, cfg.Telegram.BotUsername),
+		adminHandler:     admin.NewHandler(st, cfg.Security.AdminToken, cfg.Telegram.BotUsername, tgClient),
 		paymentService:   paymentService,
 		robokassaService: robokassaService,
 	}, nil

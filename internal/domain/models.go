@@ -28,6 +28,25 @@ type User struct {
 	UpdatedAt        time.Time
 }
 
+// UserListItem is an admin-facing projection for user list screens.
+type UserListItem struct {
+	TelegramID         int64
+	TelegramUsername   string
+	FullName           string
+	Phone              string
+	Email              string
+	AutoPayEnabled     bool
+	HasAutoPaySettings bool
+	UpdatedAt          time.Time
+}
+
+// UserListQuery describes admin filters for user list.
+type UserListQuery struct {
+	TelegramID int64
+	Search     string
+	Limit      int
+}
+
 // Consent stores acceptance metadata for offer/privacy terms.
 type Consent struct {
 	TelegramID        int64

@@ -24,6 +24,42 @@
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: .8rem; }
     #paymentsSource, #subsSource { display: none; }
     .gridjs-wrapper table td, .gridjs-wrapper table th { white-space: nowrap; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: .28rem .62rem;
+      border-radius: 999px;
+      font-size: .73rem;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: .02em;
+      border: 1px solid transparent;
+    }
+    .badge.is-success { background: #e8f7ee; color: #17663a; border-color: #b8e2c6; }
+    .badge.is-warning { background: #fff6dd; color: #7f5a00; border-color: #f0d98f; }
+    .badge.is-danger { background: #fdebec; color: #a1262d; border-color: #f3b4ba; }
+    .badge.is-muted { background: #eef2f6; color: #536273; border-color: #d2dae3; }
+    .badge.is-accent { background: #e7f0ff; color: #174ea6; border-color: #b9cffb; }
+    .gridjs-footer {
+      background: #f7fafc;
+      color: #405266;
+    }
+    .gridjs-summary {
+      color: #405266;
+    }
+    .gridjs-pages button {
+      color: #24354d;
+      background: #fff;
+      border-color: #d6e0ea;
+    }
+    .gridjs-pages button:hover {
+      background: #edf4fb;
+    }
+    .gridjs-pages button.gridjs-currentPage {
+      color: #0f3f88;
+      background: #e7f0ff;
+      border-color: #b9cffb;
+    }
   </style>
 </head>
 <body>
@@ -105,8 +141,8 @@
           <tr>
             <td class="mono">{{.ID}}</td>
             <td>{{.Provider}}</td>
-            <td>{{.Status}}</td>
-            <td>{{.AutoPayEnabled}}</td>
+            <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
+            <td><span class="badge {{.AutoPayClass}}">{{.AutoPayLabel}}</span></td>
             <td class="mono">{{.TelegramID}}</td>
             <td>{{.Connector}}</td>
             <td>{{.AmountRUB}}</td>
@@ -141,8 +177,8 @@
         {{range .Subscriptions}}
           <tr>
             <td class="mono">{{.ID}}</td>
-            <td>{{.Status}}</td>
-            <td>{{.AutoPayEnabled}}</td>
+            <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
+            <td><span class="badge {{.AutoPayClass}}">{{.AutoPayLabel}}</span></td>
             <td class="mono">{{.TelegramID}}</td>
             <td>{{.Connector}}</td>
             <td class="mono">{{.PaymentID}}</td>

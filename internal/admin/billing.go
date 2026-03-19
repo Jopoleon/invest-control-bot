@@ -86,12 +86,18 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 		if p.PaidAt != nil {
 			paidAt = p.PaidAt.In(time.Local).Format("2006-01-02 15:04:05")
 		}
+		statusLabel, statusClass := paymentStatusBadge(lang, p.Status)
+		autoPayLabel, autoPayClass := autoPayBadge(lang, p.AutoPayEnabled, true)
 		data.Payments = append(data.Payments, paymentView{
 			ID:                p.ID,
 			Provider:          p.Provider,
 			ProviderPaymentID: p.ProviderPaymentID,
 			Status:            string(p.Status),
+			StatusLabel:       statusLabel,
+			StatusClass:       statusClass,
 			AutoPayEnabled:    p.AutoPayEnabled,
+			AutoPayLabel:      autoPayLabel,
+			AutoPayClass:      autoPayClass,
 			TelegramID:        p.TelegramID,
 			ConnectorID:       p.ConnectorID,
 			Connector:         connectorDisplayName(connectorNames, p.ConnectorID),
@@ -103,10 +109,16 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 
 	data.Subscriptions = make([]subscriptionView, 0, len(subs))
 	for _, s := range subs {
+		statusLabel, statusClass := subscriptionStatusBadge(lang, s.Status)
+		autoPayLabel, autoPayClass := autoPayBadge(lang, s.AutoPayEnabled, true)
 		data.Subscriptions = append(data.Subscriptions, subscriptionView{
 			ID:             s.ID,
 			Status:         string(s.Status),
+			StatusLabel:    statusLabel,
+			StatusClass:    statusClass,
 			AutoPayEnabled: s.AutoPayEnabled,
+			AutoPayLabel:   autoPayLabel,
+			AutoPayClass:   autoPayClass,
 			TelegramID:     s.TelegramID,
 			ConnectorID:    s.ConnectorID,
 			Connector:      connectorDisplayName(connectorNames, s.ConnectorID),

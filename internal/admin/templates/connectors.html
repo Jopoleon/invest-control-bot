@@ -74,9 +74,35 @@
       vertical-align: middle;
       white-space: nowrap;
     }
+    .table-wrap td.bot-link-cell,
+    .table-wrap td.bot-link-cell a {
+      white-space: normal;
+      word-break: break-all;
+      max-width: none;
+      overflow: visible;
+      text-overflow: clip;
+      font-family: inherit;
+      font-size: inherit;
+    }
     .actions { display: flex; gap: .45rem; flex-wrap: wrap; }
     .actions form { margin: 0; }
     .actions .danger { background: #d92d20; border-color: #d92d20; color: #fff; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: .28rem .62rem;
+      border-radius: 999px;
+      font-size: .73rem;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: .02em;
+      border: 1px solid transparent;
+    }
+    .badge.is-success { background: #e8f7ee; color: #17663a; border-color: #b8e2c6; }
+    .badge.is-warning { background: #fff6dd; color: #7f5a00; border-color: #f0d98f; }
+    .badge.is-danger { background: #fdebec; color: #a1262d; border-color: #f3b4ba; }
+    .badge.is-muted { background: #eef2f6; color: #536273; border-color: #d2dae3; }
+    .badge.is-accent { background: #e7f0ff; color: #174ea6; border-color: #b9cffb; }
   </style>
 </head>
 <body>
@@ -159,7 +185,7 @@
             <th>{{index .I18N "connectors.table.offer"}}</th>
             <th>{{index .I18N "connectors.table.privacy"}}</th>
             <th>{{index .I18N "connectors.table.channel"}}</th>
-            <th class="mono">{{index .I18N "connectors.table.bot_link"}}</th>
+            <th>{{index .I18N "connectors.table.bot_link"}}</th>
             <th>{{index .I18N "connectors.table.active"}}</th>
             <th>{{index .I18N "connectors.table.action"}}</th>
           </tr>
@@ -174,9 +200,9 @@
             <td class="period-cell">{{.PeriodDays}}</td>
             <td class="link-cell">{{if .OfferURL}}<a href="{{.OfferURL}}" target="_blank" rel="noreferrer">{{index $.I18N "connectors.table.open_link"}}</a>{{end}}</td>
             <td class="link-cell">{{if .PrivacyURL}}<a href="{{.PrivacyURL}}" target="_blank" rel="noreferrer">{{index $.I18N "connectors.table.open_link"}}</a>{{end}}</td>
-            <td class="link-cell">{{if .ChannelURL}}<a href="{{.ChannelURL}}" target="_blank" rel="noreferrer">{{index $.I18N "connectors.table.open_link"}}</a>{{end}}</td>
-            <td class="mono link-cell"><a href="{{.BotLink}}" target="_blank" rel="noreferrer">{{.BotLink}}</a></td>
-            <td class="status-cell">{{.IsActive}}</td>
+            <td class="link-cell bot-link-cell">{{if .ChannelURL}}<a href="{{.ChannelURL}}" target="_blank" rel="noreferrer">{{.ChannelURL}}</a>{{end}}</td>
+            <td class="link-cell bot-link-cell"><a href="{{.BotLink}}" target="_blank" rel="noreferrer">{{.BotLink}}</a></td>
+            <td class="status-cell"><span class="badge {{.ActiveClass}}">{{.ActiveLabel}}</span></td>
             <td class="actions">
               <form method="POST" action="/admin/connectors/toggle?lang={{$.Lang}}">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">

@@ -22,6 +22,8 @@ type connectorView struct {
 	PrivacyURL   string
 	BotLink      string
 	IsActive     bool
+	ActiveLabel  string
+	ActiveClass  string
 	ToggleTo     bool
 	ToggleLabel  string
 }
@@ -94,7 +96,11 @@ type paymentView struct {
 	Provider          string
 	ProviderPaymentID string
 	Status            string
+	StatusLabel       string
+	StatusClass       string
 	AutoPayEnabled    bool
+	AutoPayLabel      string
+	AutoPayClass      string
 	TelegramID        int64
 	ConnectorID       int64
 	Connector         string
@@ -106,7 +112,11 @@ type paymentView struct {
 type subscriptionView struct {
 	ID             int64
 	Status         string
+	StatusLabel    string
+	StatusClass    string
 	AutoPayEnabled bool
+	AutoPayLabel   string
+	AutoPayClass   string
 	TelegramID     int64
 	ConnectorID    int64
 	Connector      string
@@ -114,6 +124,8 @@ type subscriptionView struct {
 	StartsAt       string
 	EndsAt         string
 	CreatedAt      string
+	CanRevoke      bool
+	RevokeURL      string
 }
 
 type billingPageData struct {
@@ -130,4 +142,36 @@ type billingPageData struct {
 
 	Payments      []paymentView
 	Subscriptions []subscriptionView
+}
+
+type userView struct {
+	TelegramID       int64
+	TelegramUsername string
+	FullName         string
+	Phone            string
+	Email            string
+	AutoPay          string
+	AutoPayClass     string
+	UpdatedAt        string
+	DetailURL        string
+}
+
+type usersPageData struct {
+	basePageData
+
+	Notice     string
+	TelegramID string
+	Search     string
+	Users      []userView
+}
+
+type userDetailPageData struct {
+	basePageData
+
+	Notice        string
+	BackURL       string
+	User          userView
+	Payments      []paymentView
+	Subscriptions []subscriptionView
+	Events        []auditEventView
 }

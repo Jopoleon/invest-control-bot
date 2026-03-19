@@ -205,6 +205,59 @@ func (s *Store) GetUser(_ context.Context, telegramID int64) (domain.User, bool,
 	return u, ok, nil
 }
 
+// ListUsers returns filtered users for admin screens.
+func (s *Store) ListUsers(_ context.Context, query domain.UserListQuery) ([]domain.UserListItem, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if query.Limit <= 0 {
+		query.Limit = 200
+	}
+	search := strings.ToLower(strings.TrimSpace(query.Search))
+
+	items := make([]domain.UserListItem, 0, len(s.users))
+	for _, user := range s.users {
+		if query.TelegramID > 0 && user.TelegramID != query.TelegramID {
+			continue
+		}
+		if search != "" {
+			haystack := strings.ToLower(strings.Join([]string{
+				strconv.FormatInt(user.TelegramID, 10),
+				user.TelegramUsername,
+				user.FullName,
+				user.Phone,
+				user.Email,
+			}, " "))
+			if !strings.Contains(haystack, search) {
+				continue
+			}
+		}
+		autoPay, hasAutoPay := s.userAutoPay[user.TelegramID]
+		items = append(items, domain.UserListItem{
+			TelegramID:         user.TelegramID,
+			TelegramUsername:   user.TelegramUsername,
+			FullName:           user.FullName,
+			Phone:              user.Phone,
+			Email:              user.Email,
+			AutoPayEnabled:     autoPay,
+			HasAutoPaySettings: hasAutoPay,
+			UpdatedAt:          user.UpdatedAt,
+		})
+	}
+
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].UpdatedAt.Equal(items[j].UpdatedAt) {
+			return items[i].TelegramID > items[j].TelegramID
+		}
+		return items[i].UpdatedAt.After(items[j].UpdatedAt)
+	})
+
+	if len(items) > query.Limit {
+		items = items[:query.Limit]
+	}
+	return items, nil
+}
+
 // SetUserAutoPayEnabled stores user recurring preference used for next payment link creation.
 func (s *Store) SetUserAutoPayEnabled(_ context.Context, telegramID int64, enabled bool, _ time.Time) error {
 	s.mu.Lock()

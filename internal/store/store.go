@@ -29,6 +29,7 @@ type Store interface {
 
 	SaveUser(ctx context.Context, user domain.User) error
 	GetUser(ctx context.Context, telegramID int64) (domain.User, bool, error)
+	ListUsers(ctx context.Context, query domain.UserListQuery) ([]domain.UserListItem, error)
 	SetUserAutoPayEnabled(ctx context.Context, telegramID int64, enabled bool, updatedAt time.Time) error
 	GetUserAutoPayEnabled(ctx context.Context, telegramID int64) (bool, bool, error)
 

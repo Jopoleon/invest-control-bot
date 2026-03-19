@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin · {{index .I18N "users.detail.profile"}}</title>
+  <link rel="stylesheet" href="/admin/assets/css/pico.min.css">
+  <link rel="stylesheet" href="/admin/assets/css/gridjs-mermaid.min.css">
+  <style>
+    :root {
+      --pico-font-family: "Manrope", "Segoe UI", sans-serif;
+      --pico-font-size: 87.5%;
+      --pico-spacing: .8rem;
+      --pico-form-element-spacing-vertical: .45rem;
+      --pico-form-element-spacing-horizontal: .6rem;
+      --card-border: rgba(36, 56, 89, .08);
+      --card-shadow: 0 18px 48px rgba(24, 39, 75, .08);
+      --hero-bg: linear-gradient(135deg, #11243d, #1d3f63 48%, #d7e6f7 135%);
+      --panel-bg: rgba(255, 255, 255, .88);
+    }
+    body {
+      background:
+        radial-gradient(circle at top left, rgba(176, 205, 234, .45), transparent 28%),
+        linear-gradient(180deg, #f4f7fb, #eaf0f7);
+    }
+    main.container { max-width: 1380px; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; gap: .75rem; flex-wrap: wrap; margin: 1rem 0; }
+    .topbar nav ul { align-items: center; }
+    .langs a[aria-current="true"] { font-weight: 700; text-decoration: underline; }
+    article {
+      border: 1px solid var(--card-border);
+      border-radius: 1.15rem;
+      background: var(--panel-bg);
+      box-shadow: var(--card-shadow);
+      backdrop-filter: blur(10px);
+    }
+    .notice { padding: .75rem 1rem; border: 1px solid #ffd8a8; border-radius: .75rem; background: #fff4e6; color: #8f4b00; margin: .75rem 0 0; font-weight: 600; }
+    .hero {
+      padding: 1.2rem 1.3rem 1.35rem;
+      color: #f7fbff;
+      background: var(--hero-bg);
+      overflow: hidden;
+      position: relative;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -10% -35% auto;
+      width: 280px;
+      height: 280px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, .08);
+      filter: blur(2px);
+    }
+    .hero-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1rem;
+      flex-wrap: wrap;
+      position: relative;
+      z-index: 1;
+    }
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: .35rem;
+      padding: .45rem .75rem;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .12);
+      color: #f7fbff;
+      text-decoration: none;
+      font-weight: 700;
+    }
+    .hero h1 {
+      margin: .65rem 0 .35rem;
+      font-size: clamp(1.7rem, 3vw, 2.35rem);
+      line-height: 1.05;
+      letter-spacing: -.03em;
+      color: #fff;
+      position: relative;
+      z-index: 1;
+    }
+    .hero-subtitle {
+      margin: 0;
+      max-width: 58rem;
+      color: rgba(247, 251, 255, .84);
+      position: relative;
+      z-index: 1;
+    }
+    .hero-tags,
+    .summary-grid,
+    .profile-grid {
+      display: grid;
+      gap: .9rem;
+    }
+    .hero-tags {
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      margin-top: 1rem;
+      position: relative;
+      z-index: 1;
+    }
+    .hero-tag,
+    .summary-card,
+    .profile-card {
+      padding: .95rem 1rem;
+      border: 1px solid var(--card-border);
+      border-radius: 1rem;
+      background: rgba(255, 255, 255, .82);
+      color: #15314f;
+    }
+    .hero-tag small,
+    .summary-card small,
+    .profile-card small {
+      display: block;
+      margin-bottom: .35rem;
+      color: #5b6b7f;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      font-size: .72rem;
+      font-weight: 700;
+    }
+    .hero-tag strong,
+    .summary-card strong,
+    .profile-card strong,
+    .profile-card span {
+      word-break: break-word;
+    }
+    .summary-grid {
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    }
+    .summary-card strong {
+      display: block;
+      font-size: 1.5rem;
+      line-height: 1;
+      color: #10243a;
+    }
+    .profile-grid {
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    .section-card {
+      padding: 1.15rem 1.2rem 1.25rem;
+    }
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: .75rem;
+      flex-wrap: wrap;
+      margin-bottom: .85rem;
+    }
+    .section-head h3 {
+      margin: 0;
+      letter-spacing: -.02em;
+    }
+    .section-kicker {
+      display: inline-flex;
+      align-items: center;
+      padding: .35rem .7rem;
+      border-radius: 999px;
+      background: #edf4fb;
+      color: #294866;
+      font-size: .76rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    .table-wrap { overflow: auto; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: .8rem; }
+    #paymentsSource, #subsSource, #eventsSource { display: none; }
+    .gridjs-wrapper {
+      border: 1px solid #dbe6f1;
+      border-radius: .95rem;
+      overflow: hidden;
+      background: rgba(255, 255, 255, .92);
+    }
+    .gridjs-wrapper table td, .gridjs-wrapper table th { white-space: nowrap; }
+    .gridjs-wrapper table td:last-child { white-space: normal; }
+    .gridjs-head {
+      padding: .4rem .2rem .8rem;
+    }
+    .gridjs-search-input {
+      border-radius: .8rem;
+    }
+    .gridjs-pagination {
+      padding: .7rem .2rem 0;
+    }
+    .row-actions form { margin: 0; }
+    .row-actions button { margin: 0; padding: .35rem .65rem; font-size: .78rem; }
+    .danger { background: #d92d20; border-color: #d92d20; color: #fff; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: .28rem .62rem;
+      border-radius: 999px;
+      font-size: .73rem;
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: .02em;
+      border: 1px solid transparent;
+    }
+    .badge.is-success { background: #e8f7ee; color: #17663a; border-color: #b8e2c6; }
+    .badge.is-warning { background: #fff6dd; color: #7f5a00; border-color: #f0d98f; }
+    .badge.is-danger { background: #fdebec; color: #a1262d; border-color: #f3b4ba; }
+    .badge.is-muted { background: #eef2f6; color: #536273; border-color: #d2dae3; }
+    .badge.is-accent { background: #e7f0ff; color: #174ea6; border-color: #b9cffb; }
+    .gridjs-footer {
+      background: #f7fafc;
+      color: #405266;
+    }
+    .gridjs-summary {
+      color: #405266;
+    }
+    .gridjs-pages button {
+      color: #24354d;
+      background: #fff;
+      border-color: #d6e0ea;
+    }
+    .gridjs-pages button:hover {
+      background: #edf4fb;
+    }
+    .gridjs-pages button.gridjs-currentPage {
+      color: #0f3f88;
+      background: #e7f0ff;
+      border-color: #b9cffb;
+    }
+    @media (max-width: 720px) {
+      .hero {
+        padding: 1rem;
+      }
+      .section-card {
+        padding: .95rem;
+      }
+    }
+  </style>
+</head>
+<body>
+<main class="container">
+  {{template "topbar" .}}
+
+  <article class="hero">
+    <div class="hero-top">
+      <a class="back-link" href="{{.BackURL}}">{{index .I18N "users.detail.back"}}</a>
+      <span class="section-kicker">{{index .I18N "users.detail.profile"}}</span>
+    </div>
+    <h1>
+      {{if .User.FullName}}{{.User.FullName}}{{else if .User.TelegramUsername}}{{.User.TelegramUsername}}{{else}}{{.User.TelegramID}}{{end}}
+    </h1>
+    <p class="hero-subtitle">
+      Операционная карточка пользователя: профиль, подписки, платежи и история действий в одном месте.
+    </p>
+    {{if .User.TelegramID}}
+    <div class="hero-tags">
+      <div class="hero-tag">
+        <small>{{index .I18N "users.table.id"}}</small>
+        <strong class="mono">{{.User.TelegramID}}</strong>
+      </div>
+      <div class="hero-tag">
+        <small>{{index .I18N "users.table.username"}}</small>
+        <strong>{{.User.TelegramUsername}}</strong>
+      </div>
+      <div class="hero-tag">
+        <small>{{index .I18N "users.table.autopay"}}</small>
+        <strong><span class="badge {{.User.AutoPayClass}}">{{.User.AutoPay}}</span></strong>
+      </div>
+      <div class="hero-tag">
+        <small>{{index .I18N "users.table.updated"}}</small>
+        <strong class="mono">{{.User.UpdatedAt}}</strong>
+      </div>
+    </div>
+    {{end}}
+    {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+  </article>
+
+  {{if .User.TelegramID}}
+  <article class="section-card">
+    <div class="section-head">
+      <h3>{{index .I18N "users.detail.profile"}}</h3>
+      <span class="section-kicker">Profile</span>
+    </div>
+    <div class="summary-grid">
+      <div class="summary-card">
+        <small>{{index .I18N "users.detail.subscriptions"}}</small>
+        <strong>{{len .Subscriptions}}</strong>
+      </div>
+      <div class="summary-card">
+        <small>{{index .I18N "users.detail.payments"}}</small>
+        <strong>{{len .Payments}}</strong>
+      </div>
+      <div class="summary-card">
+        <small>{{index .I18N "users.detail.events"}}</small>
+        <strong>{{len .Events}}</strong>
+      </div>
+    </div>
+  </article>
+
+  <article class="section-card">
+    <div class="section-head">
+      <h3>{{index .I18N "users.detail.profile"}}</h3>
+      <span class="section-kicker">Contacts</span>
+    </div>
+    <div class="profile-grid">
+      <div class="profile-card">
+        <small>{{index .I18N "users.table.id"}}</small>
+        <strong class="mono">{{.User.TelegramID}}</strong>
+      </div>
+      <div class="profile-card">
+        <small>{{index .I18N "users.table.username"}}</small>
+        <span>{{.User.TelegramUsername}}</span>
+      </div>
+      <div class="profile-card">
+        <small>{{index .I18N "users.table.full_name"}}</small>
+        <span>{{.User.FullName}}</span>
+      </div>
+      <div class="profile-card">
+        <small>{{index .I18N "users.table.phone"}}</small>
+        <span>{{.User.Phone}}</span>
+      </div>
+      <div class="profile-card">
+        <small>{{index .I18N "users.table.email"}}</small>
+        <span>{{.User.Email}}</span>
+      </div>
+      <div class="profile-card">
+        <small>{{index .I18N "users.table.autopay"}}</small>
+        <span>{{.User.AutoPay}}</span>
+      </div>
+      <div class="profile-card">
+        <small>{{index .I18N "users.table.updated"}}</small>
+        <span class="mono">{{.User.UpdatedAt}}</span>
+      </div>
+    </div>
+  </article>
+
+  <article class="section-card">
+    <div class="section-head">
+      <h3>{{index .I18N "users.detail.subscriptions"}} ({{len .Subscriptions}})</h3>
+      <span class="section-kicker">Access</span>
+    </div>
+    <div class="table-wrap">
+      <div id="subsGrid"></div>
+      <table id="subsSource">
+        <thead>
+          <tr>
+            <th>{{index .I18N "billing.table.subscription.id"}}</th>
+            <th>{{index .I18N "billing.table.subscription.status"}}</th>
+            <th>{{index .I18N "billing.table.subscription.autopay"}}</th>
+            <th>{{index .I18N "billing.table.subscription.connector"}}</th>
+            <th>{{index .I18N "billing.table.subscription.payment"}}</th>
+            <th>{{index .I18N "billing.table.subscription.starts"}}</th>
+            <th>{{index .I18N "billing.table.subscription.ends"}}</th>
+            <th>{{index .I18N "billing.table.subscription.created"}}</th>
+            <th>{{index .I18N "users.revoke.action"}}</th>
+          </tr>
+        </thead>
+        <tbody>
+        {{range .Subscriptions}}
+          <tr>
+            <td class="mono">{{.ID}}</td>
+            <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
+            <td><span class="badge {{.AutoPayClass}}">{{.AutoPayLabel}}</span></td>
+            <td>{{.Connector}}</td>
+            <td class="mono">{{.PaymentID}}</td>
+            <td class="mono">{{.StartsAt}}</td>
+            <td class="mono">{{.EndsAt}}</td>
+            <td class="mono">{{.CreatedAt}}</td>
+            <td class="row-actions">
+              {{if .CanRevoke}}
+              <form method="POST" action="{{.RevokeURL}}" onsubmit="return confirm('{{index $.I18N "users.revoke.confirm"}}');">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="telegram_id" value="{{$.User.TelegramID}}">
+                <input type="hidden" name="subscription_id" value="{{.ID}}">
+                <button type="submit" class="danger">{{index $.I18N "users.revoke.button"}}</button>
+              </form>
+              {{end}}
+            </td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{if not .Subscriptions}}<small>{{index .I18N "users.detail.empty"}}</small>{{end}}
+  </article>
+
+  <article class="section-card">
+    <div class="section-head">
+      <h3>{{index .I18N "users.detail.payments"}} ({{len .Payments}})</h3>
+      <span class="section-kicker">Money</span>
+    </div>
+    <div class="table-wrap">
+      <div id="paymentsGrid"></div>
+      <table id="paymentsSource">
+        <thead>
+          <tr>
+            <th>{{index .I18N "billing.table.payment.id"}}</th>
+            <th>{{index .I18N "billing.table.payment.provider"}}</th>
+            <th>{{index .I18N "billing.table.payment.status"}}</th>
+            <th>{{index .I18N "billing.table.payment.autopay"}}</th>
+            <th>{{index .I18N "billing.table.payment.connector"}}</th>
+            <th>{{index .I18N "billing.table.payment.amount"}}</th>
+            <th>{{index .I18N "billing.table.payment.created"}}</th>
+            <th>{{index .I18N "billing.table.payment.paid_at"}}</th>
+          </tr>
+        </thead>
+        <tbody>
+        {{range .Payments}}
+          <tr>
+            <td class="mono">{{.ID}}</td>
+            <td>{{.Provider}}</td>
+            <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
+            <td><span class="badge {{.AutoPayClass}}">{{.AutoPayLabel}}</span></td>
+            <td>{{.Connector}}</td>
+            <td>{{.AmountRUB}}</td>
+            <td class="mono">{{.CreatedAt}}</td>
+            <td class="mono">{{.PaidAt}}</td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{if not .Payments}}<small>{{index .I18N "users.detail.empty"}}</small>{{end}}
+  </article>
+
+  <article class="section-card">
+    <div class="section-head">
+      <h3>{{index .I18N "users.detail.events"}} ({{len .Events}})</h3>
+      <span class="section-kicker">Audit</span>
+    </div>
+    <div class="table-wrap">
+      <div id="eventsGrid"></div>
+      <table id="eventsSource">
+        <thead>
+          <tr>
+            <th>{{index .I18N "events.table.time"}}</th>
+            <th>{{index .I18N "events.table.connector"}}</th>
+            <th>{{index .I18N "events.table.action"}}</th>
+            <th>{{index .I18N "events.table.details"}}</th>
+          </tr>
+        </thead>
+        <tbody>
+        {{range .Events}}
+          <tr>
+            <td class="mono">{{.CreatedAt}}</td>
+            <td>{{.Connector}}</td>
+            <td class="mono">{{.Action}}</td>
+            <td class="mono">{{.Details}}</td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{if not .Events}}<small>{{index .I18N "users.detail.empty"}}</small>{{end}}
+  </article>
+  {{end}}
+</main>
+<script src="/admin/assets/js/gridjs.umd.js" defer></script>
+<script>
+  window.addEventListener("DOMContentLoaded", function () {
+    if (!window.gridjs) return;
+
+    const lang = "{{.Lang}}";
+    const labels = lang === "ru" ? {
+      search: { placeholder: "Поиск..." },
+      pagination: {
+        previous: "Назад",
+        next: "Вперед",
+        showing: "Показано",
+        results: () => "записей"
+      },
+      sort: {
+        sortAsc: "Сортировать по возрастанию",
+        sortDesc: "Сортировать по убыванию"
+      }
+    } : {
+      search: { placeholder: "Search..." },
+      pagination: {
+        previous: "Previous",
+        next: "Next",
+        showing: "Showing",
+        results: () => "records"
+      }
+    };
+
+    [
+      ["#subsSource", "#subsGrid", 15],
+      ["#paymentsSource", "#paymentsGrid", 15],
+      ["#eventsSource", "#eventsGrid", 20]
+    ].forEach(function (item) {
+      const source = document.querySelector(item[0]);
+      const grid = document.querySelector(item[1]);
+      if (!source || !grid) return;
+      new window.gridjs.Grid({
+        from: source,
+        search: true,
+        sort: true,
+        pagination: { limit: item[2] },
+        language: labels
+      }).render(grid);
+    });
+  });
+</script>
+</body>
+</html>
