@@ -31,11 +31,15 @@ type Store interface {
 	ListAuditEvents(ctx context.Context, query domain.AuditEventListQuery) ([]domain.AuditEvent, int, error)
 
 	CreatePayment(ctx context.Context, payment domain.Payment) error
+	GetPaymentByID(ctx context.Context, paymentID int64) (domain.Payment, bool, error)
 	GetPaymentByToken(ctx context.Context, token string) (domain.Payment, bool, error)
 	UpdatePaymentPaid(ctx context.Context, paymentID int64, providerPaymentID string, paidAt time.Time) (bool, error)
+	UpdatePaymentFailed(ctx context.Context, paymentID int64, providerPaymentID string, updatedAt time.Time) (bool, error)
 	ListPayments(ctx context.Context, query domain.PaymentListQuery) ([]domain.Payment, error)
 
 	UpsertSubscriptionByPayment(ctx context.Context, sub domain.Subscription) error
+	GetSubscriptionByID(ctx context.Context, subscriptionID int64) (domain.Subscription, bool, error)
+	GetLatestSubscriptionByUserConnector(ctx context.Context, telegramID, connectorID int64) (domain.Subscription, bool, error)
 	ListSubscriptions(ctx context.Context, query domain.SubscriptionListQuery) ([]domain.Subscription, error)
 	ListSubscriptionsForReminder(ctx context.Context, remindBefore time.Time, limit int) ([]domain.Subscription, error)
 	MarkSubscriptionReminderSent(ctx context.Context, subscriptionID int64, sentAt time.Time) error

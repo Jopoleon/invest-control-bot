@@ -52,6 +52,7 @@ go run ./cmd/server
 - `POST /payment/result`
 - `POST /payment/success`
 - `POST /payment/fail`
+- `POST /payment/rebill` (admin/internal endpoint for recurring charge trigger)
 - `GET /admin/connectors`
 - `GET /admin/billing`
 - `GET /admin/events`
@@ -90,10 +91,12 @@ go run ./cmd/server
   - `ROBOKASSA_PASS1`
   - `ROBOKASSA_PASS2`
   - `ROBOKASSA_IS_TEST_MODE=true` (для тестов)
+  - `ROBOKASSA_REBILL_URL` (по умолчанию `https://auth.robokassa.ru/Merchant/Recurring`)
 - URL callbacks:
   - `POST /payment/result` (подтверждение платежа, источник истины)
   - `POST /payment/success`
   - `POST /payment/fail`
+  - `POST /payment/rebill` (внутренний endpoint для запуска повторного списания по `subscription_id`)
 
 ## Логирование
 - Используется `log/slog` (structured logs).

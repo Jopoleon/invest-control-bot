@@ -485,6 +485,40 @@ func (s *Store) GetPaymentByToken(ctx context.Context, token string) (domain.Pay
 	return payment, true, nil
 }
 
+// GetPaymentByID returns payment by internal identifier.
+func (s *Store) GetPaymentByID(ctx context.Context, paymentID int64) (domain.Payment, bool, error) {
+	var payment domain.Payment
+	var status string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, provider, provider_payment_id, status, token, telegram_id, connector_id, auto_pay_enabled,
+		       amount_rub, checkout_url, created_at, paid_at, updated_at
+		FROM payments
+		WHERE id = $1
+	`, paymentID).Scan(
+		&payment.ID,
+		&payment.Provider,
+		&payment.ProviderPaymentID,
+		&status,
+		&payment.Token,
+		&payment.TelegramID,
+		&payment.ConnectorID,
+		&payment.AutoPayEnabled,
+		&payment.AmountRUB,
+		&payment.CheckoutURL,
+		&payment.CreatedAt,
+		&payment.PaidAt,
+		&payment.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return domain.Payment{}, false, nil
+	}
+	if err != nil {
+		return domain.Payment{}, false, err
+	}
+	payment.Status = domain.PaymentStatus(status)
+	return payment, true, nil
+}
+
 // UpdatePaymentPaid marks payment as paid and stores provider payment reference.
 // Returns true only when row changed from non-paid to paid.
 func (s *Store) UpdatePaymentPaid(ctx context.Context, paymentID int64, providerPaymentID string, paidAt time.Time) (bool, error) {
@@ -513,6 +547,44 @@ func (s *Store) UpdatePaymentPaid(ctx context.Context, paymentID int64, provider
 	}
 	if !exists {
 		return false, errors.New("payment not found")
+	}
+	return false, nil
+}
+
+// UpdatePaymentFailed marks payment as failed and stores provider reference.
+// Returns true only when row changed from non-failed to failed.
+func (s *Store) UpdatePaymentFailed(ctx context.Context, paymentID int64, providerPaymentID string, updatedAt time.Time) (bool, error) {
+	if updatedAt.IsZero() {
+		updatedAt = time.Now().UTC()
+	}
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE payments
+		SET status = $2, provider_payment_id = $3, updated_at = $4
+		WHERE id = $1
+		  AND status = $5
+	`, paymentID, string(domain.PaymentStatusFailed), providerPaymentID, updatedAt, string(domain.PaymentStatusPending))
+	if err != nil {
+		return false, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if affected > 0 {
+		return true, nil
+	}
+	var (
+		exists bool
+		status string
+	)
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM payments WHERE id = $1)`, paymentID).Scan(&exists); err != nil {
+		return false, err
+	}
+	if !exists {
+		return false, errors.New("payment not found")
+	}
+	if err := s.db.QueryRowContext(ctx, `SELECT status FROM payments WHERE id = $1`, paymentID).Scan(&status); err == nil && status == string(domain.PaymentStatusPaid) {
+		return false, nil
 	}
 	return false, nil
 }
@@ -551,6 +623,70 @@ func (s *Store) UpsertSubscriptionByPayment(ctx context.Context, sub domain.Subs
 		sub.UpdatedAt,
 	)
 	return err
+}
+
+// GetSubscriptionByID fetches subscription by internal identifier.
+func (s *Store) GetSubscriptionByID(ctx context.Context, subscriptionID int64) (domain.Subscription, bool, error) {
+	var item domain.Subscription
+	var status string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, telegram_id, connector_id, payment_id, status, auto_pay_enabled, starts_at, ends_at, reminder_sent_at, created_at, updated_at
+		FROM subscriptions
+		WHERE id = $1
+	`, subscriptionID).Scan(
+		&item.ID,
+		&item.TelegramID,
+		&item.ConnectorID,
+		&item.PaymentID,
+		&status,
+		&item.AutoPayEnabled,
+		&item.StartsAt,
+		&item.EndsAt,
+		&item.ReminderSentAt,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return domain.Subscription{}, false, nil
+	}
+	if err != nil {
+		return domain.Subscription{}, false, err
+	}
+	item.Status = domain.SubscriptionStatus(status)
+	return item, true, nil
+}
+
+// GetLatestSubscriptionByUserConnector returns latest subscription by ends_at for user/connector pair.
+func (s *Store) GetLatestSubscriptionByUserConnector(ctx context.Context, telegramID, connectorID int64) (domain.Subscription, bool, error) {
+	var item domain.Subscription
+	var status string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, telegram_id, connector_id, payment_id, status, auto_pay_enabled, starts_at, ends_at, reminder_sent_at, created_at, updated_at
+		FROM subscriptions
+		WHERE telegram_id = $1 AND connector_id = $2
+		ORDER BY ends_at DESC, id DESC
+		LIMIT 1
+	`, telegramID, connectorID).Scan(
+		&item.ID,
+		&item.TelegramID,
+		&item.ConnectorID,
+		&item.PaymentID,
+		&status,
+		&item.AutoPayEnabled,
+		&item.StartsAt,
+		&item.EndsAt,
+		&item.ReminderSentAt,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return domain.Subscription{}, false, nil
+	}
+	if err != nil {
+		return domain.Subscription{}, false, err
+	}
+	item.Status = domain.SubscriptionStatus(status)
+	return item, true, nil
 }
 
 // ListPayments returns recent payments with optional admin filters.
@@ -700,7 +836,7 @@ func (s *Store) ListSubscriptions(ctx context.Context, query domain.Subscription
 	return result, rows.Err()
 }
 
-// ListSubscriptionsForReminder returns active subscriptions that need 5-day reminder.
+// ListSubscriptionsForReminder returns active subscriptions that need a pre-expiration reminder.
 func (s *Store) ListSubscriptionsForReminder(ctx context.Context, remindBefore time.Time, limit int) ([]domain.Subscription, error) {
 	if limit <= 0 {
 		limit = 200

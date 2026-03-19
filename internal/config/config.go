@@ -91,6 +91,7 @@ type RobokassaPaymentConfig struct {
 	Password2     string
 	IsTestMode    bool
 	CheckoutURL   string
+	RebillURL     string
 }
 
 // LoggingConfig controls verbosity of structured logs.
@@ -161,6 +162,7 @@ func Load() (Config, error) {
 				Password2:     strings.TrimSpace(os.Getenv("ROBOKASSA_PASS2")),
 				IsTestMode:    getBoolEnv("ROBOKASSA_IS_TEST_MODE", true),
 				CheckoutURL:   strings.TrimSpace(os.Getenv("ROBOKASSA_CHECKOUT_URL")),
+				RebillURL:     strings.TrimSpace(os.Getenv("ROBOKASSA_REBILL_URL")),
 			},
 		},
 		Logging: LoggingConfig{

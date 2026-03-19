@@ -11,25 +11,54 @@ import (
 	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
 	"github.com/Jopoleon/telega-bot-fedor/internal/store"
 	"github.com/Jopoleon/telega-bot-fedor/internal/telegram"
+	"github.com/go-co-op/gocron/v2"
 	"github.com/go-telegram/bot/models"
 )
 
 const (
-	reminderDaysBeforeEnd = 5
+	reminderDaysBeforeEnd = 3
 	subscriptionJobLimit  = 200
+	subscriptionJobEvery  = time.Minute
 )
 
-func startSubscriptionLifecycleWorker(st store.Store, tg *telegram.Client, botUsername string) {
-	go func() {
-		ticker := time.NewTicker(1 * time.Minute)
-		defer ticker.Stop()
+// newSubscriptionLifecycleScheduler wires periodic reminder and expiration jobs.
+func newSubscriptionLifecycleScheduler(st store.Store, tg *telegram.Client, botUsername string) (gocron.Scheduler, error) {
+	scheduler, err := gocron.NewScheduler()
+	if err != nil {
+		return nil, fmt.Errorf("create subscription lifecycle scheduler: %w", err)
+	}
 
-		for {
+	jobOptions := []gocron.JobOption{
+		gocron.WithSingletonMode(gocron.LimitModeReschedule),
+	}
+	if _, err := scheduler.NewJob(
+		gocron.DurationJob(subscriptionJobEvery),
+		gocron.NewTask(func() {
 			processSubscriptionReminders(context.Background(), st, tg, botUsername)
+		}),
+		jobOptions...,
+	); err != nil {
+		_ = scheduler.Shutdown()
+		return nil, fmt.Errorf("register subscription reminder job: %w", err)
+	}
+	if _, err := scheduler.NewJob(
+		gocron.DurationJob(subscriptionJobEvery),
+		gocron.NewTask(func() {
 			processExpiredSubscriptions(context.Background(), st, tg, botUsername)
-			<-ticker.C
-		}
-	}()
+		}),
+		jobOptions...,
+	); err != nil {
+		_ = scheduler.Shutdown()
+		return nil, fmt.Errorf("register subscription expiration job: %w", err)
+	}
+
+	return scheduler, nil
+}
+
+// runSubscriptionLifecyclePass executes both lifecycle phases once.
+func runSubscriptionLifecyclePass(ctx context.Context, st store.Store, tg *telegram.Client, botUsername string) {
+	processSubscriptionReminders(ctx, st, tg, botUsername)
+	processExpiredSubscriptions(ctx, st, tg, botUsername)
 }
 
 func processSubscriptionReminders(ctx context.Context, st store.Store, tg *telegram.Client, botUsername string) {

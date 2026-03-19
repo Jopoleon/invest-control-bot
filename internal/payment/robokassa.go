@@ -5,13 +5,16 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 )
 
 const (
-	defaultRobokassaBaseURL = "https://auth.robokassa.ru/Merchant/Index.aspx"
+	defaultRobokassaBaseURL   = "https://auth.robokassa.ru/Merchant/Index.aspx"
+	defaultRobokassaRebillURL = "https://auth.robokassa.ru/Merchant/Recurring"
 )
 
 // RobokassaService generates payment links and verifies Robokassa signatures.
@@ -21,6 +24,8 @@ type RobokassaService struct {
 	password2     string
 	isTest        bool
 	baseURL       string
+	rebillURL     string
+	httpClient    *http.Client
 }
 
 // RobokassaConfig holds credentials and checkout mode.
@@ -30,6 +35,7 @@ type RobokassaConfig struct {
 	Password2     string
 	IsTest        bool
 	BaseURL       string
+	RebillURL     string
 }
 
 // NewRobokassaService builds Robokassa payment provider client.
@@ -44,6 +50,8 @@ func NewRobokassaService(cfg RobokassaConfig) *RobokassaService {
 		password2:     strings.TrimSpace(cfg.Password2),
 		isTest:        cfg.IsTest,
 		baseURL:       baseURL,
+		rebillURL:     firstNonEmpty(strings.TrimSpace(cfg.RebillURL), defaultRobokassaRebillURL),
+		httpClient:    &http.Client{},
 	}
 }
 
@@ -99,6 +107,58 @@ func (s *RobokassaService) VerifySuccessSignature(outSum, invID, provided string
 	return strings.EqualFold(strings.TrimSpace(provided), expected)
 }
 
+// CreateRebill requests server-side recurring charge based on previous successful invoice.
+func (s *RobokassaService) CreateRebill(ctx context.Context, req RebillRequest) error {
+	invoiceID := strings.TrimSpace(req.InvoiceID)
+	previousInvoiceID := strings.TrimSpace(req.PreviousInvoiceID)
+	if invoiceID == "" {
+		return fmt.Errorf("invoice ID is required")
+	}
+	if previousInvoiceID == "" {
+		return fmt.Errorf("previous invoice ID is required")
+	}
+	outSum := formatOutSum(req.AmountRUB)
+	signature := md5Hex(strings.Join([]string{
+		s.merchantLogin,
+		outSum,
+		invoiceID,
+		s.password1,
+	}, ":"))
+
+	form := url.Values{}
+	form.Set("MerchantLogin", s.merchantLogin)
+	form.Set("InvoiceID", invoiceID)
+	form.Set("PreviousInvoiceID", previousInvoiceID)
+	form.Set("OutSum", outSum)
+	form.Set("Description", strings.TrimSpace(req.Description))
+	form.Set("SignatureValue", signature)
+	if s.isTest {
+		form.Set("IsTest", "1")
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, s.rebillURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		return fmt.Errorf("build rebill request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := s.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("perform rebill request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+	body := strings.TrimSpace(string(bodyBytes))
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("rebill status %d: %s", resp.StatusCode, body)
+	}
+	if !strings.HasPrefix(strings.ToUpper(body), "OK") {
+		return fmt.Errorf("rebill provider response is not OK: %s", body)
+	}
+	return nil
+}
+
 func formatOutSum(amountRUB int64) string {
 	if amountRUB < 0 {
 		amountRUB = 0
@@ -109,4 +169,13 @@ func formatOutSum(amountRUB int64) string {
 func md5Hex(raw string) string {
 	sum := md5.Sum([]byte(raw))
 	return strings.ToLower(hex.EncodeToString(sum[:]))
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if t := strings.TrimSpace(v); t != "" {
+			return t
+		}
+	}
+	return ""
 }

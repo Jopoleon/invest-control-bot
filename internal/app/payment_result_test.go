@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"crypto/md5"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -151,6 +152,133 @@ func TestPaymentResult_RejectsOutSumMismatch(t *testing.T) {
 	}
 }
 
+func TestPaymentRebill_CreatesPendingRecurringPayment(t *testing.T) {
+	t.Helper()
+
+	const (
+		adminToken = "admin-secret"
+		pass2      = "test-pass2"
+		parentInv  = "1000009001"
+	)
+
+	ctx := context.Background()
+	st := memory.New()
+	connectorID := seedConnector(t, ctx, st, "in-rebill")
+
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPaid,
+		Token:          parentInv,
+		TelegramID:     778001,
+		ConnectorID:    connectorID,
+		AmountRUB:      2322,
+		AutoPayEnabled: true,
+		CreatedAt:      time.Now().UTC().Add(-24 * time.Hour),
+		UpdatedAt:      time.Now().UTC().Add(-24 * time.Hour),
+	})
+	parentPayment, found, err := st.GetPaymentByToken(ctx, parentInv)
+	if err != nil || !found {
+		t.Fatalf("parent payment not found: found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		TelegramID:     parentPayment.TelegramID,
+		ConnectorID:    parentPayment.ConnectorID,
+		PaymentID:      parentPayment.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       time.Now().UTC().Add(-24 * time.Hour),
+		EndsAt:         time.Now().UTC().Add(24 * time.Hour),
+		CreatedAt:      time.Now().UTC().Add(-24 * time.Hour),
+		UpdatedAt:      time.Now().UTC().Add(-24 * time.Hour),
+	}); err != nil {
+		t.Fatalf("seed subscription: %v", err)
+	}
+	subscriptions, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{
+		TelegramID: parentPayment.TelegramID,
+		Limit:      20,
+	})
+	if err != nil || len(subscriptions) != 1 {
+		t.Fatalf("expected one subscription, got=%d err=%v", len(subscriptions), err)
+	}
+
+	rebillMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if r.FormValue("PreviousInvoiceID") != parentInv {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte("bad parent"))
+			return
+		}
+		_, _ = w.Write([]byte("OK+" + r.FormValue("InvoiceID")))
+	}))
+	defer rebillMock.Close()
+
+	cfg := config.Config{
+		AppName:     "telega-bot-fedor-test",
+		Environment: config.EnvLocal,
+		HTTP: config.HTTPConfig{
+			Address:      ":0",
+			ReadTimeout:  5 * time.Second,
+			WriteTimeout: 5 * time.Second,
+		},
+		Postgres: config.PostgresConfig{
+			Driver: "memory",
+		},
+		Payment: config.PaymentConfig{
+			Provider: "robokassa",
+			Robokassa: config.RobokassaPaymentConfig{
+				MerchantLogin: "test-merchant",
+				Password1:     "test-pass1",
+				Password2:     pass2,
+				IsTestMode:    true,
+				RebillURL:     rebillMock.URL,
+			},
+		},
+		Security: config.SecurityConfig{
+			AdminToken: adminToken,
+		},
+	}
+	handler := testServerHandlerWithConfig(t, st, cfg)
+
+	form := url.Values{"subscription_id": {fmt.Sprintf("%d", subscriptions[0].ID)}}
+	req := httptest.NewRequest(http.MethodPost, "/payment/rebill", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		body, _ := io.ReadAll(rr.Body)
+		t.Fatalf("rebill status=%d body=%q", rr.Code, string(body))
+	}
+	var payload struct {
+		OK        bool   `json:"ok"`
+		InvoiceID string `json:"invoice_id"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode rebill response: %v", err)
+	}
+	if !payload.OK || strings.TrimSpace(payload.InvoiceID) == "" {
+		t.Fatalf("unexpected rebill payload: %+v", payload)
+	}
+
+	newPayment, found, err := st.GetPaymentByToken(ctx, payload.InvoiceID)
+	if err != nil || !found {
+		t.Fatalf("new rebill payment not found: found=%v err=%v", found, err)
+	}
+	if newPayment.Status != domain.PaymentStatusPending {
+		t.Fatalf("new payment status=%s want=%s", newPayment.Status, domain.PaymentStatusPending)
+	}
+	if !newPayment.AutoPayEnabled {
+		t.Fatalf("new payment autopay should be enabled")
+	}
+}
+
 func testServerHandler(t *testing.T, st store.Store, pass2 string) http.Handler {
 	t.Helper()
 
@@ -176,6 +304,11 @@ func testServerHandler(t *testing.T, st store.Store, pass2 string) http.Handler 
 		},
 	}
 
+	return testServerHandlerWithConfig(t, st, cfg)
+}
+
+func testServerHandlerWithConfig(t *testing.T, st store.Store, cfg config.Config) http.Handler {
+	t.Helper()
 	srv, err := New(cfg, st)
 	if err != nil {
 		t.Fatalf("create app server: %v", err)

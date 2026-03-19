@@ -17,3 +17,16 @@ type Service interface {
 	CreateCheckoutURL(ctx context.Context, req Request) (string, error)
 	ProviderName() string
 }
+
+// RebillRequest contains data for provider-side recurring charge creation.
+type RebillRequest struct {
+	InvoiceID         string
+	PreviousInvoiceID string
+	AmountRUB         int64
+	Description       string
+}
+
+// RebillProvider is implemented by providers that support server-side recurring charges.
+type RebillProvider interface {
+	CreateRebill(ctx context.Context, req RebillRequest) error
+}

@@ -361,6 +361,14 @@ func (s *Store) GetPaymentByToken(_ context.Context, token string) (domain.Payme
 	return payment, true, nil
 }
 
+// GetPaymentByID fetches payment by internal DB identifier.
+func (s *Store) GetPaymentByID(_ context.Context, paymentID int64) (domain.Payment, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	p, ok := s.payments[paymentID]
+	return p, ok, nil
+}
+
 // UpdatePaymentPaid moves payment into paid state and stores provider reference.
 // Returns true only when state changed from non-paid to paid.
 func (s *Store) UpdatePaymentPaid(_ context.Context, paymentID int64, providerPaymentID string, paidAt time.Time) (bool, error) {
@@ -381,6 +389,31 @@ func (s *Store) UpdatePaymentPaid(_ context.Context, paymentID int64, providerPa
 	payment.ProviderPaymentID = providerPaymentID
 	payment.PaidAt = &paidAt
 	payment.UpdatedAt = time.Now().UTC()
+	s.payments[paymentID] = payment
+	return true, nil
+}
+
+// UpdatePaymentFailed marks payment as failed (idempotent for already-failed rows).
+func (s *Store) UpdatePaymentFailed(_ context.Context, paymentID int64, providerPaymentID string, updatedAt time.Time) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	payment, ok := s.payments[paymentID]
+	if !ok {
+		return false, errors.New("payment not found")
+	}
+	if payment.Status == domain.PaymentStatusPaid {
+		return false, nil
+	}
+	if payment.Status == domain.PaymentStatusFailed {
+		return false, nil
+	}
+	if updatedAt.IsZero() {
+		updatedAt = time.Now().UTC()
+	}
+	payment.Status = domain.PaymentStatusFailed
+	payment.ProviderPaymentID = providerPaymentID
+	payment.UpdatedAt = updatedAt
 	s.payments[paymentID] = payment
 	return true, nil
 }
@@ -406,6 +439,41 @@ func (s *Store) UpsertSubscriptionByPayment(_ context.Context, sub domain.Subscr
 	sub.UpdatedAt = now
 	s.subsByPayID[sub.PaymentID] = sub
 	return nil
+}
+
+// GetSubscriptionByID fetches subscription by internal identifier.
+func (s *Store) GetSubscriptionByID(_ context.Context, subscriptionID int64) (domain.Subscription, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, sub := range s.subsByPayID {
+		if sub.ID == subscriptionID {
+			return sub, true, nil
+		}
+	}
+	return domain.Subscription{}, false, nil
+}
+
+// GetLatestSubscriptionByUserConnector returns latest subscription by ends_at for pair.
+func (s *Store) GetLatestSubscriptionByUserConnector(_ context.Context, telegramID, connectorID int64) (domain.Subscription, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var (
+		best  domain.Subscription
+		found bool
+	)
+	for _, sub := range s.subsByPayID {
+		if sub.TelegramID != telegramID || sub.ConnectorID != connectorID {
+			continue
+		}
+		if !found || sub.EndsAt.After(best.EndsAt) {
+			best = sub
+			found = true
+		}
+	}
+	if !found {
+		return domain.Subscription{}, false, nil
+	}
+	return best, true, nil
 }
 
 // ListPayments returns recent payments using admin filters.
@@ -496,7 +564,7 @@ func (s *Store) ListSubscriptions(_ context.Context, query domain.SubscriptionLi
 	return filtered, nil
 }
 
-// ListSubscriptionsForReminder returns active subscriptions that are ending in <=5 days and not yet notified.
+// ListSubscriptionsForReminder returns active subscriptions that are ending soon and not yet notified.
 func (s *Store) ListSubscriptionsForReminder(_ context.Context, remindBefore time.Time, limit int) ([]domain.Subscription, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/Jopoleon/telega-bot-fedor/internal/app"
@@ -49,8 +51,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	slog.Info("service started", "service", cfg.AppName, "env", cfg.Environment, "http_addr", cfg.HTTP.Address)
-	if err := srv.Run(); err != nil {
+	if err := srv.Run(runCtx); err != nil {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)
 	}
