@@ -73,7 +73,7 @@
 - `payments`
   - `id`, `user_id`, `subscription_id`, `connector_id`, `provider` (`mock|yookassa|tbank|...`), `provider_payment_id`, `amount`, `currency`, `status`, `paid_at`, `raw_payload`, timestamps
 - `user_consents`
-  - `id`, `user_id`, `connector_id`, `offer_accepted_at`, `privacy_accepted_at`, `accept_source`, timestamps
+  - `id`, `user_id`, `connector_id`, `offer_accepted_at`, `privacy_accepted_at`, `offer_document_id`, `offer_document_version`, `privacy_document_id`, `privacy_document_version`, `accept_source`, timestamps
 - `chat_memberships`
   - `id`, `user_id`, `connector_id`, `telegram_chat_id`, `status` (`invited|joined|removed`), `last_action_at`, `last_error`
 - `user_interactions`
@@ -402,6 +402,7 @@
 - `2026-03-20` Action-buttons в admin-таблицах приведены к единой semantic-схеме: destructive = красный, edit = синий, open/view = нейтрально-синий, send/enable = зеленый, disable = amber/muted; подсказки переводятся в tooltip-паттерн с иконкой `?`.
 - `2026-03-20` Начата `Итерация 11` по auth/session hardening: добавлена таблица `admin_sessions`, браузерная админка переведена с raw admin token cookie на server-side sessions с hash токена, absolute/idle expiry, revoke/logout и audit events; добавлены автотесты на login/session/logout flow.
 - `2026-03-20` Добавлена отдельная итерация по усилению admin auth/session: фиксируем переход к signed session cookie + server-side session validation, вместо опоры на долгоживущий статический токен в браузере.
+- `2026-03-20` Реализовано versioning согласий: в `user_consents` теперь сохраняются `offer_document_id/version` и `privacy_document_id/version` для fallback-документов из реестра, а карточка пользователя показывает историю акцепта по коннекторам и версиям документов.
 
 ## 13) Референсный flow текущего бота (для воспроизведения)
 Источник: `telegram-bot-flow.md`.

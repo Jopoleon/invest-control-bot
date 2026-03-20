@@ -550,13 +550,27 @@ func (s *Store) RevokeAdminSession(ctx context.Context, sessionID int64, revoked
 func (s *Store) SaveConsent(ctx context.Context, consent domain.Consent) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO user_consents (
-			telegram_id, connector_id, offer_accepted_at, privacy_accepted_at
-		) VALUES ($1,$2,$3,$4)
+			telegram_id, connector_id, offer_accepted_at, privacy_accepted_at,
+			offer_document_id, offer_document_version, privacy_document_id, privacy_document_version
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 		ON CONFLICT (telegram_id, connector_id)
 		DO UPDATE SET
 			offer_accepted_at = EXCLUDED.offer_accepted_at,
-			privacy_accepted_at = EXCLUDED.privacy_accepted_at
-	`, consent.TelegramID, consent.ConnectorID, consent.OfferAcceptedAt, consent.PrivacyAcceptedAt)
+			privacy_accepted_at = EXCLUDED.privacy_accepted_at,
+			offer_document_id = EXCLUDED.offer_document_id,
+			offer_document_version = EXCLUDED.offer_document_version,
+			privacy_document_id = EXCLUDED.privacy_document_id,
+			privacy_document_version = EXCLUDED.privacy_document_version
+	`,
+		consent.TelegramID,
+		consent.ConnectorID,
+		consent.OfferAcceptedAt,
+		consent.PrivacyAcceptedAt,
+		consent.OfferDocumentID,
+		consent.OfferDocumentVersion,
+		consent.PrivacyDocumentID,
+		consent.PrivacyDocumentVersion,
+	)
 	return err
 }
 
@@ -564,10 +578,20 @@ func (s *Store) SaveConsent(ctx context.Context, consent domain.Consent) error {
 func (s *Store) GetConsent(ctx context.Context, telegramID int64, connectorID int64) (domain.Consent, bool, error) {
 	var c domain.Consent
 	err := s.db.QueryRowContext(ctx, `
-		SELECT telegram_id, connector_id, offer_accepted_at, privacy_accepted_at
+		SELECT telegram_id, connector_id, offer_accepted_at, privacy_accepted_at,
+		       offer_document_id, offer_document_version, privacy_document_id, privacy_document_version
 		FROM user_consents
 		WHERE telegram_id = $1 AND connector_id = $2
-	`, telegramID, connectorID).Scan(&c.TelegramID, &c.ConnectorID, &c.OfferAcceptedAt, &c.PrivacyAcceptedAt)
+	`, telegramID, connectorID).Scan(
+		&c.TelegramID,
+		&c.ConnectorID,
+		&c.OfferAcceptedAt,
+		&c.PrivacyAcceptedAt,
+		&c.OfferDocumentID,
+		&c.OfferDocumentVersion,
+		&c.PrivacyDocumentID,
+		&c.PrivacyDocumentVersion,
+	)
 	if err == sql.ErrNoRows {
 		return domain.Consent{}, false, nil
 	}
@@ -575,6 +599,40 @@ func (s *Store) GetConsent(ctx context.Context, telegramID int64, connectorID in
 		return domain.Consent{}, false, err
 	}
 	return c, true, nil
+}
+
+// ListConsentsByTelegram returns all consents for a specific Telegram user.
+func (s *Store) ListConsentsByTelegram(ctx context.Context, telegramID int64) ([]domain.Consent, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT telegram_id, connector_id, offer_accepted_at, privacy_accepted_at,
+		       offer_document_id, offer_document_version, privacy_document_id, privacy_document_version
+		FROM user_consents
+		WHERE telegram_id = $1
+		ORDER BY GREATEST(offer_accepted_at, privacy_accepted_at) DESC, connector_id DESC
+	`, telegramID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]domain.Consent, 0)
+	for rows.Next() {
+		var c domain.Consent
+		if err := rows.Scan(
+			&c.TelegramID,
+			&c.ConnectorID,
+			&c.OfferAcceptedAt,
+			&c.PrivacyAcceptedAt,
+			&c.OfferDocumentID,
+			&c.OfferDocumentVersion,
+			&c.PrivacyDocumentID,
+			&c.PrivacyDocumentVersion,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, c)
+	}
+	return items, rows.Err()
 }
 
 // SaveUser upserts user profile.

@@ -200,9 +200,18 @@ type userDetailPageData struct {
 	BackURL          string
 	MessageActionURL string
 	User             userView
+	Consents         []consentView
 	Payments         []paymentView
 	Subscriptions    []subscriptionView
 	Events           []auditEventView
+}
+
+type consentView struct {
+	Connector            string
+	OfferAcceptedAt      string
+	OfferDocumentLabel   string
+	PrivacyAcceptedAt    string
+	PrivacyDocumentLabel string
 }
 
 type churnIssueView struct {

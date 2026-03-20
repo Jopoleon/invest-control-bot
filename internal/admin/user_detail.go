@@ -77,6 +77,11 @@ func (h *Handler) renderUserDetailPage(ctx context.Context, w http.ResponseWrite
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
 		return
 	}
+	consents, err := h.store.ListConsentsByTelegram(ctx, telegramID)
+	if err != nil {
+		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
+		return
+	}
 
 	connectorNames := h.loadConnectorNames(ctx)
 	data := userDetailPageData{
@@ -103,6 +108,17 @@ func (h *Handler) renderUserDetailPage(ctx context.Context, w http.ResponseWrite
 			}(),
 			UpdatedAt: item.UpdatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
 		},
+	}
+
+	data.Consents = make([]consentView, 0, len(consents))
+	for _, consent := range consents {
+		data.Consents = append(data.Consents, consentView{
+			Connector:            connectorDisplayName(connectorNames, consent.ConnectorID),
+			OfferAcceptedAt:      consent.OfferAcceptedAt.In(time.Local).Format("2006-01-02 15:04:05"),
+			OfferDocumentLabel:   consentDocumentLabel(lang, consent.OfferDocumentID, consent.OfferDocumentVersion),
+			PrivacyAcceptedAt:    consent.PrivacyAcceptedAt.In(time.Local).Format("2006-01-02 15:04:05"),
+			PrivacyDocumentLabel: consentDocumentLabel(lang, consent.PrivacyDocumentID, consent.PrivacyDocumentVersion),
+		})
 	}
 
 	data.Payments = make([]paymentView, 0, len(payments))
@@ -175,4 +191,11 @@ func (h *Handler) renderUserDetailPage(ctx context.Context, w http.ResponseWrite
 	}
 
 	h.renderer.render(w, "user_detail.html", data)
+}
+
+func consentDocumentLabel(lang string, documentID int64, version int) string {
+	if documentID <= 0 || version <= 0 {
+		return t(lang, "users.consents.custom")
+	}
+	return t(lang, "users.consents.version_prefix") + " " + strconv.Itoa(version) + " · ID " + strconv.FormatInt(documentID, 10)
 }

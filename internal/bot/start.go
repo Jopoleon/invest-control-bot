@@ -68,10 +68,8 @@ func (h *Handler) handleStart(ctx context.Context, msg *models.Message) {
 }
 
 func (h *Handler) resolveLegalURL(ctx context.Context, docType domain.LegalDocumentType) string {
-	doc, found, err := h.store.GetActiveLegalDocument(ctx, docType)
-	if err != nil {
-		slog.Error("load active legal document failed", "error", err, "doc_type", docType)
-	} else if found {
+	doc, found := h.resolveLegalDocument(ctx, docType)
+	if found {
 		if strings.TrimSpace(doc.ExternalURL) != "" {
 			return doc.ExternalURL
 		}
@@ -93,4 +91,13 @@ func (h *Handler) resolveLegalURL(ctx context.Context, docType domain.LegalDocum
 	default:
 		return "https://example.com"
 	}
+}
+
+func (h *Handler) resolveLegalDocument(ctx context.Context, docType domain.LegalDocumentType) (domain.LegalDocument, bool) {
+	doc, found, err := h.store.GetActiveLegalDocument(ctx, docType)
+	if err != nil {
+		slog.Error("load active legal document failed", "error", err, "doc_type", docType)
+		return domain.LegalDocument{}, false
+	}
+	return doc, found
 }

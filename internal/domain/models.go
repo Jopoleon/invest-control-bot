@@ -49,10 +49,14 @@ type UserListQuery struct {
 
 // Consent stores acceptance metadata for offer/privacy terms.
 type Consent struct {
-	TelegramID        int64
-	ConnectorID       int64
-	OfferAcceptedAt   time.Time
-	PrivacyAcceptedAt time.Time
+	TelegramID             int64
+	ConnectorID            int64
+	OfferAcceptedAt        time.Time
+	PrivacyAcceptedAt      time.Time
+	OfferDocumentID        int64
+	OfferDocumentVersion   int
+	PrivacyDocumentID      int64
+	PrivacyDocumentVersion int
 }
 
 // LegalDocumentType identifies the kind of legal document exposed to users.

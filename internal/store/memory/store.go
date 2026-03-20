@@ -387,6 +387,35 @@ func (s *Store) GetConsent(_ context.Context, telegramID int64, connectorID int6
 	return consent, ok, nil
 }
 
+// ListConsentsByTelegram returns all consent records for a Telegram user.
+func (s *Store) ListConsentsByTelegram(_ context.Context, telegramID int64) ([]domain.Consent, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	items := make([]domain.Consent, 0)
+	for _, consent := range s.consents {
+		if consent.TelegramID != telegramID {
+			continue
+		}
+		items = append(items, consent)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		left := items[i].OfferAcceptedAt
+		if items[i].PrivacyAcceptedAt.After(left) {
+			left = items[i].PrivacyAcceptedAt
+		}
+		right := items[j].OfferAcceptedAt
+		if items[j].PrivacyAcceptedAt.After(right) {
+			right = items[j].PrivacyAcceptedAt
+		}
+		if !left.Equal(right) {
+			return left.After(right)
+		}
+		return items[i].ConnectorID > items[j].ConnectorID
+	})
+	return items, nil
+}
+
 // SaveUser upserts user profile.
 func (s *Store) SaveUser(_ context.Context, user domain.User) error {
 	s.mu.Lock()

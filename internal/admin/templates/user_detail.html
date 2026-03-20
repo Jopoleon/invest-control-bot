@@ -193,7 +193,7 @@
     }
     .table-wrap { overflow: auto; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: .8rem; }
-    #paymentsSource, #subsSource, #eventsSource { display: none; }
+    #paymentsSource, #subsSource, #eventsSource, #consentsSource { display: none; }
     .gridjs-wrapper {
       border: 1px solid #dbe6f1;
       border-radius: .95rem;
@@ -327,6 +327,10 @@
         <small>{{index .I18N "users.detail.events"}}</small>
         <strong>{{len .Events}}</strong>
       </div>
+      <div class="summary-card">
+        <small>{{index .I18N "users.detail.consents"}}</small>
+        <strong>{{len .Consents}}</strong>
+      </div>
     </div>
   </article>
 
@@ -350,6 +354,39 @@
         <span class="help-tip" tabindex="0" data-tip="{{index .I18N "users.actions.paylink_hint"}}">?</span>
       </div>
     </div>
+  </article>
+
+  <article class="section-card">
+    <div class="section-head">
+      <h3>{{index .I18N "users.detail.consents"}} ({{len .Consents}})</h3>
+      <span class="section-kicker">Legal</span>
+    </div>
+    <div class="table-wrap">
+      <div id="consentsGrid"></div>
+      <table id="consentsSource">
+        <thead>
+          <tr>
+            <th>{{index .I18N "billing.table.subscription.connector"}}</th>
+            <th>{{index .I18N "users.consents.offer_accepted"}}</th>
+            <th>{{index .I18N "users.consents.offer_version"}}</th>
+            <th>{{index .I18N "users.consents.privacy_accepted"}}</th>
+            <th>{{index .I18N "users.consents.privacy_version"}}</th>
+          </tr>
+        </thead>
+        <tbody>
+        {{range .Consents}}
+          <tr>
+            <td>{{.Connector}}</td>
+            <td class="mono">{{.OfferAcceptedAt}}</td>
+            <td>{{.OfferDocumentLabel}}</td>
+            <td class="mono">{{.PrivacyAcceptedAt}}</td>
+            <td>{{.PrivacyDocumentLabel}}</td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{if not .Consents}}<small>{{index .I18N "users.detail.empty"}}</small>{{end}}
   </article>
 
   <article class="section-card">
@@ -548,6 +585,7 @@
 
     [
       ["#subsSource", "#subsGrid", 15],
+      ["#consentsSource", "#consentsGrid", 15],
       ["#paymentsSource", "#paymentsGrid", 15],
       ["#eventsSource", "#eventsGrid", 20]
     ].forEach(function (item) {

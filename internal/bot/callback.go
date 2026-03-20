@@ -52,6 +52,18 @@ func (h *Handler) handleCallback(ctx context.Context, cb *models.CallbackQuery) 
 		OfferAcceptedAt:   time.Now().UTC(),
 		PrivacyAcceptedAt: time.Now().UTC(),
 	}
+	if connector.OfferURL == "" {
+		if doc, found := h.resolveLegalDocument(ctx, domain.LegalDocumentTypeOffer); found {
+			consent.OfferDocumentID = doc.ID
+			consent.OfferDocumentVersion = doc.Version
+		}
+	}
+	if connector.PrivacyURL == "" {
+		if doc, found := h.resolveLegalDocument(ctx, domain.LegalDocumentTypePrivacy); found {
+			consent.PrivacyDocumentID = doc.ID
+			consent.PrivacyDocumentVersion = doc.Version
+		}
+	}
 	if err := h.store.SaveConsent(ctx, consent); err != nil {
 		slog.Error("save consent failed", "error", err, "telegram_id", cb.From.ID, "connector_id", connectorID)
 		return

@@ -90,6 +90,121 @@ func TestHandleCallback_RequestsOnlyMissingField(t *testing.T) {
 	}
 }
 
+func TestHandleCallback_SavesLegalDocumentVersionsForFallbackDocs(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	tg, err := telegram.NewClient("", "")
+	if err != nil {
+		t.Fatalf("create telegram client: %v", err)
+	}
+	h := NewHandler(st, tg, payment.NewMockService("http://localhost:8080"), false, "http://localhost:8080")
+
+	connectorID := seedBotConnector(t, ctx, st, "in-consent-versioned")
+	if err := st.CreateLegalDocument(ctx, domain.LegalDocument{
+		Type:      domain.LegalDocumentTypeOffer,
+		Title:     "Offer v1",
+		Content:   "Offer content",
+		Version:   1,
+		IsActive:  true,
+		CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create offer doc: %v", err)
+	}
+	if err := st.CreateLegalDocument(ctx, domain.LegalDocument{
+		Type:      domain.LegalDocumentTypePrivacy,
+		Title:     "Privacy v2",
+		Content:   "Privacy content",
+		Version:   2,
+		IsActive:  true,
+		CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create privacy doc: %v", err)
+	}
+
+	h.handleCallback(ctx, &models.CallbackQuery{
+		ID:   "cb-consent-versioned",
+		From: models.User{ID: 1101, Username: "versioned_user"},
+		Data: "accept_terms:" + int64ToString(connectorID),
+	})
+
+	consent, found, err := st.GetConsent(ctx, 1101, connectorID)
+	if err != nil {
+		t.Fatalf("get consent: %v", err)
+	}
+	if !found {
+		t.Fatalf("consent not found")
+	}
+	if consent.OfferDocumentID != 1 || consent.OfferDocumentVersion != 1 {
+		t.Fatalf("unexpected offer consent versioning: %+v", consent)
+	}
+	if consent.PrivacyDocumentID != 2 || consent.PrivacyDocumentVersion != 2 {
+		t.Fatalf("unexpected privacy consent versioning: %+v", consent)
+	}
+}
+
+func TestHandleCallback_LeavesConsentVersionsEmptyForConnectorCustomURLs(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	tg, err := telegram.NewClient("", "")
+	if err != nil {
+		t.Fatalf("create telegram client: %v", err)
+	}
+	h := NewHandler(st, tg, payment.NewMockService("http://localhost:8080"), false, "http://localhost:8080")
+
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload: "in-consent-custom",
+		Name:         "custom-consent-connector",
+		ChatID:       "1003626584986",
+		PriceRUB:     4444,
+		PeriodDays:   30,
+		OfferURL:     "https://example.com/custom-offer",
+		PrivacyURL:   "https://example.com/custom-privacy",
+		IsActive:     true,
+		CreatedAt:    time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create connector: %v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-consent-custom")
+	if err != nil {
+		t.Fatalf("get connector by payload: %v", err)
+	}
+	if !found {
+		t.Fatalf("connector not found")
+	}
+
+	if err := st.CreateLegalDocument(ctx, domain.LegalDocument{
+		Type:      domain.LegalDocumentTypeOffer,
+		Title:     "Offer v1",
+		Content:   "Offer content",
+		Version:   1,
+		IsActive:  true,
+		CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create offer doc: %v", err)
+	}
+
+	h.handleCallback(ctx, &models.CallbackQuery{
+		ID:   "cb-consent-custom",
+		From: models.User{ID: 1102, Username: "custom_user"},
+		Data: "accept_terms:" + int64ToString(connector.ID),
+	})
+
+	consent, found, err := st.GetConsent(ctx, 1102, connector.ID)
+	if err != nil {
+		t.Fatalf("get consent: %v", err)
+	}
+	if !found {
+		t.Fatalf("consent not found")
+	}
+	if consent.OfferDocumentID != 0 || consent.OfferDocumentVersion != 0 || consent.PrivacyDocumentID != 0 || consent.PrivacyDocumentVersion != 0 {
+		t.Fatalf("expected empty consent versions for connector custom URLs, got %+v", consent)
+	}
+}
+
 func TestHandlePay_DisablesRecurringWhenCapabilityOff(t *testing.T) {
 	t.Helper()
 
