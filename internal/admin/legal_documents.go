@@ -164,7 +164,7 @@ func (h *Handler) parseLegalDocumentForm(r *http.Request) (domain.LegalDocument,
 	isActive := r.FormValue("is_active") == "true"
 
 	switch docType {
-	case domain.LegalDocumentTypeOffer, domain.LegalDocumentTypePrivacy:
+	case domain.LegalDocumentTypeOffer, domain.LegalDocumentTypePrivacy, domain.LegalDocumentTypeUserAgreement:
 	default:
 		return domain.LegalDocument{}, errLegalDocumentType
 	}
@@ -195,6 +195,7 @@ func (h *Handler) renderLegalDocumentsPage(ctx context.Context, w http.ResponseW
 
 	activeOffer, _, _ := h.store.GetActiveLegalDocument(ctx, domain.LegalDocumentTypeOffer)
 	activePrivacy, _, _ := h.store.GetActiveLegalDocument(ctx, domain.LegalDocumentTypePrivacy)
+	activeAgreement, _, _ := h.store.GetActiveLegalDocument(ctx, domain.LegalDocumentTypeUserAgreement)
 
 	rows := make([]legalDocumentView, 0, len(docs))
 	for _, doc := range docs {
@@ -239,20 +240,21 @@ func (h *Handler) renderLegalDocumentsPage(ctx context.Context, w http.ResponseW
 			TopbarPath: "/admin/legal-documents",
 			ActiveNav:  "legal",
 		},
-		Notice:           notice,
-		ExportURL:        buildExportURL("/admin/legal-documents/export.csv", r.URL.Query(), lang),
-		OfferPublicURL:   h.activeLegalDocumentURL(r, activeOffer),
-		PrivacyPublicURL: h.activeLegalDocumentURL(r, activePrivacy),
-		Documents:        rows,
-		EditingID:        editDoc.ID,
-		Editing:          editing,
-		FormAction:       "/admin/legal-documents",
-		FormSubmitLabel:  formSubmit,
-		FormType:         formType,
-		FormTitle:        editDoc.Title,
-		FormExternalURL:  editDoc.ExternalURL,
-		FormContent:      editDoc.Content,
-		FormIsActive:     !editing || editDoc.IsActive,
+		Notice:             notice,
+		ExportURL:          buildExportURL("/admin/legal-documents/export.csv", r.URL.Query(), lang),
+		OfferPublicURL:     h.activeLegalDocumentURL(r, activeOffer),
+		PrivacyPublicURL:   h.activeLegalDocumentURL(r, activePrivacy),
+		AgreementPublicURL: h.activeLegalDocumentURL(r, activeAgreement),
+		Documents:          rows,
+		EditingID:          editDoc.ID,
+		Editing:            editing,
+		FormAction:         "/admin/legal-documents",
+		FormSubmitLabel:    formSubmit,
+		FormType:           formType,
+		FormTitle:          editDoc.Title,
+		FormExternalURL:    editDoc.ExternalURL,
+		FormContent:        editDoc.Content,
+		FormIsActive:       !editing || editDoc.IsActive,
 	})
 }
 
@@ -289,6 +291,8 @@ func (h *Handler) legalDocumentPublicURL(r *http.Request, docType domain.LegalDo
 		return fmt.Sprintf("%s://%s/oferta/%d", scheme, host, id)
 	case domain.LegalDocumentTypePrivacy:
 		return fmt.Sprintf("%s://%s/policy/%d", scheme, host, id)
+	case domain.LegalDocumentTypeUserAgreement:
+		return fmt.Sprintf("%s://%s/agreement/%d", scheme, host, id)
 	default:
 		return ""
 	}
@@ -300,6 +304,8 @@ func (h *Handler) legalDocumentTypeLabel(lang string, docType domain.LegalDocume
 		return t(lang, "legal.type.offer")
 	case domain.LegalDocumentTypePrivacy:
 		return t(lang, "legal.type.privacy")
+	case domain.LegalDocumentTypeUserAgreement:
+		return t(lang, "legal.type.user_agreement")
 	default:
 		return string(docType)
 	}

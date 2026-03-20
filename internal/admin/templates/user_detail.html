@@ -193,7 +193,7 @@
     }
     .table-wrap { overflow: auto; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: .8rem; }
-    #paymentsSource, #subsSource, #eventsSource, #consentsSource { display: none; }
+    #paymentsSource, #subsSource, #eventsSource, #consentsSource, #recurringConsentsSource { display: none; }
     .gridjs-wrapper {
       border: 1px solid #dbe6f1;
       border-radius: .95rem;
@@ -331,6 +331,10 @@
         <small>{{index .I18N "users.detail.consents"}}</small>
         <strong>{{len .Consents}}</strong>
       </div>
+      <div class="summary-card">
+        <small>{{index .I18N "users.detail.recurring_consents"}}</small>
+        <strong>{{len .RecurringConsents}}</strong>
+      </div>
     </div>
   </article>
 
@@ -387,6 +391,37 @@
       </table>
     </div>
     {{if not .Consents}}<small>{{index .I18N "users.detail.empty"}}</small>{{end}}
+  </article>
+
+  <article class="section-card">
+    <div class="section-head">
+      <h3>{{index .I18N "users.detail.recurring_consents"}} ({{len .RecurringConsents}})</h3>
+      <span class="section-kicker">Autopay</span>
+    </div>
+    <div class="table-wrap">
+      <div id="recurringConsentsGrid"></div>
+      <table id="recurringConsentsSource">
+        <thead>
+          <tr>
+            <th>{{index .I18N "billing.table.subscription.connector"}}</th>
+            <th>{{index .I18N "users.recurring_consents.accepted_at"}}</th>
+            <th>{{index .I18N "users.recurring_consents.offer_version"}}</th>
+            <th>{{index .I18N "users.recurring_consents.agreement_version"}}</th>
+          </tr>
+        </thead>
+        <tbody>
+        {{range .RecurringConsents}}
+          <tr>
+            <td>{{.Connector}}</td>
+            <td class="mono">{{.AcceptedAt}}</td>
+            <td>{{.OfferDocumentLabel}}</td>
+            <td>{{.UserAgreementDocLabel}}</td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{if not .RecurringConsents}}<small>{{index .I18N "users.detail.empty"}}</small>{{end}}
   </article>
 
   <article class="section-card">
@@ -586,6 +621,7 @@
     [
       ["#subsSource", "#subsGrid", 15],
       ["#consentsSource", "#consentsGrid", 15],
+      ["#recurringConsentsSource", "#recurringConsentsGrid", 15],
       ["#paymentsSource", "#paymentsGrid", 15],
       ["#eventsSource", "#eventsGrid", 20]
     ].forEach(function (item) {

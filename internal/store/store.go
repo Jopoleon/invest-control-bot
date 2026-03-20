@@ -41,6 +41,8 @@ type Store interface {
 	SaveConsent(ctx context.Context, consent domain.Consent) error
 	GetConsent(ctx context.Context, telegramID int64, connectorID int64) (domain.Consent, bool, error)
 	ListConsentsByTelegram(ctx context.Context, telegramID int64) ([]domain.Consent, error)
+	CreateRecurringConsent(ctx context.Context, consent domain.RecurringConsent) error
+	ListRecurringConsentsByTelegram(ctx context.Context, telegramID int64) ([]domain.RecurringConsent, error)
 
 	SaveUser(ctx context.Context, user domain.User) error
 	GetUser(ctx context.Context, telegramID int64) (domain.User, bool, error)

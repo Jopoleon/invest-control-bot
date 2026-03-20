@@ -196,14 +196,15 @@ type usersPageData struct {
 type userDetailPageData struct {
 	basePageData
 
-	Notice           string
-	BackURL          string
-	MessageActionURL string
-	User             userView
-	Consents         []consentView
-	Payments         []paymentView
-	Subscriptions    []subscriptionView
-	Events           []auditEventView
+	Notice            string
+	BackURL           string
+	MessageActionURL  string
+	User              userView
+	Consents          []consentView
+	RecurringConsents []recurringConsentView
+	Payments          []paymentView
+	Subscriptions     []subscriptionView
+	Events            []auditEventView
 }
 
 type consentView struct {
@@ -212,6 +213,13 @@ type consentView struct {
 	OfferDocumentLabel   string
 	PrivacyAcceptedAt    string
 	PrivacyDocumentLabel string
+}
+
+type recurringConsentView struct {
+	Connector             string
+	AcceptedAt            string
+	OfferDocumentLabel    string
+	UserAgreementDocLabel string
 }
 
 type churnIssueView struct {
@@ -272,18 +280,19 @@ type legalDocumentView struct {
 type legalDocumentsPageData struct {
 	basePageData
 
-	Notice           string
-	ExportURL        string
-	OfferPublicURL   string
-	PrivacyPublicURL string
-	Documents        []legalDocumentView
-	EditingID        int64
-	Editing          bool
-	FormAction       string
-	FormSubmitLabel  string
-	FormType         string
-	FormTitle        string
-	FormExternalURL  string
-	FormContent      string
-	FormIsActive     bool
+	Notice             string
+	ExportURL          string
+	OfferPublicURL     string
+	PrivacyPublicURL   string
+	AgreementPublicURL string
+	Documents          []legalDocumentView
+	EditingID          int64
+	Editing            bool
+	FormAction         string
+	FormSubmitLabel    string
+	FormType           string
+	FormTitle          string
+	FormExternalURL    string
+	FormContent        string
+	FormIsActive       bool
 }

@@ -63,8 +63,9 @@ type Consent struct {
 type LegalDocumentType string
 
 const (
-	LegalDocumentTypeOffer   LegalDocumentType = "offer"
-	LegalDocumentTypePrivacy LegalDocumentType = "privacy"
+	LegalDocumentTypeOffer         LegalDocumentType = "offer"
+	LegalDocumentTypePrivacy       LegalDocumentType = "privacy"
+	LegalDocumentTypeUserAgreement LegalDocumentType = "user_agreement"
 )
 
 // LegalDocument stores versioned legal text or external URL used in onboarding.
@@ -77,6 +78,18 @@ type LegalDocument struct {
 	Version     int
 	IsActive    bool
 	CreatedAt   time.Time
+}
+
+// RecurringConsent stores explicit opt-in history for recurring/autopay charges.
+type RecurringConsent struct {
+	ID                           int64
+	TelegramID                   int64
+	ConnectorID                  int64
+	AcceptedAt                   time.Time
+	OfferDocumentID              int64
+	OfferDocumentVersion         int
+	UserAgreementDocumentID      int64
+	UserAgreementDocumentVersion int
 }
 
 // AdminSession stores server-side browser session for admin panel access.

@@ -168,7 +168,15 @@
 - Логи, метрики, деплой и runbook.
 
 ### Итерация 8: Recurring / автоплатежи Robokassa
+- Статус: `заблокировано частично до активации recurring магазином Robokassa`.
 - Первый recurring-friendly платеж: opt-in пользователя в боте, правильная маркировка платежа, сохранение признаков recurring.
+- Перед включением recurring в продукте обязательно выполнить checklist из `docs/robokassa-recurring-checklist.md`.
+- Отдельный compliance-блок до активации магазина:
+- дописать оферту под recurring-условия Robokassa;
+- добавить пользовательское соглашение;
+- добавить отдельный opt-in чекбокс на автосписания (не pre-checked);
+- хранить историю согласий на автосписания отдельно от обычного акцепта оферты/ПДн;
+- сделать понятный сценарий отмены автоплатежа в боте/админке.
 - UX-конверсия в автоплатеж:
 - агитационный блок перед оплатой и после успешного первого платежа;
 - подсветка выгод/непрерывности доступа;
@@ -403,6 +411,8 @@
 - `2026-03-20` Начата `Итерация 11` по auth/session hardening: добавлена таблица `admin_sessions`, браузерная админка переведена с raw admin token cookie на server-side sessions с hash токена, absolute/idle expiry, revoke/logout и audit events; добавлены автотесты на login/session/logout flow.
 - `2026-03-20` Добавлена отдельная итерация по усилению admin auth/session: фиксируем переход к signed session cookie + server-side session validation, вместо опоры на долгоживущий статический токен в браузере.
 - `2026-03-20` Реализовано versioning согласий: в `user_consents` теперь сохраняются `offer_document_id/version` и `privacy_document_id/version` для fallback-документов из реестра, а карточка пользователя показывает историю акцепта по коннекторам и версиям документов.
+- `2026-03-20` Зафиксирован отдельный recurring-compliance checklist под требования Robokassa: юридические документы, отдельный opt-in на автосписания, история consent, cancel flow и порядок включения recurring только после активации магазина со стороны Robokassa.
+- `2026-03-20` Для recurring readiness расширен legal registry: добавлен тип документа `user_agreement`, публичные URL `/legal/agreement` и `/agreement/{id}`, а также отдельный data-layer `recurring_consents` и отображение recurring-consent истории в карточке пользователя.
 
 ## 13) Референсный flow текущего бота (для воспроизведения)
 Источник: `telegram-bot-flow.md`.

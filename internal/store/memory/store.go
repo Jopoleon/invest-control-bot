@@ -17,49 +17,53 @@ import (
 type Store struct {
 	mu sync.RWMutex
 
-	connectors      map[int64]domain.Connector
-	payloadIndex    map[string]int64
-	nextConnectorID int64
-	legalDocs       map[int64]domain.LegalDocument
-	nextLegalDocID  int64
-	adminSessions   map[int64]domain.AdminSession
-	adminByHash     map[string]int64
-	nextAdminSessID int64
-	users           map[int64]domain.User
-	userAutoPay     map[int64]bool
-	consents        map[string]domain.Consent
-	states          map[int64]domain.RegistrationState
-	events          []domain.AuditEvent
-	nextEventID     int64
-	payments        map[int64]domain.Payment
-	paymentToken    map[string]int64
-	nextPaymentID   int64
-	subsByPayID     map[int64]domain.Subscription
-	nextSubscrID    int64
+	connectors             map[int64]domain.Connector
+	payloadIndex           map[string]int64
+	nextConnectorID        int64
+	legalDocs              map[int64]domain.LegalDocument
+	nextLegalDocID         int64
+	adminSessions          map[int64]domain.AdminSession
+	adminByHash            map[string]int64
+	nextAdminSessID        int64
+	users                  map[int64]domain.User
+	userAutoPay            map[int64]bool
+	consents               map[string]domain.Consent
+	recurringConsents      []domain.RecurringConsent
+	states                 map[int64]domain.RegistrationState
+	events                 []domain.AuditEvent
+	nextEventID            int64
+	payments               map[int64]domain.Payment
+	paymentToken           map[string]int64
+	nextPaymentID          int64
+	subsByPayID            map[int64]domain.Subscription
+	nextSubscrID           int64
+	nextRecurringConsentID int64
 }
 
 // New creates empty in-memory store.
 func New() *Store {
 	return &Store{
-		connectors:      make(map[int64]domain.Connector),
-		payloadIndex:    make(map[string]int64),
-		nextConnectorID: 1,
-		legalDocs:       make(map[int64]domain.LegalDocument),
-		nextLegalDocID:  1,
-		adminSessions:   make(map[int64]domain.AdminSession),
-		adminByHash:     make(map[string]int64),
-		nextAdminSessID: 1,
-		users:           make(map[int64]domain.User),
-		userAutoPay:     make(map[int64]bool),
-		consents:        make(map[string]domain.Consent),
-		states:          make(map[int64]domain.RegistrationState),
-		events:          make([]domain.AuditEvent, 0, 128),
-		nextEventID:     1,
-		payments:        make(map[int64]domain.Payment),
-		paymentToken:    make(map[string]int64),
-		nextPaymentID:   1,
-		subsByPayID:     make(map[int64]domain.Subscription),
-		nextSubscrID:    1,
+		connectors:             make(map[int64]domain.Connector),
+		payloadIndex:           make(map[string]int64),
+		nextConnectorID:        1,
+		legalDocs:              make(map[int64]domain.LegalDocument),
+		nextLegalDocID:         1,
+		adminSessions:          make(map[int64]domain.AdminSession),
+		adminByHash:            make(map[string]int64),
+		nextAdminSessID:        1,
+		users:                  make(map[int64]domain.User),
+		userAutoPay:            make(map[int64]bool),
+		consents:               make(map[string]domain.Consent),
+		recurringConsents:      make([]domain.RecurringConsent, 0),
+		states:                 make(map[int64]domain.RegistrationState),
+		events:                 make([]domain.AuditEvent, 0, 128),
+		nextEventID:            1,
+		payments:               make(map[int64]domain.Payment),
+		paymentToken:           make(map[string]int64),
+		nextPaymentID:          1,
+		subsByPayID:            make(map[int64]domain.Subscription),
+		nextSubscrID:           1,
+		nextRecurringConsentID: 1,
 	}
 }
 
@@ -412,6 +416,38 @@ func (s *Store) ListConsentsByTelegram(_ context.Context, telegramID int64) ([]d
 			return left.After(right)
 		}
 		return items[i].ConnectorID > items[j].ConnectorID
+	})
+	return items, nil
+}
+
+// CreateRecurringConsent stores explicit recurring/autopay consent event.
+func (s *Store) CreateRecurringConsent(_ context.Context, consent domain.RecurringConsent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	consent.ID = s.nextRecurringConsentID
+	s.nextRecurringConsentID++
+	s.recurringConsents = append(s.recurringConsents, consent)
+	return nil
+}
+
+// ListRecurringConsentsByTelegram returns recurring consent history for one user.
+func (s *Store) ListRecurringConsentsByTelegram(_ context.Context, telegramID int64) ([]domain.RecurringConsent, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	items := make([]domain.RecurringConsent, 0)
+	for _, consent := range s.recurringConsents {
+		if consent.TelegramID != telegramID {
+			continue
+		}
+		items = append(items, consent)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if !items[i].AcceptedAt.Equal(items[j].AcceptedAt) {
+			return items[i].AcceptedAt.After(items[j].AcceptedAt)
+		}
+		return items[i].ID > items[j].ID
 	})
 	return items, nil
 }

@@ -82,6 +82,11 @@ func (h *Handler) renderUserDetailPage(ctx context.Context, w http.ResponseWrite
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
 		return
 	}
+	recurringConsents, err := h.store.ListRecurringConsentsByTelegram(ctx, telegramID)
+	if err != nil {
+		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
+		return
+	}
 
 	connectorNames := h.loadConnectorNames(ctx)
 	data := userDetailPageData{
@@ -118,6 +123,16 @@ func (h *Handler) renderUserDetailPage(ctx context.Context, w http.ResponseWrite
 			OfferDocumentLabel:   consentDocumentLabel(lang, consent.OfferDocumentID, consent.OfferDocumentVersion),
 			PrivacyAcceptedAt:    consent.PrivacyAcceptedAt.In(time.Local).Format("2006-01-02 15:04:05"),
 			PrivacyDocumentLabel: consentDocumentLabel(lang, consent.PrivacyDocumentID, consent.PrivacyDocumentVersion),
+		})
+	}
+
+	data.RecurringConsents = make([]recurringConsentView, 0, len(recurringConsents))
+	for _, consent := range recurringConsents {
+		data.RecurringConsents = append(data.RecurringConsents, recurringConsentView{
+			Connector:             connectorDisplayName(connectorNames, consent.ConnectorID),
+			AcceptedAt:            consent.AcceptedAt.In(time.Local).Format("2006-01-02 15:04:05"),
+			OfferDocumentLabel:    consentDocumentLabel(lang, consent.OfferDocumentID, consent.OfferDocumentVersion),
+			UserAgreementDocLabel: consentDocumentLabel(lang, consent.UserAgreementDocumentID, consent.UserAgreementDocumentVersion),
 		})
 	}
 

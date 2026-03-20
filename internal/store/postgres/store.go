@@ -635,6 +635,61 @@ func (s *Store) ListConsentsByTelegram(ctx context.Context, telegramID int64) ([
 	return items, rows.Err()
 }
 
+// CreateRecurringConsent stores explicit recurring/autopay opt-in history.
+func (s *Store) CreateRecurringConsent(ctx context.Context, consent domain.RecurringConsent) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO recurring_consents (
+			telegram_id, connector_id, accepted_at,
+			offer_document_id, offer_document_version,
+			user_agreement_document_id, user_agreement_document_version
+		) VALUES ($1,$2,$3,$4,$5,$6,$7)
+	`,
+		consent.TelegramID,
+		consent.ConnectorID,
+		consent.AcceptedAt,
+		consent.OfferDocumentID,
+		consent.OfferDocumentVersion,
+		consent.UserAgreementDocumentID,
+		consent.UserAgreementDocumentVersion,
+	)
+	return err
+}
+
+// ListRecurringConsentsByTelegram returns recurring consent history for one Telegram user.
+func (s *Store) ListRecurringConsentsByTelegram(ctx context.Context, telegramID int64) ([]domain.RecurringConsent, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, telegram_id, connector_id, accepted_at,
+		       offer_document_id, offer_document_version,
+		       user_agreement_document_id, user_agreement_document_version
+		FROM recurring_consents
+		WHERE telegram_id = $1
+		ORDER BY accepted_at DESC, id DESC
+	`, telegramID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]domain.RecurringConsent, 0)
+	for rows.Next() {
+		var consent domain.RecurringConsent
+		if err := rows.Scan(
+			&consent.ID,
+			&consent.TelegramID,
+			&consent.ConnectorID,
+			&consent.AcceptedAt,
+			&consent.OfferDocumentID,
+			&consent.OfferDocumentVersion,
+			&consent.UserAgreementDocumentID,
+			&consent.UserAgreementDocumentVersion,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, consent)
+	}
+	return items, rows.Err()
+}
+
 // SaveUser upserts user profile.
 func (s *Store) SaveUser(ctx context.Context, user domain.User) error {
 	now := time.Now().UTC()

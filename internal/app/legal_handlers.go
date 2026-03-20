@@ -23,12 +23,20 @@ func (a *application) handleLegalPrivacy(w http.ResponseWriter, r *http.Request)
 	a.handleActiveLegalDocument(w, r, domain.LegalDocumentTypePrivacy, "Политика обработки персональных данных")
 }
 
+func (a *application) handleLegalAgreement(w http.ResponseWriter, r *http.Request) {
+	a.handleActiveLegalDocument(w, r, domain.LegalDocumentTypeUserAgreement, "Пользовательское соглашение")
+}
+
 func (a *application) handleOfferByID(w http.ResponseWriter, r *http.Request) {
 	a.handleLegalDocumentByID(w, r, "/oferta/", domain.LegalDocumentTypeOffer, "Публичная оферта")
 }
 
 func (a *application) handlePrivacyByID(w http.ResponseWriter, r *http.Request) {
 	a.handleLegalDocumentByID(w, r, "/policy/", domain.LegalDocumentTypePrivacy, "Политика обработки персональных данных")
+}
+
+func (a *application) handleAgreementByID(w http.ResponseWriter, r *http.Request) {
+	a.handleLegalDocumentByID(w, r, "/agreement/", domain.LegalDocumentTypeUserAgreement, "Пользовательское соглашение")
 }
 
 func (a *application) handleActiveLegalDocument(w http.ResponseWriter, r *http.Request, docType domain.LegalDocumentType, fallbackTitle string) {
