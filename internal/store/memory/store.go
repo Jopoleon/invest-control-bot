@@ -79,6 +79,30 @@ func (s *Store) CreateAdminSession(_ context.Context, session domain.AdminSessio
 	return nil
 }
 
+// ListAdminSessions returns admin sessions ordered by newest first.
+func (s *Store) ListAdminSessions(_ context.Context, limit int) ([]domain.AdminSession, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if limit <= 0 {
+		limit = 100
+	}
+	items := make([]domain.AdminSession, 0, len(s.adminSessions))
+	for _, session := range s.adminSessions {
+		items = append(items, session)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].CreatedAt.Equal(items[j].CreatedAt) {
+			return items[i].ID > items[j].ID
+		}
+		return items[i].CreatedAt.After(items[j].CreatedAt)
+	})
+	if len(items) > limit {
+		items = items[:limit]
+	}
+	return items, nil
+}
+
 // GetAdminSessionByTokenHash finds admin session by hashed token.
 func (s *Store) GetAdminSessionByTokenHash(_ context.Context, tokenHash string) (domain.AdminSession, bool, error) {
 	s.mu.RLock()
@@ -136,6 +160,20 @@ func (s *Store) RevokeAdminSession(_ context.Context, sessionID int64, revokedAt
 	}
 	session.RevokedAt = &revokedAt
 	s.adminSessions[sessionID] = session
+	return nil
+}
+
+// CleanupAdminSessions removes revoked and absolute-expired sessions.
+func (s *Store) CleanupAdminSessions(_ context.Context, expiredBefore time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for id, session := range s.adminSessions {
+		if session.RevokedAt != nil || session.ExpiresAt.Before(expiredBefore) {
+			delete(s.adminByHash, session.TokenHash)
+			delete(s.adminSessions, id)
+		}
+	}
 	return nil
 }
 

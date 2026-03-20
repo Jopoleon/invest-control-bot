@@ -44,4 +44,5 @@ const (
 	AuditActionAdminLoginFailed              = "admin_login_failed"
 	AuditActionAdminLogout                   = "admin_logout"
 	AuditActionAdminSessionRevoked           = "admin_session_revoked"
+	AuditActionAdminSessionRevokedManual     = "admin_session_revoked_manual"
 )

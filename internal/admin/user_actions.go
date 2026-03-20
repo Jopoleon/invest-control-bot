@@ -244,3 +244,53 @@ func (h *Handler) revokeSubscription(w http.ResponseWriter, r *http.Request) {
 
 	h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, t(lang, "users.revoke.success"))
 }
+
+func (h *Handler) triggerSubscriptionRebill(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAuth(w, r) {
+		return
+	}
+	lang := h.resolveLang(w, r)
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		h.unauthorized(w)
+		return
+	}
+	if !h.verifyCSRF(r) {
+		w.WriteHeader(http.StatusForbidden)
+		h.renderUserDetailPage(r.Context(), w, r, lang, parseInt64Default(r.FormValue("telegram_id")), t(lang, "csrf.invalid"))
+		return
+	}
+
+	telegramID := parseInt64Default(r.FormValue("telegram_id"))
+	subID := parseInt64Default(r.FormValue("subscription_id"))
+	if telegramID <= 0 || subID <= 0 {
+		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.invalid_id"))
+		return
+	}
+	if h.retriggerRebill == nil {
+		h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, t(lang, "users.actions.rebill_unavailable"))
+		return
+	}
+
+	sub, ok, err := h.store.GetSubscriptionByID(r.Context(), subID)
+	if err != nil || !ok || sub.TelegramID != telegramID {
+		h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, t(lang, "users.revoke.not_found"))
+		return
+	}
+
+	result, err := h.retriggerRebill(r.Context(), subID)
+	if err != nil {
+		h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, err.Error())
+		return
+	}
+
+	notice := t(lang, "users.actions.rebill_sent")
+	if result.Existing {
+		notice = t(lang, "users.actions.rebill_existing")
+	}
+	h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, notice)
+}

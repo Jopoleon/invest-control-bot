@@ -232,6 +232,8 @@ func (h *Handler) exportChurnCSV(w http.ResponseWriter, r *http.Request) {
 		strings.TrimSpace(r.URL.Query().Get("connector_id")),
 		strings.TrimSpace(r.URL.Query().Get("search")),
 		strings.TrimSpace(r.URL.Query().Get("issue_type")),
+		strings.TrimSpace(r.URL.Query().Get("autopay")),
+		strings.TrimSpace(r.URL.Query().Get("retry_state")),
 	)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -241,7 +243,7 @@ func (h *Handler) exportChurnCSV(w http.ResponseWriter, r *http.Request) {
 	records := make([][]string, 0, len(rows)+1)
 	records = append(records, []string{
 		"telegram_id", "telegram_username", "full_name", "email", "phone",
-		"connector_id", "connector", "issue_type", "payment_status",
+		"connector_id", "connector", "issue_type", "autopay", "retry_state", "last_retry_at", "payment_status",
 		"subscription_id", "subscription_status", "last_amount_rub", "last_event_at",
 	})
 	for _, row := range rows {
@@ -254,6 +256,9 @@ func (h *Handler) exportChurnCSV(w http.ResponseWriter, r *http.Request) {
 			strconv.FormatInt(row.ConnectorID, 10),
 			row.Connector,
 			row.IssueType,
+			row.AutoPayLabel,
+			row.RetryLabel,
+			row.LastRetryAt,
 			row.PaymentStatus,
 			strconv.FormatInt(row.SubscriptionID, 10),
 			row.SubscriptionStatus,

@@ -33,10 +33,12 @@ type Store interface {
 	DeleteLegalDocument(ctx context.Context, documentID int64) error
 
 	CreateAdminSession(ctx context.Context, session domain.AdminSession) error
+	ListAdminSessions(ctx context.Context, limit int) ([]domain.AdminSession, error)
 	GetAdminSessionByTokenHash(ctx context.Context, tokenHash string) (domain.AdminSession, bool, error)
 	TouchAdminSession(ctx context.Context, sessionID int64, lastSeenAt time.Time) error
 	RotateAdminSession(ctx context.Context, sessionID int64, newTokenHash string, rotatedAt time.Time) error
 	RevokeAdminSession(ctx context.Context, sessionID int64, revokedAt time.Time) error
+	CleanupAdminSessions(ctx context.Context, expiredBefore time.Time) error
 
 	SaveConsent(ctx context.Context, consent domain.Consent) error
 	GetConsent(ctx context.Context, telegramID int64, connectorID int64) (domain.Consent, bool, error)

@@ -114,7 +114,7 @@ func (h *Handler) renderUserDetailPage(ctx context.Context, w http.ResponseWrite
 			UpdatedAt: item.UpdatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
 		},
 	}
-	data.RecurringSummary = buildRecurringSummary(lang, autoPayEnabled, hasAutoPaySettings, recurringConsents, connectorNames)
+	data.RecurringSummary = buildRecurringSummary(lang, autoPayEnabled, hasAutoPaySettings, recurringConsents, connectorNames, payments, subs)
 
 	data.Consents = make([]consentView, 0, len(consents))
 	for _, consent := range consents {
@@ -173,24 +173,26 @@ func (h *Handler) renderUserDetailPage(ctx context.Context, w http.ResponseWrite
 			canSendPayLink = buildAdminBotStartURL(h.botUsername, connector.StartPayload) != ""
 		}
 		data.Subscriptions = append(data.Subscriptions, subscriptionView{
-			ID:             s.ID,
-			Status:         string(s.Status),
-			StatusLabel:    statusLabel,
-			StatusClass:    statusClass,
-			AutoPayEnabled: s.AutoPayEnabled,
-			AutoPayLabel:   autoPayLabel,
-			AutoPayClass:   autoPayClass,
-			TelegramID:     s.TelegramID,
-			ConnectorID:    s.ConnectorID,
-			Connector:      connectorDisplayName(connectorNames, s.ConnectorID),
-			PaymentID:      s.PaymentID,
-			StartsAt:       s.StartsAt.In(time.Local).Format("2006-01-02 15:04:05"),
-			EndsAt:         s.EndsAt.In(time.Local).Format("2006-01-02 15:04:05"),
-			CreatedAt:      s.CreatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
-			CanRevoke:      s.Status == domain.SubscriptionStatusActive,
-			RevokeURL:      buildSubscriptionRevokeURL(lang, telegramID, s.ID),
-			CanSendPayLink: canSendPayLink,
-			PaymentLinkURL: buildUserPaymentLinkURL(lang, telegramID, s.ID),
+			ID:               s.ID,
+			Status:           string(s.Status),
+			StatusLabel:      statusLabel,
+			StatusClass:      statusClass,
+			AutoPayEnabled:   s.AutoPayEnabled,
+			AutoPayLabel:     autoPayLabel,
+			AutoPayClass:     autoPayClass,
+			TelegramID:       s.TelegramID,
+			ConnectorID:      s.ConnectorID,
+			Connector:        connectorDisplayName(connectorNames, s.ConnectorID),
+			PaymentID:        s.PaymentID,
+			StartsAt:         s.StartsAt.In(time.Local).Format("2006-01-02 15:04:05"),
+			EndsAt:           s.EndsAt.In(time.Local).Format("2006-01-02 15:04:05"),
+			CreatedAt:        s.CreatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
+			CanRevoke:        s.Status == domain.SubscriptionStatusActive,
+			RevokeURL:        buildSubscriptionRevokeURL(lang, telegramID, s.ID),
+			CanSendPayLink:   canSendPayLink,
+			PaymentLinkURL:   buildUserPaymentLinkURL(lang, telegramID, s.ID),
+			CanTriggerRebill: h.retriggerRebill != nil && s.Status == domain.SubscriptionStatusActive && s.AutoPayEnabled,
+			RebillURL:        buildSubscriptionRebillURL(lang, telegramID, s.ID),
 		})
 	}
 
@@ -216,7 +218,7 @@ func consentDocumentLabel(lang string, documentID int64, version int) string {
 	return t(lang, "users.consents.version_prefix") + " " + strconv.Itoa(version) + " · ID " + strconv.FormatInt(documentID, 10)
 }
 
-func buildRecurringSummary(lang string, autoPayEnabled, hasAutoPaySettings bool, recurringConsents []domain.RecurringConsent, connectorNames map[int64]string) recurringSummaryView {
+func buildRecurringSummary(lang string, autoPayEnabled, hasAutoPaySettings bool, recurringConsents []domain.RecurringConsent, connectorNames map[int64]string, payments []domain.Payment, subs []domain.Subscription) recurringSummaryView {
 	statusLabel, statusClass := autoPayBadge(lang, autoPayEnabled, hasAutoPaySettings)
 	summary := recurringSummaryView{
 		StatusLabel:          statusLabel,
@@ -225,6 +227,9 @@ func buildRecurringSummary(lang string, autoPayEnabled, hasAutoPaySettings bool,
 		LastConsentConnector: "—",
 		HealthLabel:          t(lang, "users.recurring.health_no_consent"),
 		HealthClass:          "is-warning",
+		LastRebillLabel:      t(lang, "users.recurring.rebill_none"),
+		LastRebillClass:      "is-muted",
+		LastRebillAt:         "—",
 	}
 	if len(recurringConsents) > 0 {
 		latest := recurringConsents[0]
@@ -240,6 +245,35 @@ func buildRecurringSummary(lang string, autoPayEnabled, hasAutoPaySettings bool,
 	if !autoPayEnabled && len(recurringConsents) > 0 {
 		summary.HealthLabel = t(lang, "users.recurring.health_disabled")
 		summary.HealthClass = "is-muted"
+	}
+
+	for _, sub := range subs {
+		if !sub.AutoPayEnabled {
+			continue
+		}
+		state := buildRecurringPaymentState(payments, sub.ID)
+		if !state.HasAttempts {
+			continue
+		}
+		summary.FailedAttempts = state.FailedAttempts
+		if !state.LastAttemptAt.IsZero() {
+			summary.LastRebillAt = state.LastAttemptAt.In(time.Local).Format("2006-01-02 15:04:05")
+		}
+		switch {
+		case state.LastStatus == domain.PaymentStatusPending:
+			summary.LastRebillLabel = t(lang, "users.recurring.rebill_pending")
+			summary.LastRebillClass = "is-accent"
+		case state.FailedAttempts >= 3:
+			summary.LastRebillLabel = t(lang, "users.recurring.rebill_failed_exhausted")
+			summary.LastRebillClass = "is-danger"
+		case state.FailedAttempts > 0:
+			summary.LastRebillLabel = t(lang, "users.recurring.rebill_failed")
+			summary.LastRebillClass = "is-warning"
+		case state.LastStatus == domain.PaymentStatusPaid:
+			summary.LastRebillLabel = t(lang, "users.recurring.rebill_paid")
+			summary.LastRebillClass = "is-success"
+		}
+		break
 	}
 	return summary
 }

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin · {{index .I18N "sessions.title"}}</title>
+  <link rel="stylesheet" href="/admin/assets/css/pico.min.css">
+  <link rel="stylesheet" href="/admin/assets/css/admin.css">
+  <style>
+    :root {
+      --pico-font-family: "Manrope", "Segoe UI", sans-serif;
+      --pico-font-size: 87.5%;
+      --pico-spacing: .8rem;
+      --pico-form-element-spacing-vertical: .45rem;
+      --pico-form-element-spacing-horizontal: .6rem;
+    }
+    main.container { max-width: 1360px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: .8rem; }
+    .current-flag { margin-left: .45rem; font-size: .74rem; color: #2f6fed; font-weight: 700; text-transform: uppercase; }
+    .row-actions { display: flex; gap: .45rem; flex-wrap: wrap; align-items: center; }
+    .row-actions form { margin: 0; }
+  </style>
+</head>
+<body>
+<main class="container">
+  {{template "topbar" .}}
+
+  <article class="page-hero">
+    <span class="page-kicker">{{index .I18N "nav.sessions"}}</span>
+    <h1 class="page-title">{{index .I18N "sessions.title"}}</h1>
+    <p class="page-subtitle">{{index .I18N "sessions.subtitle"}}</p>
+    {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+  </article>
+
+  <article class="section-card">
+    <div class="panel-head">
+      <h3>{{index .I18N "sessions.title"}} ({{len .Sessions}})</h3>
+      <span class="panel-kicker">Security</span>
+    </div>
+    <div class="table-wrap">
+      <table class="stat-table">
+        <thead>
+          <tr>
+            <th>{{index .I18N "sessions.table.id"}}</th>
+            <th>{{index .I18N "sessions.table.subject"}}</th>
+            <th>{{index .I18N "sessions.table.ip"}}</th>
+            <th>{{index .I18N "sessions.table.user_agent"}}</th>
+            <th>{{index .I18N "sessions.table.created"}}</th>
+            <th>{{index .I18N "sessions.table.last_seen"}}</th>
+            <th>{{index .I18N "sessions.table.expires"}}</th>
+            <th>{{index .I18N "sessions.table.status"}}</th>
+            <th>{{index .I18N "sessions.table.actions"}}</th>
+          </tr>
+        </thead>
+        <tbody>
+        {{range .Sessions}}
+          <tr>
+            <td class="mono">{{.ID}}</td>
+            <td>
+              {{.Subject}}
+              {{if .IsCurrent}}<span class="current-flag">{{index $.I18N "sessions.current"}}</span>{{end}}
+            </td>
+            <td class="mono">{{.IP}}</td>
+            <td>{{.UserAgent}}</td>
+            <td class="mono">{{.CreatedAt}}</td>
+            <td class="mono">{{.LastSeenAt}}</td>
+            <td class="mono">{{.ExpiresAt}}</td>
+            <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
+            <td class="row-actions">
+              {{if .CanRevoke}}
+              <form method="POST" action="{{.RevokeURL}}">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="id" value="{{.ID}}">
+                <button type="submit" class="action-btn is-delete">{{index $.I18N "sessions.revoke"}}</button>
+              </form>
+              {{end}}
+            </td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </article>
+</main>
+</body>
+</html>

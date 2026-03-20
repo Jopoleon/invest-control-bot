@@ -29,6 +29,14 @@ func buildUserPaymentLinkURL(lang string, telegramID, subscriptionID int64) stri
 	return "/admin/users/send-payment-link?" + params.Encode()
 }
 
+func buildSubscriptionRebillURL(lang string, telegramID, subscriptionID int64) string {
+	params := url.Values{}
+	params.Set("lang", lang)
+	params.Set("telegram_id", strconv.FormatInt(telegramID, 10))
+	params.Set("subscription_id", strconv.FormatInt(subscriptionID, 10))
+	return "/admin/subscriptions/rebill?" + params.Encode()
+}
+
 func parseInt64Default(raw string) int64 {
 	value, _ := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
 	return value

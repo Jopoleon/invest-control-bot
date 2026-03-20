@@ -22,6 +22,7 @@ const (
 )
 
 type adminAuthContextKey struct{}
+type adminAuthorizedSessionContextKey struct{}
 
 type authorizedSession struct {
 	session   domain.AdminSession
@@ -105,6 +106,7 @@ func (h *Handler) authorizedBearerToken(r *http.Request) bool {
 
 func (h *Handler) createAdminSession(w http.ResponseWriter, r *http.Request) error {
 	now := time.Now().UTC()
+	_ = h.store.CleanupAdminSessions(r.Context(), now)
 	rawToken := generateSessionToken()
 	if err := h.store.CreateAdminSession(r.Context(), domain.AdminSession{
 		TokenHash:  hashSessionToken(rawToken),
@@ -182,11 +184,11 @@ func shouldUseSecureCookies(r *http.Request) bool {
 func (h *Handler) withAdminSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if h.adminToken == "" {
-			next.ServeHTTP(w, withAdminAuthorized(r))
+			next.ServeHTTP(w, withAdminAuthorized(r, nil))
 			return
 		}
-		if ok, _ := h.authorizedSession(w, r); ok {
-			next.ServeHTTP(w, withAdminAuthorized(r))
+		if ok, auth := h.authorizedSession(w, r); ok {
+			next.ServeHTTP(w, withAdminAuthorized(r, auth))
 			return
 		}
 		h.redirectToLogin(w, r)
@@ -235,8 +237,12 @@ func trimForStorage(value string, max int) string {
 	return value
 }
 
-func withAdminAuthorized(r *http.Request) *http.Request {
-	return r.WithContext(context.WithValue(r.Context(), adminAuthContextKey{}, true))
+func withAdminAuthorized(r *http.Request, auth *authorizedSession) *http.Request {
+	ctx := context.WithValue(r.Context(), adminAuthContextKey{}, true)
+	if auth != nil {
+		ctx = context.WithValue(ctx, adminAuthorizedSessionContextKey{}, auth)
+	}
+	return r.WithContext(ctx)
 }
 
 func isAdminAuthorized(r *http.Request) bool {
@@ -245,4 +251,12 @@ func isAdminAuthorized(r *http.Request) bool {
 	}
 	authorized, _ := r.Context().Value(adminAuthContextKey{}).(bool)
 	return authorized
+}
+
+func currentAdminAuthorizedSession(r *http.Request) *authorizedSession {
+	if r == nil {
+		return nil
+	}
+	auth, _ := r.Context().Value(adminAuthorizedSessionContextKey{}).(*authorizedSession)
+	return auth
 }

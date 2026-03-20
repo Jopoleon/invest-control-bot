@@ -418,6 +418,10 @@
 - `2026-03-20` Карточка пользователя расширена operational recurring-summary: явный статус автоплатежа, последний opt-in, последний коннектор и диагностический health-статус (`нет consent` / `enabled without consent` / `consistent` / `disabled by user`).
 - `2026-03-20` Для recurring backend automation добавлены scheduler-aware retry windows T-3/T-2/T-1, общий `triggerRebill` для admin/scheduler, уведомление пользователю о неуспешном автосписании со ссылкой на ручную оплату и автотесты на retry-окна и scheduled rebill flow.
 - `2026-03-20` Auth/session слой админки доведен до route-level middleware: публичными оставлены только `/admin/login` и `/admin/assets/*`, а все остальные `/admin/*` маршруты защищаются единым server-side session middleware без повторных lookup внутри handlers.
+- `2026-03-20` Экран `churn` усилен recurring-диагностикой: по каждой проблемной записи показываются статус автоплатежа, retry-состояние (`нет попыток` / `pending` / `ошибок N/3`) и время последней попытки автосписания.
+- `2026-03-20` На экран `churn` добавлены server-side фильтры по recurring state: `автоплатеж on/off/unset` и `retry state` (`нет попыток` / `pending` / `ошибки 1-2` / `ошибки 3/3`), чтобы оператор мог быстро выделять нужные кейсы без ручного просмотра всей таблицы.
+- `2026-03-20` Auth/session слой дополнен cleanup механикой: при создании новой admin session backend best-effort удаляет revoked и absolute-expired записи из `admin_sessions`, чтобы таблица сессий не разрасталась бесконтрольно.
+- `2026-03-20` Для админки добавлен operational экран активных browser-сессий: список `admin_sessions`, индикация текущей сессии, ручной revoke и аудит ручного завершения сессии.
 
 ## 13) Референсный flow текущего бота (для воспроизведения)
 Источник: `telegram-bot-flow.md`.

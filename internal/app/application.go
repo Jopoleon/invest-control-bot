@@ -62,15 +62,22 @@ func newApplication(cfg config.Config, st store.Store) (*application, error) {
 		paymentService = payment.NewMockService(mockBaseURL)
 	}
 
-	return &application{
+	appCtx := &application{
 		config:           cfg,
 		store:            st,
 		telegramClient:   tgClient,
 		botHandler:       bot.NewHandler(st, tgClient, paymentService, cfg.Payment.Provider == "robokassa" && cfg.Payment.Robokassa.RecurringEnabled, publicBaseURL(cfg.Telegram.Webhook.PublicURL)),
-		adminHandler:     admin.NewHandler(st, cfg.Security.AdminToken, cfg.Telegram.BotUsername, tgClient),
 		paymentService:   paymentService,
 		robokassaService: robokassaService,
-	}, nil
+	}
+	appCtx.adminHandler = admin.NewHandler(st, cfg.Security.AdminToken, cfg.Telegram.BotUsername, tgClient, func(ctx context.Context, subscriptionID int64) (admin.RebillResult, error) {
+		payload, err := appCtx.triggerRebill(ctx, subscriptionID, "admin_ui")
+		if err != nil {
+			return admin.RebillResult{}, err
+		}
+		return admin.RebillResult{InvoiceID: payload.InvoiceID, Existing: payload.Existing}, nil
+	})
+	return appCtx, nil
 }
 
 func publicBaseURL(raw string) string {

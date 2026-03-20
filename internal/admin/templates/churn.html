@@ -65,6 +65,25 @@
           </select>
         </label>
         <label class="filter-field">
+          <span>{{index .I18N "churn.filter.autopay"}}</span>
+          <select name="autopay">
+            <option value="" {{if eq .AutoPay ""}}selected{{end}}>{{index .I18N "churn.filter.any"}}</option>
+            <option value="enabled" {{if eq .AutoPay "enabled"}}selected{{end}}>{{index .I18N "badge.autopay.enabled"}}</option>
+            <option value="disabled" {{if eq .AutoPay "disabled"}}selected{{end}}>{{index .I18N "badge.autopay.disabled"}}</option>
+            <option value="unset" {{if eq .AutoPay "unset"}}selected{{end}}>{{index .I18N "badge.autopay.unset"}}</option>
+          </select>
+        </label>
+        <label class="filter-field">
+          <span>{{index .I18N "churn.filter.retry_state"}}</span>
+          <select name="retry_state">
+            <option value="" {{if eq .RetryState ""}}selected{{end}}>{{index .I18N "churn.filter.any"}}</option>
+            <option value="none" {{if eq .RetryState "none"}}selected{{end}}>{{index .I18N "churn.recurring.not_started"}}</option>
+            <option value="pending" {{if eq .RetryState "pending"}}selected{{end}}>{{index .I18N "churn.recurring.pending"}}</option>
+            <option value="failed" {{if eq .RetryState "failed"}}selected{{end}}>{{index .I18N "churn.filter.retry_failed_some"}}</option>
+            <option value="exhausted" {{if eq .RetryState "exhausted"}}selected{{end}}>{{index .I18N "churn.filter.retry_exhausted"}}</option>
+          </select>
+        </label>
+        <label class="filter-field">
           <span>{{index .I18N "churn.filter.search"}}</span>
           <input name="search" value="{{.Search}}" placeholder="{{index .I18N "churn.filter.search_ph"}}">
         </label>
@@ -92,6 +111,8 @@
             <th>{{index .I18N "churn.table.user"}}</th>
             <th>{{index .I18N "churn.table.connector"}}</th>
             <th>{{index .I18N "churn.table.issue"}}</th>
+            <th>{{index .I18N "churn.table.autopay"}}</th>
+            <th>{{index .I18N "churn.table.retry"}}</th>
             <th>{{index .I18N "churn.table.payment"}}</th>
             <th>{{index .I18N "churn.table.subscription"}}</th>
             <th>{{index .I18N "churn.table.amount"}}</th>
@@ -109,6 +130,11 @@
             </td>
             <td>{{.Connector}}</td>
             <td><span class="badge {{.IssueClass}}">{{.IssueLabel}}</span></td>
+            <td><span class="badge {{.AutoPayClass}}">{{.AutoPayLabel}}</span></td>
+            <td>
+              <span class="badge {{.RetryClass}}">{{.RetryLabel}}</span>
+              <small class="mono" style="display:block; margin-top:.2rem;">{{.LastRetryAt}}</small>
+            </td>
             <td>{{if .PaymentStatus}}<span class="badge {{.PaymentClass}}">{{.PaymentLabel}}</span>{{end}}</td>
             <td>{{if .SubscriptionStatus}}<span class="badge {{.SubscriptionClass}}">{{.SubscriptionLabel}}</span>{{end}}</td>
             <td>{{if gt .LastAmountRUB 0}}{{.LastAmountRUB}} ₽{{end}}</td>
@@ -120,6 +146,14 @@
                 <input type="hidden" name="telegram_id" value="{{.TelegramID}}">
                 <input type="hidden" name="connector_id" value="{{.ConnectorID}}">
                 <button type="submit" class="action-btn is-send">{{index $.I18N "users.actions.paylink_send"}}</button>
+              </form>
+              {{end}}
+              {{if .CanTriggerRebill}}
+              <form method="POST" action="{{.RebillURL}}">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="telegram_id" value="{{.TelegramID}}">
+                <input type="hidden" name="subscription_id" value="{{.SubscriptionID}}">
+                <button type="submit" class="action-btn is-edit">{{index $.I18N "users.actions.rebill_send"}}</button>
               </form>
               {{end}}
               <a href="{{.UserDetailURL}}" role="button" class="action-btn is-view">{{index $.I18N "users.detail.profile"}}</a>

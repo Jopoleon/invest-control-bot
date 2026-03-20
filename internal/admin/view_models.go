@@ -112,24 +112,26 @@ type paymentView struct {
 }
 
 type subscriptionView struct {
-	ID             int64
-	Status         string
-	StatusLabel    string
-	StatusClass    string
-	AutoPayEnabled bool
-	AutoPayLabel   string
-	AutoPayClass   string
-	TelegramID     int64
-	ConnectorID    int64
-	Connector      string
-	PaymentID      int64
-	StartsAt       string
-	EndsAt         string
-	CreatedAt      string
-	CanRevoke      bool
-	RevokeURL      string
-	CanSendPayLink bool
-	PaymentLinkURL string
+	ID               int64
+	Status           string
+	StatusLabel      string
+	StatusClass      string
+	AutoPayEnabled   bool
+	AutoPayLabel     string
+	AutoPayClass     string
+	TelegramID       int64
+	ConnectorID      int64
+	Connector        string
+	PaymentID        int64
+	StartsAt         string
+	EndsAt           string
+	CreatedAt        string
+	CanRevoke        bool
+	RevokeURL        string
+	CanSendPayLink   bool
+	PaymentLinkURL   string
+	CanTriggerRebill bool
+	RebillURL        string
 }
 
 type billingPageData struct {
@@ -230,6 +232,10 @@ type recurringSummaryView struct {
 	LastConsentConnector string
 	HealthLabel          string
 	HealthClass          string
+	LastRebillLabel      string
+	LastRebillClass      string
+	LastRebillAt         string
+	FailedAttempts       int
 }
 
 type churnIssueView struct {
@@ -243,6 +249,11 @@ type churnIssueView struct {
 	IssueType          string
 	IssueLabel         string
 	IssueClass         string
+	AutoPayLabel       string
+	AutoPayClass       string
+	RetryLabel         string
+	RetryClass         string
+	LastRetryAt        string
 	PaymentStatus      string
 	PaymentLabel       string
 	PaymentClass       string
@@ -255,6 +266,8 @@ type churnIssueView struct {
 	UserDetailURL      string
 	CanSendPayLink     bool
 	PaymentLinkURL     string
+	CanTriggerRebill   bool
+	RebillURL          string
 }
 
 type churnPageData struct {
@@ -266,6 +279,8 @@ type churnPageData struct {
 	ConnectorID string
 	Search      string
 	IssueType   string
+	AutoPay     string
+	RetryState  string
 	Issues      []churnIssueView
 }
 
@@ -305,4 +320,26 @@ type legalDocumentsPageData struct {
 	FormExternalURL    string
 	FormContent        string
 	FormIsActive       bool
+}
+
+type adminSessionView struct {
+	ID          int64
+	Subject     string
+	IP          string
+	UserAgent   string
+	CreatedAt   string
+	ExpiresAt   string
+	LastSeenAt  string
+	StatusLabel string
+	StatusClass string
+	IsCurrent   bool
+	CanRevoke   bool
+	RevokeURL   string
+}
+
+type adminSessionsPageData struct {
+	basePageData
+
+	Notice   string
+	Sessions []adminSessionView
 }

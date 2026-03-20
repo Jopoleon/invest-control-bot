@@ -30,6 +30,8 @@ type churnIssueRecord struct {
 	connectorID        int64
 	connector          string
 	issueType          churnIssueKind
+	autoPayEnabled     bool
+	recurringState     recurringPaymentState
 	paymentStatus      domain.PaymentStatus
 	subscriptionID     int64
 	subscriptionStatus domain.SubscriptionStatus
@@ -54,10 +56,12 @@ func (h *Handler) churnPage(w http.ResponseWriter, r *http.Request) {
 		ConnectorID: strings.TrimSpace(r.URL.Query().Get("connector_id")),
 		Search:      strings.TrimSpace(r.URL.Query().Get("search")),
 		IssueType:   strings.TrimSpace(r.URL.Query().Get("issue_type")),
+		AutoPay:     strings.TrimSpace(r.URL.Query().Get("autopay")),
+		RetryState:  strings.TrimSpace(r.URL.Query().Get("retry_state")),
 		ExportURL:   buildExportURL("/admin/churn/export.csv", r.URL.Query(), lang),
 	}
 
-	issues, err := h.buildChurnIssues(r.Context(), lang, data.TelegramID, data.ConnectorID, data.Search, data.IssueType)
+	issues, err := h.buildChurnIssues(r.Context(), lang, data.TelegramID, data.ConnectorID, data.Search, data.IssueType, data.AutoPay, data.RetryState)
 	if err != nil {
 		data.Notice = err.Error()
 		h.renderer.render(w, "churn.html", data)
@@ -67,7 +71,7 @@ func (h *Handler) churnPage(w http.ResponseWriter, r *http.Request) {
 	h.renderer.render(w, "churn.html", data)
 }
 
-func (h *Handler) buildChurnIssues(ctx context.Context, lang, telegramIDRaw, connectorIDRaw, searchRaw, issueTypeRaw string) ([]churnIssueView, error) {
+func (h *Handler) buildChurnIssues(ctx context.Context, lang, telegramIDRaw, connectorIDRaw, searchRaw, issueTypeRaw, autoPayRaw, retryStateRaw string) ([]churnIssueView, error) {
 	users, err := h.store.ListUsers(ctx, domain.UserListQuery{Limit: 5000})
 	if err != nil {
 		return nil, err
@@ -113,6 +117,8 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang, telegramIDRaw, con
 	connectorFilter := parseInt64Default(connectorIDRaw)
 	search := strings.ToLower(strings.TrimSpace(searchRaw))
 	issueFilter := churnIssueKind(strings.TrimSpace(issueTypeRaw))
+	autoPayFilter := strings.TrimSpace(autoPayRaw)
+	retryFilter := recurringRetryFilter(strings.TrimSpace(retryStateRaw))
 
 	allKeys := make(map[key]struct{}, len(latestPayment)+len(latestSub))
 	for k := range latestPayment {
@@ -153,6 +159,15 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang, telegramIDRaw, con
 
 		user := userMap[k.telegramID]
 		connector := connectorDisplayName(connectorNames, k.connectorID)
+		autoPayEnabled := hasSub && sub.AutoPayEnabled
+		hasAutoPaySettings := hasSub
+		recurringState := buildRecurringPaymentState(payments, sub.ID)
+		if !matchesAutoPayFilter(autoPayFilter, autoPayEnabled, hasAutoPaySettings) {
+			continue
+		}
+		if !matchesRecurringRetryFilter(retryFilter, autoPayEnabled, recurringState) {
+			continue
+		}
 		if search != "" {
 			haystack := strings.ToLower(strings.Join([]string{
 				strconv.FormatInt(k.telegramID, 10),
@@ -184,6 +199,8 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang, telegramIDRaw, con
 			connectorID:        k.connectorID,
 			connector:          connector,
 			issueType:          issue,
+			autoPayEnabled:     autoPayEnabled,
+			recurringState:     recurringState,
 			paymentStatus:      payment.Status,
 			subscriptionID:     sub.ID,
 			subscriptionStatus: sub.Status,
@@ -207,6 +224,12 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang, telegramIDRaw, con
 		paymentLabel, paymentClass := paymentStatusBadge(lang, item.paymentStatus)
 		subLabel, subClass := subscriptionStatusBadge(lang, item.subscriptionStatus)
 		issueLabel, issueClass := localizeChurnIssue(lang, item.issueType)
+		autoPayLabel, autoPayClass := autoPayBadge(lang, item.autoPayEnabled, item.subscriptionID > 0)
+		retryLabel, retryClass := recurringRetryBadge(lang, item.autoPayEnabled, item.recurringState)
+		lastRetryAt := "—"
+		if !item.recurringState.LastAttemptAt.IsZero() {
+			lastRetryAt = item.recurringState.LastAttemptAt.In(time.Local).Format("2006-01-02 15:04:05")
+		}
 		result = append(result, churnIssueView{
 			TelegramID:         item.telegramID,
 			TelegramUsername:   item.telegramUsername,
@@ -218,6 +241,11 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang, telegramIDRaw, con
 			IssueType:          string(item.issueType),
 			IssueLabel:         issueLabel,
 			IssueClass:         issueClass,
+			AutoPayLabel:       autoPayLabel,
+			AutoPayClass:       autoPayClass,
+			RetryLabel:         retryLabel,
+			RetryClass:         retryClass,
+			LastRetryAt:        lastRetryAt,
 			PaymentStatus:      string(item.paymentStatus),
 			PaymentLabel:       paymentLabel,
 			PaymentClass:       paymentClass,
@@ -230,6 +258,8 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang, telegramIDRaw, con
 			UserDetailURL:      buildUserDetailURL(lang, item.telegramID),
 			CanSendPayLink:     buildAdminBotStartURL(h.botUsername, h.lookupStartPayload(ctx, item.connectorID)) != "",
 			PaymentLinkURL:     buildConnectorPaymentLinkURL(lang, item.telegramID, item.connectorID),
+			CanTriggerRebill:   h.retriggerRebill != nil && item.subscriptionID > 0 && item.autoPayEnabled && item.subscriptionStatus == domain.SubscriptionStatusActive,
+			RebillURL:          buildSubscriptionRebillURL(lang, item.telegramID, item.subscriptionID),
 		})
 	}
 

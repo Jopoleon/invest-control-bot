@@ -364,6 +364,18 @@
         <small>{{index .I18N "users.recurring.summary_health"}}</small>
         <span><span class="badge {{.RecurringSummary.HealthClass}}">{{.RecurringSummary.HealthLabel}}</span></span>
       </div>
+      <div class="profile-card">
+        <small>{{index .I18N "users.recurring.summary_rebill"}}</small>
+        <span><span class="badge {{.RecurringSummary.LastRebillClass}}">{{.RecurringSummary.LastRebillLabel}}</span></span>
+      </div>
+      <div class="profile-card">
+        <small>{{index .I18N "users.recurring.summary_rebill_at"}}</small>
+        <span class="mono">{{.RecurringSummary.LastRebillAt}}</span>
+      </div>
+      <div class="profile-card">
+        <small>{{index .I18N "users.recurring.summary_failed_attempts"}}</small>
+        <span>{{.RecurringSummary.FailedAttempts}}</span>
+      </div>
     </div>
   </article>
 
@@ -529,6 +541,14 @@
                 <input type="hidden" name="telegram_id" value="{{$.User.TelegramID}}">
                 <input type="hidden" name="subscription_id" value="{{.ID}}">
                 <button type="submit" class="action-btn is-send">{{index $.I18N "users.actions.paylink_send"}}</button>
+              </form>
+              {{end}}
+              {{if .CanTriggerRebill}}
+              <form method="POST" action="{{.RebillURL}}">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="telegram_id" value="{{$.User.TelegramID}}">
+                <input type="hidden" name="subscription_id" value="{{.ID}}">
+                <button type="submit" class="action-btn is-edit">{{index $.I18N "users.actions.rebill_send"}}</button>
               </form>
               {{end}}
               {{if .CanRevoke}}
