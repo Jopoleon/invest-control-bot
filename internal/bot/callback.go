@@ -56,7 +56,7 @@ func (h *Handler) handleCallback(ctx context.Context, cb *models.CallbackQuery) 
 		slog.Error("save consent failed", "error", err, "telegram_id", cb.From.ID, "connector_id", connectorID)
 		return
 	}
-	h.logAuditEvent(ctx, cb.From.ID, connectorID, "consent_accepted", "")
+	h.logAuditEvent(ctx, cb.From.ID, connectorID, domain.AuditActionConsentAccepted, "")
 
 	user, exists, err := h.store.GetUser(ctx, cb.From.ID)
 	if err != nil {
@@ -79,7 +79,7 @@ func (h *Handler) handleCallback(ctx context.Context, cb *models.CallbackQuery) 
 		if err := h.store.DeleteRegistrationState(ctx, cb.From.ID); err != nil {
 			slog.Error("delete registration state failed", "error", err, "telegram_id", cb.From.ID)
 		}
-		h.logAuditEvent(ctx, cb.From.ID, connectorID, "registration_reused_existing_profile", "")
+		h.logAuditEvent(ctx, cb.From.ID, connectorID, domain.AuditActionRegistrationReusedProfile, "")
 		h.sendFinalRegistrationMessage(ctx, cb.From.ID, connectorID)
 		return
 	}
@@ -94,7 +94,7 @@ func (h *Handler) handleCallback(ctx context.Context, cb *models.CallbackQuery) 
 		slog.Error("save registration state failed", "error", err, "telegram_id", cb.From.ID, "connector_id", connectorID)
 		return
 	}
-	h.logAuditEvent(ctx, cb.From.ID, connectorID, "registration_step_requested", string(nextStep))
+	h.logAuditEvent(ctx, cb.From.ID, connectorID, domain.AuditActionRegistrationStepRequested, string(nextStep))
 
 	h.send(ctx, cb.From.ID, registrationPrompt(nextStep))
 }

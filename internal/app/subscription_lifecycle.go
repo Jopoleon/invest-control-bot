@@ -113,7 +113,7 @@ func processSubscriptionReminders(ctx context.Context, st store.Store, tg *teleg
 		_ = st.SaveAuditEvent(ctx, domain.AuditEvent{
 			TelegramID:  sub.TelegramID,
 			ConnectorID: sub.ConnectorID,
-			Action:      "subscription_reminder_sent",
+			Action:      domain.AuditActionSubscriptionReminderSent,
 			Details:     "subscription_id=" + strconv.FormatInt(sub.ID, 10),
 			CreatedAt:   now,
 		})
@@ -160,7 +160,7 @@ func processSubscriptionExpiryNotices(ctx context.Context, st store.Store, tg *t
 		_ = st.SaveAuditEvent(ctx, domain.AuditEvent{
 			TelegramID:  sub.TelegramID,
 			ConnectorID: sub.ConnectorID,
-			Action:      "subscription_expiry_notice_sent",
+			Action:      domain.AuditActionSubscriptionExpiryNoticeSent,
 			Details:     "subscription_id=" + strconv.FormatInt(sub.ID, 10),
 			CreatedAt:   now,
 		})
@@ -194,7 +194,7 @@ func processExpiredSubscriptions(ctx context.Context, st store.Store, tg *telegr
 					_ = st.SaveAuditEvent(ctx, domain.AuditEvent{
 						TelegramID:  sub.TelegramID,
 						ConnectorID: sub.ConnectorID,
-						Action:      "subscription_revoke_failed",
+						Action:      domain.AuditActionSubscriptionRevokeFailed,
 						Details:     "subscription_id=" + strconv.FormatInt(sub.ID, 10),
 						CreatedAt:   now,
 					})
@@ -202,7 +202,7 @@ func processExpiredSubscriptions(ctx context.Context, st store.Store, tg *telegr
 					_ = st.SaveAuditEvent(ctx, domain.AuditEvent{
 						TelegramID:  sub.TelegramID,
 						ConnectorID: sub.ConnectorID,
-						Action:      "subscription_revoked_from_chat",
+						Action:      domain.AuditActionSubscriptionRevokedFromChat,
 						Details:     "subscription_id=" + strconv.FormatInt(sub.ID, 10),
 						CreatedAt:   now,
 					})
@@ -229,7 +229,7 @@ func processExpiredSubscriptions(ctx context.Context, st store.Store, tg *telegr
 		_ = st.SaveAuditEvent(ctx, domain.AuditEvent{
 			TelegramID:  sub.TelegramID,
 			ConnectorID: sub.ConnectorID,
-			Action:      "subscription_expired",
+			Action:      domain.AuditActionSubscriptionExpired,
 			Details:     "subscription_id=" + strconv.FormatInt(sub.ID, 10),
 			CreatedAt:   now,
 		})

@@ -35,11 +35,11 @@ func (a *application) handleMockPay(w http.ResponseWriter, r *http.Request) {
 		if err := a.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
 			TelegramID:  tgID,
 			ConnectorID: connectorID,
-			Action:      "mock_checkout_opened",
+			Action:      domain.AuditActionMockCheckoutOpened,
 			Details:     "token=" + token,
 			CreatedAt:   time.Now().UTC(),
 		}); err != nil {
-			logAuditError("mock_checkout_opened", err)
+			logAuditError(domain.AuditActionMockCheckoutOpened, err)
 		}
 	}
 	successURL := "/mock/pay/success?token=" + token + "&connector_id=" + strconv.FormatInt(connectorID, 10) + "&user_id=" + userID
@@ -75,11 +75,11 @@ func (a *application) handleMockPaySuccess(w http.ResponseWriter, r *http.Reques
 		if err := a.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
 			TelegramID:  tgID,
 			ConnectorID: connectorID,
-			Action:      "mock_payment_success",
+			Action:      domain.AuditActionMockPaymentSuccess,
 			Details:     "token=" + token,
 			CreatedAt:   now,
 		}); err != nil {
-			logAuditError("mock_payment_success", err)
+			logAuditError(domain.AuditActionMockPaymentSuccess, err)
 		}
 	}
 	renderAppTemplate(w, "mock_pay_success.html", mockPaymentSuccessPageData{Token: token})

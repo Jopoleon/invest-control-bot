@@ -32,7 +32,7 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg *models.Messag
 	switch state.Step {
 	case domain.StepFullName:
 		user.FullName = text
-		h.logAuditEvent(ctx, msg.From.ID, state.ConnectorID, "registration_full_name_saved", "")
+		h.logAuditEvent(ctx, msg.From.ID, state.ConnectorID, domain.AuditActionRegistrationFullNameSaved, "")
 	case domain.StepPhone:
 		phone := normalizePhone(text)
 		if !isValidE164(phone) {
@@ -40,14 +40,14 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg *models.Messag
 			return
 		}
 		user.Phone = phone
-		h.logAuditEvent(ctx, msg.From.ID, state.ConnectorID, "registration_phone_saved", "")
+		h.logAuditEvent(ctx, msg.From.ID, state.ConnectorID, domain.AuditActionRegistrationPhoneSaved, "")
 	case domain.StepEmail:
 		if _, err := mail.ParseAddress(text); err != nil {
 			h.send(ctx, msg.Chat.ID, "⚠️ Неправильный e-mail")
 			return
 		}
 		user.Email = text
-		h.logAuditEvent(ctx, msg.From.ID, state.ConnectorID, "registration_email_saved", "")
+		h.logAuditEvent(ctx, msg.From.ID, state.ConnectorID, domain.AuditActionRegistrationEmailSaved, "")
 	case domain.StepUsername:
 		if text != "-" {
 			user.TelegramUsername = normalizeTelegramUsername(text)
@@ -67,7 +67,7 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg *models.Messag
 			slog.Error("delete registration state failed", "error", err, "telegram_id", msg.From.ID)
 		}
 		h.sendFinalRegistrationMessage(ctx, msg.Chat.ID, state.ConnectorID)
-		h.logAuditEvent(ctx, msg.From.ID, state.ConnectorID, "registration_completed", "")
+		h.logAuditEvent(ctx, msg.From.ID, state.ConnectorID, domain.AuditActionRegistrationCompleted, "")
 		return
 	}
 

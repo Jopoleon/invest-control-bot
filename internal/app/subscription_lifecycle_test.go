@@ -42,7 +42,7 @@ func TestProcessSubscriptionReminders_MarksReminderOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list audit events: %v", err)
 	}
-	if got := countAuditEvents(events, "subscription_reminder_sent"); got != 1 {
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionReminderSent); got != 1 {
 		t.Fatalf("subscription_reminder_sent count = %d, want 1", got)
 	}
 }
@@ -78,7 +78,7 @@ func TestProcessExpiredSubscriptions_ExpiresOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list audit events: %v", err)
 	}
-	if got := countAuditEvents(events, "subscription_expired"); got != 1 {
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionExpired); got != 1 {
 		t.Fatalf("subscription_expired count = %d, want 1", got)
 	}
 }
@@ -114,7 +114,7 @@ func TestProcessSubscriptionExpiryNotices_MarksNoticeOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list audit events: %v", err)
 	}
-	if got := countAuditEvents(events, "subscription_expiry_notice_sent"); got != 1 {
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionExpiryNoticeSent); got != 1 {
 		t.Fatalf("subscription_expiry_notice_sent count = %d, want 1", got)
 	}
 }

@@ -75,11 +75,11 @@ func (a *application) handlePaymentResult(w http.ResponseWriter, r *http.Request
 	if err := a.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
 		TelegramID:  paymentRow.TelegramID,
 		ConnectorID: paymentRow.ConnectorID,
-		Action:      "robokassa_result_received",
+		Action:      domain.AuditActionRobokassaResultReceived,
 		Details:     "inv_id=" + invID + ";out_sum=" + outSum,
 		CreatedAt:   time.Now().UTC(),
 	}); err != nil {
-		logAuditError("robokassa_result_received", err)
+		logAuditError(domain.AuditActionRobokassaResultReceived, err)
 	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("OK" + invID))
@@ -145,7 +145,7 @@ func (a *application) handlePaymentFail(w http.ResponseWriter, r *http.Request) 
 				_ = a.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
 					TelegramID:  paymentRow.TelegramID,
 					ConnectorID: paymentRow.ConnectorID,
-					Action:      "payment_failed",
+					Action:      domain.AuditActionPaymentFailed,
 					Details:     "payment_id=" + strconv.FormatInt(paymentRow.ID, 10),
 					CreatedAt:   time.Now().UTC(),
 				})
@@ -289,7 +289,7 @@ func (a *application) handlePaymentRebill(w http.ResponseWriter, r *http.Request
 		_ = a.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
 			TelegramID:  subscription.TelegramID,
 			ConnectorID: subscription.ConnectorID,
-			Action:      "rebill_request_failed",
+			Action:      domain.AuditActionRebillRequestFailed,
 			Details:     "subscription_id=" + strconv.FormatInt(subscription.ID, 10) + ";invoice_id=" + invoiceID + ";error=" + err.Error(),
 			CreatedAt:   time.Now().UTC(),
 		})
@@ -301,11 +301,11 @@ func (a *application) handlePaymentRebill(w http.ResponseWriter, r *http.Request
 	if err := a.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
 		TelegramID:  subscription.TelegramID,
 		ConnectorID: subscription.ConnectorID,
-		Action:      "rebill_requested",
+		Action:      domain.AuditActionRebillRequested,
 		Details:     "subscription_id=" + strconv.FormatInt(subscription.ID, 10) + ";invoice_id=" + invoiceID + ";parent=" + parentPayment.Token,
 		CreatedAt:   now,
 	}); err != nil {
-		logAuditError("rebill_requested", err)
+		logAuditError(domain.AuditActionRebillRequested, err)
 	}
 	writeRebillResponse(w, rebillResponse{OK: true, InvoiceID: invoiceID})
 }

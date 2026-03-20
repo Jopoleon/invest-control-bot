@@ -90,10 +90,10 @@ func TestPaymentResult_SuccessAndIdempotency(t *testing.T) {
 		t.Fatalf("list audit events: %v", err)
 	}
 
-	if got := countAuditEvents(events, "payment_success_notified"); got != 1 {
+	if got := countAuditEvents(events, domain.AuditActionPaymentSuccessNotified); got != 1 {
 		t.Fatalf("payment_success_notified count = %d, want 1", got)
 	}
-	if got := countAuditEvents(events, "robokassa_result_received"); got != 2 {
+	if got := countAuditEvents(events, domain.AuditActionRobokassaResultReceived); got != 2 {
 		t.Fatalf("robokassa_result_received count = %d, want 2", got)
 	}
 }
@@ -494,7 +494,7 @@ func TestPaymentRebill_MarksPaymentFailedWhenProviderFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list audit events: %v", err)
 	}
-	if got := countAuditEvents(events, "rebill_request_failed"); got != 1 {
+	if got := countAuditEvents(events, domain.AuditActionRebillRequestFailed); got != 1 {
 		t.Fatalf("rebill_request_failed count=%d want=1", got)
 	}
 }

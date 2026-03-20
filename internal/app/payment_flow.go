@@ -71,11 +71,11 @@ func (a *application) activateSuccessfulPayment(ctx context.Context, paymentRow 
 	if err := a.store.SaveAuditEvent(ctx, domain.AuditEvent{
 		TelegramID:  paymentRow.TelegramID,
 		ConnectorID: paymentRow.ConnectorID,
-		Action:      "subscription_activated",
+		Action:      domain.AuditActionSubscriptionActivated,
 		Details:     "payment_id=" + strconv.FormatInt(paymentRow.ID, 10),
 		CreatedAt:   now,
 	}); err != nil {
-		slog.Error("save audit event failed", "error", err, "action", "subscription_activated")
+		slog.Error("save audit event failed", "error", err, "action", domain.AuditActionSubscriptionActivated)
 	}
 
 	if !paymentMarkedNow {
@@ -109,10 +109,10 @@ func (a *application) activateSuccessfulPayment(ctx context.Context, paymentRow 
 	if err := a.store.SaveAuditEvent(ctx, domain.AuditEvent{
 		TelegramID:  paymentRow.TelegramID,
 		ConnectorID: paymentRow.ConnectorID,
-		Action:      "payment_success_notified",
+		Action:      domain.AuditActionPaymentSuccessNotified,
 		Details:     "payment_id=" + strconv.FormatInt(paymentRow.ID, 10),
 		CreatedAt:   now,
 	}); err != nil {
-		slog.Error("save audit event failed", "error", err, "action", "payment_success_notified")
+		slog.Error("save audit event failed", "error", err, "action", domain.AuditActionPaymentSuccessNotified)
 	}
 }

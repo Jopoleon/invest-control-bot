@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
 	"github.com/go-telegram/bot/models"
 )
 
@@ -37,7 +38,7 @@ func (h *Handler) handleStart(ctx context.Context, msg *models.Message) {
 		h.send(ctx, msg.Chat.ID, "Коннектор не найден или отключен.")
 		return
 	}
-	h.logAuditEvent(ctx, msg.From.ID, connector.ID, "start_opened", "payload="+payload)
+	h.logAuditEvent(ctx, msg.From.ID, connector.ID, domain.AuditActionStartOpened, "payload="+payload)
 
 	offerURL := connector.OfferURL
 	if offerURL == "" {

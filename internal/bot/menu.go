@@ -112,7 +112,7 @@ func (h *Handler) sendSubscriptionOverview(ctx context.Context, chatID, telegram
 	}
 
 	h.send(ctx, chatID, strings.TrimSpace(strings.Join(lines, "\n")))
-	h.logAuditEvent(ctx, telegramID, 0, "menu_subscription_opened", "")
+	h.logAuditEvent(ctx, telegramID, 0, domain.AuditActionMenuSubscriptionOpened, "")
 }
 
 func (h *Handler) sendPaymentHistory(ctx context.Context, chatID, telegramID int64) {
@@ -141,7 +141,7 @@ func (h *Handler) sendPaymentHistory(ctx context.Context, chatID, telegramID int
 		lines = append(lines, fmt.Sprintf("  Оплачен: %s", paid))
 	}
 	h.send(ctx, chatID, strings.Join(lines, "\n"))
-	h.logAuditEvent(ctx, telegramID, 0, "menu_payments_opened", "")
+	h.logAuditEvent(ctx, telegramID, 0, domain.AuditActionMenuPaymentsOpened, "")
 }
 
 func (h *Handler) sendAutopayInfo(ctx context.Context, chatID, telegramID int64) {
@@ -173,7 +173,7 @@ func (h *Handler) sendAutopayInfo(ctx context.Context, chatID, telegramID int64)
 		slog.Error("send autopay info failed", "error", err, "telegram_id", telegramID)
 		return
 	}
-	h.logAuditEvent(ctx, telegramID, 0, "menu_autopay_opened", "")
+	h.logAuditEvent(ctx, telegramID, 0, domain.AuditActionMenuAutoPayOpened, "")
 }
 
 func (h *Handler) setAutopayPreference(ctx context.Context, chatID, telegramID int64, enabled bool) {
@@ -188,11 +188,11 @@ func (h *Handler) setAutopayPreference(ctx context.Context, chatID, telegramID i
 	}
 	if enabled {
 		h.send(ctx, chatID, "Автоплатеж включен. Следующая оплата будет создана в recurring-режиме.")
-		h.logAuditEvent(ctx, telegramID, 0, "autopay_enabled", "")
+		h.logAuditEvent(ctx, telegramID, 0, domain.AuditActionAutopayEnabled, "")
 		return
 	}
 	h.send(ctx, chatID, "Автоплатеж выключен.")
-	h.logAuditEvent(ctx, telegramID, 0, "autopay_disabled", "")
+	h.logAuditEvent(ctx, telegramID, 0, domain.AuditActionAutopayDisabled, "")
 }
 
 func resolveChannelForBot(channelURL, chatID string) string {

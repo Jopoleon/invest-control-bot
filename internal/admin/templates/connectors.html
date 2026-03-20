@@ -126,16 +126,11 @@
         <input name="description" placeholder="{{index .I18N "connectors.form.description_ph"}}">
       </label>
 
-      <button type="submit">{{index .I18N "connectors.create"}}</button>
+      <div class="form-note">{{.RequiredMessage}}</div>
+      <div class="form-actions">
+        <button type="submit">{{index .I18N "connectors.create"}}</button>
+      </div>
     </form>
-  </article>
-
-  <article class="section-card">
-    <div class="panel-head">
-      <h3>{{index .I18N "connectors.hint_title"}}</h3>
-      <span class="panel-kicker">Guide</span>
-    </div>
-    <small class="empty-note">{{.RequiredMessage}}</small>
   </article>
 
   <article class="table-panel section-card">

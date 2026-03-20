@@ -180,6 +180,25 @@ article {
   flex-wrap: wrap;
 }
 
+.form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: .55rem;
+  flex-wrap: wrap;
+  margin-top: .9rem;
+}
+
+.form-note {
+  margin: .85rem 0 0;
+  padding: .8rem .9rem;
+  border: 1px solid #dbe6f1;
+  border-radius: .9rem;
+  background: rgba(247, 250, 252, .92);
+  color: var(--admin-muted);
+  font-size: .92rem;
+}
+
 .panel-head {
   display: flex;
   justify-content: space-between;
@@ -199,6 +218,22 @@ article {
   align-items: center;
   gap: .55rem;
   flex-wrap: wrap;
+}
+
+.panel-actions a[role="button"],
+.filter-actions a[role="button"],
+.filter-actions button,
+.form-actions button,
+.row-actions button,
+.actions button {
+  width: auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: .62rem .95rem;
+  border-radius: 999px;
+  box-shadow: 0 8px 18px rgba(24, 39, 75, .08);
 }
 
 .metric-grid {
@@ -444,7 +479,8 @@ a {
   }
 
   .filter-actions a[role="button"],
-  .filter-actions button {
+  .filter-actions button,
+  .form-actions button {
     width: 100%;
   }
 

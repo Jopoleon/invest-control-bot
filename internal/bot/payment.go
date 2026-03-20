@@ -23,7 +23,7 @@ func (h *Handler) handlePay(ctx context.Context, cb *models.CallbackQuery) {
 		h.send(ctx, cb.From.ID, "Коннектор не найден или отключен.")
 		return
 	}
-	h.logAuditEvent(ctx, cb.From.ID, connectorID, "pay_clicked", "")
+	h.logAuditEvent(ctx, cb.From.ID, connectorID, domain.AuditActionPayClicked, "")
 	connector, ok, err := h.store.GetConnector(ctx, connectorID)
 	if err != nil {
 		slog.Error("load connector for pay failed", "error", err, "connector_id", connectorID)
@@ -75,7 +75,7 @@ func (h *Handler) handlePay(ctx context.Context, cb *models.CallbackQuery) {
 		h.send(ctx, cb.From.ID, "Не удалось сформировать ссылку оплаты. Попробуйте позже.")
 		return
 	}
-	h.logAuditEvent(ctx, cb.From.ID, connectorID, "payment_created", "token="+token)
+	h.logAuditEvent(ctx, cb.From.ID, connectorID, domain.AuditActionPaymentCreated, "token="+token)
 
 	keyboard := &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{
 		{Text: "Перейти к оплате", URL: checkoutURL},
@@ -91,7 +91,7 @@ func (h *Handler) handlePay(ctx context.Context, cb *models.CallbackQuery) {
 	if effectiveRecurring {
 		details += ";autopay=on"
 	}
-	h.logAuditEvent(ctx, cb.From.ID, connectorID, "pay_link_sent", details)
+	h.logAuditEvent(ctx, cb.From.ID, connectorID, domain.AuditActionPayLinkSent, details)
 }
 
 func generateInvoiceID() string {
