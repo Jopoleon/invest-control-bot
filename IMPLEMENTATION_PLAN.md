@@ -237,6 +237,87 @@
 - быстрые действия для ручного follow-up.
 Примечание: CSV-экспорт уже реализован для `connectors`, `legal_documents`, `users`, `events`, `billing/payments`, `billing/subscriptions`, `churn`; экран оферт реализован в базовом виде (версии, активация, внешняя ссылка/текст, публичные страницы `/legal/offer` и `/legal/privacy`), остаются привязка версии документа к акцептам и дальнейшие операционные срезы.
 
+### Итерация 11: Auth / session hardening для админки
+Статус: `запланировано`.
+- Убрать модель "вечный ADMIN_AUTH_TOKEN в cookie" как основной runtime-механизм.
+- Ввести единый auth middleware для всех `/admin/*` маршрутов, кроме `/admin/login`.
+- Целевая схема для browser-admin:
+- короткоживущая signed session cookie (`HttpOnly`, `SameSite=Lax`, `Secure` на HTTPS);
+- явный `expires_at` у сессии;
+- sliding refresh / rotation при активном использовании;
+- server-side проверка сессии на каждый запрос.
+- Отдельно для programmatic/admin API:
+- bearer token или service token для non-browser сценариев;
+- без смешивания browser session и machine token в один механизм.
+- Хранилище сессий:
+- отдельная таблица `admin_sessions`;
+- `id`, `session_token_hash`, `subject`, `created_at`, `expires_at`, `last_seen_at`, `revoked_at`, `ip`, `user_agent`;
+- хранить только hash токена, не raw value.
+- Login flow:
+- `/admin/login` создает новую сессию;
+- опционально ограничение "одна активная сессия на браузер" не требуется в MVP;
+- logout = явный revoke текущей сессии.
+- Middleware / security:
+- единая middleware-цепочка: request logging -> recover -> auth -> CSRF (для state-changing routes);
+- idle timeout и absolute timeout;
+- rate limit на login сохранить и усилить;
+- audit events на `admin_login_success`, `admin_login_failed`, `admin_logout`, `admin_session_revoked`.
+- Cookie policy:
+- `HttpOnly`;
+- `Secure` при HTTPS;
+- `SameSite=Lax`;
+- `MaxAge` <= absolute session TTL;
+- rotation token после login и периодически в активной сессии.
+- Дополнительно:
+- страница/секция "Активные сессии" в админке не обязательна для MVP, но заложить модель данных;
+- совместимость с текущим server-rendered HTML без SPA/JWT client storage.
+- Принципиальное решение:
+- для браузерной админки не использовать "JWT в localStorage" как основной механизм;
+- если JWT использовать, то только как подписанный session artifact внутри `HttpOnly` cookie, без client-side хранения.
+- Технические подэтапы реализации:
+- `11.1` Схема данных и storage:
+- миграция `admin_sessions`;
+- store-методы: `CreateAdminSession`, `GetAdminSessionByTokenHash`, `TouchAdminSession`, `RevokeAdminSession`;
+- доменные модели и TTL-константы.
+- `11.2` Auth core:
+- генерация random session token;
+- hash токена перед записью в БД;
+- cookie encode/decode helpers;
+- единая middleware `requireAdminSession`.
+- `11.3` Login/logout refactor:
+- `/admin/login` больше не пишет в cookie raw admin token;
+- login проверяет `ADMIN_AUTH_TOKEN`, затем создает session record;
+- `/admin/logout` ревокает текущую session.
+- `11.4` Session lifecycle:
+- absolute TTL;
+- idle TTL;
+- sliding refresh / periodic rotation;
+- cleanup expired/revoked sessions.
+- `11.5` Route protection:
+- единый wrapper на все `/admin/*`;
+- whitelist только для `/admin/login` и static assets;
+- CSRF проверка остается отдельным слоем поверх authenticated POST.
+- `11.6` Observability / audit:
+- audit events на login success/fail, logout, revoke;
+- логирование auth ошибок без утечки токенов;
+- rate limit на login остается и переносится в новый flow.
+- `11.7` Optional follow-up:
+- экран активных админ-сессий;
+- ручной revoke сессии;
+- разделение browser session и machine token routes.
+- Порядок внедрения:
+- сначала storage + middleware;
+- затем login/logout;
+- затем замена текущего `requireAuth`;
+- затем cleanup и audit;
+- потом optional UI.
+- Критерии готовности:
+- cookie истекает и реально перестает работать на сервере;
+- logout делает сессию недействительной немедленно;
+- на каждый `/admin/*` идет server-side session lookup;
+- browser admin работает без bearer token в URL/JS storage;
+- текущие CSRF/login-rate-limit проверки не деградируют.
+
 ## 8) Нефункциональные требования
 - Надежность webhook: идемпотентность, ретраи, таблица необработанных событий.
 - Безопасность ПДн: шифрование `phone/email` at-rest, masking в логах.
@@ -272,6 +353,7 @@
 16. `Закрыт` Какой policy по reminder/churn для неуспешных recurring-списаний? -> За 3 дня до окончания подписки пишем клиенту предупреждение; в день окончания пишем повторно; по `expires_at` удаляем из чата.
 17. `Переоткрыт` Как именно реализуем `смену карты` в UX? -> Нужно отдельно изучить API/продуктовые возможности Robokassa; вероятно есть встроенный сценарий, который лучше нашего кастома.
 18. `Закрыт` Нужен ли массовый ручной outreach из админки или достаточно точечного? -> Пока только точечный outreach через карточку пользователя.
+19. `Закрыт` Какой auth/session подход берем для админки? -> Для browser-admin идем в signed server-validated session cookie с TTL/rotation; bearer/JWT оставляем только для machine-to-machine сценариев.
 
 ## 11) Формат дальнейшего обсуждения
 - Весь флоу обсуждения и планирования ведем в этом файле.
@@ -314,7 +396,10 @@
 - `2026-03-20` Добавлен отдельный operational-экран `churn` / `проблемные оплаты`: проблемные кейсы по пользователю+коннектору, фильтры, CSV-экспорт, быстрый переход в карточку пользователя и отправка ссылки на оплату.
 - `2026-03-20` Audit action strings вынесены в доменные константы; admin users-layer разрезан на `page/detail/actions/helpers`, чтобы остановить разрастание `internal/admin`.
 - `2026-03-20` UI admin-форм подчищен: подсказка по созданию коннектора перенесена внутрь формы, а action/filter buttons приведены к более компактному общему стилю через `admin.css`.
-- `2026-03-20` Добавлен экран `Оферты и ПДн`: хранение версий юридических документов в БД (`legal_documents`), активация нужной версии, CSV-экспорт и публичные страницы `/legal/offer` и `/legal/privacy`; бот использует активные документы как fallback, если у коннектора нет собственных ссылок.
+- `2026-03-20` Добавлен экран `Оферты и ПДн`: хранение версий юридических документов в БД (`legal_documents`), создание новых версий, редактирование существующих, активация нужной версии, CSV-экспорт и публичные страницы конкретных версий (`/oferta/{id}`, `/policy/{id}`); бот использует активные документы как fallback, если у коннектора нет собственных ссылок.
+- `2026-03-20` Поведение экрана оферт скорректировано: создание/редактирование переведено на `POST/Redirect/Get`, а статус документов стал обычным toggle `включить/выключить` без автоотключения старых версий при создании новой.
+- `2026-03-20` Action-buttons в admin-таблицах приведены к единой semantic-схеме: destructive = красный, edit = синий, open/view = нейтрально-синий, send/enable = зеленый, disable = amber/muted; подсказки переводятся в tooltip-паттерн с иконкой `?`.
+- `2026-03-20` Добавлена отдельная итерация по усилению admin auth/session: фиксируем переход к signed session cookie + server-side session validation, вместо опоры на долгоживущий статический токен в браузере.
 
 ## 13) Референсный flow текущего бота (для воспроизведения)
 Источник: `telegram-bot-flow.md`.

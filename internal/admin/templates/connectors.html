@@ -59,9 +59,6 @@
       font-family: inherit;
       font-size: inherit;
     }
-    .actions { display: flex; gap: .45rem; flex-wrap: wrap; }
-    .actions form { margin: 0; }
-    .actions .danger { background: #d92d20; border-color: #d92d20; color: #fff; }
   </style>
 </head>
 <body>
@@ -103,9 +100,11 @@
 
       <div class="grid">
         <label>
-          {{index .I18N "connectors.form.start_payload"}}
+          <span class="field-label">
+            {{index .I18N "connectors.form.start_payload"}}
+            <span class="help-tip" tabindex="0" data-tip="{{index .I18N "connectors.form.payload_hint"}}">?</span>
+          </span>
           <input name="start_payload" placeholder="in-94db7d6813507bc">
-          <small>{{index .I18N "connectors.form.payload_hint"}}</small>
         </label>
         <label>
           {{index .I18N "connectors.form.offer_url"}}
@@ -126,8 +125,8 @@
         <input name="description" placeholder="{{index .I18N "connectors.form.description_ph"}}">
       </label>
 
-      <div class="form-note">{{.RequiredMessage}}</div>
       <div class="form-actions">
+        <span class="help-tip" tabindex="0" data-tip="{{index .I18N "connectors.required_short"}}">?</span>
         <button type="submit">{{index .I18N "connectors.create"}}</button>
       </div>
     </form>
@@ -176,12 +175,12 @@
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                 <input type="hidden" name="id" value="{{.ID}}">
                 <input type="hidden" name="active" value="{{.ToggleTo}}">
-                <button type="submit" class="secondary">{{.ToggleLabel}}</button>
+                <button type="submit" class="action-btn {{if .ToggleTo}}is-enable{{else}}is-disable{{end}}">{{.ToggleLabel}}</button>
               </form>
               <form method="POST" action="/admin/connectors/delete?lang={{$.Lang}}" onsubmit="return confirm('{{index $.I18N "connectors.delete_confirm"}}');">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                 <input type="hidden" name="id" value="{{.ID}}">
-                <button type="submit" class="danger">{{index $.I18N "connectors.table.delete"}}</button>
+                <button type="submit" class="action-btn is-delete">{{index $.I18N "connectors.table.delete"}}</button>
               </form>
             </td>
           </tr>

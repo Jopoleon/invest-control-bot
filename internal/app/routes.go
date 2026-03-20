@@ -9,6 +9,8 @@ func (a *application) newMux() *http.ServeMux {
 	mux.HandleFunc("/healthz", a.handleHealthz)
 	mux.HandleFunc("/legal/offer", a.handleLegalOffer)
 	mux.HandleFunc("/legal/privacy", a.handleLegalPrivacy)
+	mux.HandleFunc("/oferta/", a.handleOfferByID)
+	mux.HandleFunc("/policy/", a.handlePrivacyByID)
 	mux.HandleFunc("/mock/pay", a.handleMockPay)
 	mux.HandleFunc("/mock/pay/success", a.handleMockPaySuccess)
 	mux.HandleFunc("/payment/result", a.handlePaymentResult)

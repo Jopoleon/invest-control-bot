@@ -119,10 +119,10 @@
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                 <input type="hidden" name="telegram_id" value="{{.TelegramID}}">
                 <input type="hidden" name="connector_id" value="{{.ConnectorID}}">
-                <button type="submit" class="secondary">{{index $.I18N "users.actions.paylink_send"}}</button>
+                <button type="submit" class="action-btn is-send">{{index $.I18N "users.actions.paylink_send"}}</button>
               </form>
               {{end}}
-              <a href="{{.UserDetailURL}}" role="button" class="secondary">{{index $.I18N "users.detail.profile"}}</a>
+              <a href="{{.UserDetailURL}}" role="button" class="action-btn is-view">{{index $.I18N "users.detail.profile"}}</a>
             </td>
           </tr>
         {{end}}

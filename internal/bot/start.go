@@ -75,8 +75,13 @@ func (h *Handler) resolveLegalURL(ctx context.Context, docType domain.LegalDocum
 		if strings.TrimSpace(doc.ExternalURL) != "" {
 			return doc.ExternalURL
 		}
-		if h.publicBaseURL != "" {
-			return h.publicBaseURL + "/legal/" + string(docType)
+		if h.publicBaseURL != "" && doc.ID > 0 {
+			switch docType {
+			case domain.LegalDocumentTypeOffer:
+				return h.publicBaseURL + "/oferta/" + strconv.FormatInt(doc.ID, 10)
+			case domain.LegalDocumentTypePrivacy:
+				return h.publicBaseURL + "/policy/" + strconv.FormatInt(doc.ID, 10)
+			}
 		}
 	}
 

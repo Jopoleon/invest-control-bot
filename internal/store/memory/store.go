@@ -74,17 +74,24 @@ func (s *Store) CreateLegalDocument(_ context.Context, doc domain.LegalDocument)
 	if doc.CreatedAt.IsZero() {
 		doc.CreatedAt = time.Now().UTC()
 	}
-	if doc.IsActive {
-		for id, item := range s.legalDocs {
-			if item.Type != doc.Type || !item.IsActive {
-				continue
-			}
-			item.IsActive = false
-			s.legalDocs[id] = item
-		}
-	}
 	doc.ID = s.nextLegalDocID
 	s.nextLegalDocID++
+	s.legalDocs[doc.ID] = doc
+	return nil
+}
+
+// UpdateLegalDocument updates existing legal document in place.
+func (s *Store) UpdateLegalDocument(_ context.Context, doc domain.LegalDocument) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	current, ok := s.legalDocs[doc.ID]
+	if !ok {
+		return errors.New("legal document not found")
+	}
+	doc.Type = current.Type
+	doc.Version = current.Version
+	doc.CreatedAt = current.CreatedAt
 	s.legalDocs[doc.ID] = doc
 	return nil
 }
@@ -127,16 +134,24 @@ func (s *Store) GetActiveLegalDocument(_ context.Context, docType domain.LegalDo
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	var (
+		best  domain.LegalDocument
+		found bool
+	)
 	for _, item := range s.legalDocs {
-		if item.Type == docType && item.IsActive {
-			return item, true, nil
+		if item.Type != docType || !item.IsActive {
+			continue
+		}
+		if !found || item.Version > best.Version || (item.Version == best.Version && item.ID > best.ID) {
+			best = item
+			found = true
 		}
 	}
-	return domain.LegalDocument{}, false, nil
+	return best, found, nil
 }
 
-// SetLegalDocumentActive marks one document active within its type.
-func (s *Store) SetLegalDocumentActive(_ context.Context, documentID int64) error {
+// SetLegalDocumentActive toggles published state for one legal document.
+func (s *Store) SetLegalDocumentActive(_ context.Context, documentID int64, active bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -144,13 +159,20 @@ func (s *Store) SetLegalDocumentActive(_ context.Context, documentID int64) erro
 	if !ok {
 		return errors.New("legal document not found")
 	}
-	for id, item := range s.legalDocs {
-		if item.Type != doc.Type {
-			continue
-		}
-		item.IsActive = id == documentID
-		s.legalDocs[id] = item
+	doc.IsActive = active
+	s.legalDocs[documentID] = doc
+	return nil
+}
+
+// DeleteLegalDocument removes legal document by ID.
+func (s *Store) DeleteLegalDocument(_ context.Context, documentID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.legalDocs[documentID]; !ok {
+		return errors.New("legal document not found")
 	}
+	delete(s.legalDocs, documentID)
 	return nil
 }
 

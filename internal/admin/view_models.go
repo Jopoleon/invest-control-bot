@@ -255,7 +255,9 @@ type legalDocumentView struct {
 	ActiveClass    string
 	CreatedAt      string
 	PublicURL      string
-	CanActivate    bool
+	ToggleTo       bool
+	ToggleLabel    string
+	DeleteURL      string
 }
 
 type legalDocumentsPageData struct {
@@ -266,4 +268,13 @@ type legalDocumentsPageData struct {
 	OfferPublicURL   string
 	PrivacyPublicURL string
 	Documents        []legalDocumentView
+	EditingID        int64
+	Editing          bool
+	FormAction       string
+	FormSubmitLabel  string
+	FormType         string
+	FormTitle        string
+	FormExternalURL  string
+	FormContent      string
+	FormIsActive     bool
 }

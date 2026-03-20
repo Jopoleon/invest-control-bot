@@ -31,7 +31,7 @@
       <input type="hidden" name="next" value="{{.Next}}">
       <button type="submit">{{index .I18N "login.submit"}}</button>
     </form>
-    <p><small>{{index .I18N "login.hint"}}</small></p>
+    <p><span class="help-tip" tabindex="0" data-tip="{{index .I18N "login.hint"}}">?</span></p>
     <div class="langs">
       <a href="/admin/login?lang=ru{{if .Next}}&next={{urlquery .Next}}{{end}}" {{if eq .Lang "ru"}}aria-current="true"{{end}}>{{index .I18N "lang.ru"}}</a>
       ·

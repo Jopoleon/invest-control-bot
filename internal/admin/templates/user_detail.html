@@ -211,31 +211,32 @@
     .gridjs-pagination {
       padding: .7rem .2rem 0;
     }
-    .row-actions {
-      display: flex;
-      gap: .45rem;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-    .row-actions form { margin: 0; }
-    .row-actions button { margin: 0; padding: .35rem .65rem; font-size: .78rem; }
-    .danger { background: #d92d20; border-color: #d92d20; color: #fff; }
     .badge {
       display: inline-flex;
       align-items: center;
-      padding: .28rem .62rem;
-      border-radius: 999px;
-      font-size: .73rem;
+      gap: .35rem;
+      padding: .18rem .48rem;
+      border-radius: .7rem;
+      font-size: .7rem;
       font-weight: 700;
       line-height: 1;
-      letter-spacing: .02em;
-      border: 1px solid transparent;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      border: 0;
     }
-    .badge.is-success { background: #e8f7ee; color: #17663a; border-color: #b8e2c6; }
-    .badge.is-warning { background: #fff6dd; color: #7f5a00; border-color: #f0d98f; }
-    .badge.is-danger { background: #fdebec; color: #a1262d; border-color: #f3b4ba; }
-    .badge.is-muted { background: #eef2f6; color: #536273; border-color: #d2dae3; }
-    .badge.is-accent { background: #e7f0ff; color: #174ea6; border-color: #b9cffb; }
+    .badge::before {
+      content: "";
+      width: .42rem;
+      height: .42rem;
+      border-radius: 999px;
+      background: currentColor;
+      opacity: .9;
+    }
+    .badge.is-success { background: #edf8f2; color: #17663a; }
+    .badge.is-warning { background: #fff7e7; color: #8a5a00; }
+    .badge.is-danger { background: #fff0f0; color: #b42318; }
+    .badge.is-muted { background: #f1f4f8; color: #5f7083; }
+    .badge.is-accent { background: #eef4ff; color: #1b57b7; }
     .gridjs-footer {
       background: #f7fafc;
       color: #405266;
@@ -346,7 +347,7 @@
       </div>
       <div class="action-card">
         <h4>{{index .I18N "users.actions.paylink"}}</h4>
-        <p class="action-note">{{index .I18N "users.actions.paylink_hint"}}</p>
+        <span class="help-tip" tabindex="0" data-tip="{{index .I18N "users.actions.paylink_hint"}}">?</span>
       </div>
     </div>
   </article>
@@ -426,7 +427,7 @@
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                 <input type="hidden" name="telegram_id" value="{{$.User.TelegramID}}">
                 <input type="hidden" name="subscription_id" value="{{.ID}}">
-                <button type="submit" class="secondary">{{index $.I18N "users.actions.paylink_send"}}</button>
+                <button type="submit" class="action-btn is-send">{{index $.I18N "users.actions.paylink_send"}}</button>
               </form>
               {{end}}
               {{if .CanRevoke}}
@@ -434,7 +435,7 @@
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                 <input type="hidden" name="telegram_id" value="{{$.User.TelegramID}}">
                 <input type="hidden" name="subscription_id" value="{{.ID}}">
-                <button type="submit" class="danger">{{index $.I18N "users.revoke.button"}}</button>
+                <button type="submit" class="action-btn is-delete">{{index $.I18N "users.revoke.button"}}</button>
               </form>
               {{end}}
             </td>

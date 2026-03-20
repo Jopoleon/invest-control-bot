@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -27,7 +28,7 @@ func (h *Handler) legalDocumentsPage(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		h.renderLegalDocumentsPage(r.Context(), w, r, lang, "")
+		h.renderLegalDocumentsPage(r.Context(), w, r, lang, strings.TrimSpace(r.URL.Query().Get("notice")))
 	case http.MethodPost:
 		if err := r.ParseForm(); err != nil {
 			h.renderLegalDocumentsPage(r.Context(), w, r, lang, t(lang, "legal.bad_form"))
@@ -38,18 +39,26 @@ func (h *Handler) legalDocumentsPage(w http.ResponseWriter, r *http.Request) {
 			h.renderLegalDocumentsPage(r.Context(), w, r, lang, t(lang, "csrf.invalid"))
 			return
 		}
+		if idRaw := strings.TrimSpace(r.FormValue("id")); idRaw != "" {
+			if err := h.updateLegalDocument(r.Context(), r); err != nil {
+				h.renderLegalDocumentsPage(r.Context(), w, r, lang, h.localizeLegalDocumentError(lang, err))
+				return
+			}
+			h.redirectLegalDocuments(w, r, lang, t(lang, "legal.updated"))
+			return
+		}
 		if err := h.createLegalDocument(r.Context(), r); err != nil {
 			h.renderLegalDocumentsPage(r.Context(), w, r, lang, h.localizeLegalDocumentError(lang, err))
 			return
 		}
-		h.renderLegalDocumentsPage(r.Context(), w, r, lang, t(lang, "legal.created"))
+		h.redirectLegalDocuments(w, r, lang, t(lang, "legal.created"))
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
 }
 
-// activateLegalDocument marks selected version active for its type.
-func (h *Handler) activateLegalDocument(w http.ResponseWriter, r *http.Request) {
+// toggleLegalDocument switches published state without affecting other versions.
+func (h *Handler) toggleLegalDocument(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAuth(w, r) {
 		return
 	}
@@ -72,14 +81,82 @@ func (h *Handler) activateLegalDocument(w http.ResponseWriter, r *http.Request) 
 		h.renderLegalDocumentsPage(r.Context(), w, r, lang, t(lang, "legal.invalid_id"))
 		return
 	}
-	if err := h.store.SetLegalDocumentActive(r.Context(), id); err != nil {
+	active := r.FormValue("active") == "true"
+	if err := h.store.SetLegalDocumentActive(r.Context(), id, active); err != nil {
 		h.renderLegalDocumentsPage(r.Context(), w, r, lang, err.Error())
 		return
 	}
-	h.renderLegalDocumentsPage(r.Context(), w, r, lang, t(lang, "legal.activated"))
+	notice := t(lang, "legal.enabled")
+	if !active {
+		notice = t(lang, "legal.disabled")
+	}
+	h.redirectLegalDocuments(w, r, lang, notice)
+}
+
+// deleteLegalDocument removes document version permanently.
+func (h *Handler) deleteLegalDocument(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAuth(w, r) {
+		return
+	}
+	lang := h.resolveLang(w, r)
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		h.renderLegalDocumentsPage(r.Context(), w, r, lang, t(lang, "legal.bad_form"))
+		return
+	}
+	if !h.verifyCSRF(r) {
+		w.WriteHeader(http.StatusForbidden)
+		h.renderLegalDocumentsPage(r.Context(), w, r, lang, t(lang, "csrf.invalid"))
+		return
+	}
+	id, err := parseDocumentID(r.FormValue("id"))
+	if err != nil {
+		h.renderLegalDocumentsPage(r.Context(), w, r, lang, t(lang, "legal.invalid_id"))
+		return
+	}
+	if err := h.store.DeleteLegalDocument(r.Context(), id); err != nil {
+		h.renderLegalDocumentsPage(r.Context(), w, r, lang, err.Error())
+		return
+	}
+	h.redirectLegalDocuments(w, r, lang, t(lang, "legal.deleted"))
 }
 
 func (h *Handler) createLegalDocument(ctx context.Context, r *http.Request) error {
+	doc, err := h.parseLegalDocumentForm(r)
+	if err != nil {
+		return err
+	}
+	doc.CreatedAt = time.Now().UTC()
+	return h.store.CreateLegalDocument(ctx, doc)
+}
+
+func (h *Handler) updateLegalDocument(ctx context.Context, r *http.Request) error {
+	doc, err := h.parseLegalDocumentForm(r)
+	if err != nil {
+		return err
+	}
+	docID, err := parseDocumentID(r.FormValue("id"))
+	if err != nil {
+		return err
+	}
+	current, found, err := h.store.GetLegalDocument(ctx, docID)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return errors.New("legal document not found")
+	}
+	doc.ID = docID
+	doc.Type = current.Type
+	doc.Version = current.Version
+	doc.CreatedAt = current.CreatedAt
+	return h.store.UpdateLegalDocument(ctx, doc)
+}
+
+func (h *Handler) parseLegalDocumentForm(r *http.Request) (domain.LegalDocument, error) {
 	docType := domain.LegalDocumentType(strings.TrimSpace(r.FormValue("doc_type")))
 	title := strings.TrimSpace(r.FormValue("title"))
 	content := strings.TrimSpace(r.FormValue("content"))
@@ -89,23 +166,22 @@ func (h *Handler) createLegalDocument(ctx context.Context, r *http.Request) erro
 	switch docType {
 	case domain.LegalDocumentTypeOffer, domain.LegalDocumentTypePrivacy:
 	default:
-		return errLegalDocumentType
+		return domain.LegalDocument{}, errLegalDocumentType
 	}
 	if title == "" {
-		return errLegalDocumentTitle
+		return domain.LegalDocument{}, errLegalDocumentTitle
 	}
 	if content == "" && externalURL == "" {
-		return errLegalDocumentContent
+		return domain.LegalDocument{}, errLegalDocumentContent
 	}
 
-	return h.store.CreateLegalDocument(ctx, domain.LegalDocument{
+	return domain.LegalDocument{
 		Type:        docType,
 		Title:       title,
 		Content:     content,
 		ExternalURL: externalURL,
 		IsActive:    isActive,
-		CreatedAt:   time.Now().UTC(),
-	})
+	}, nil
 }
 
 func (h *Handler) renderLegalDocumentsPage(ctx context.Context, w http.ResponseWriter, r *http.Request, lang, notice string) {
@@ -114,9 +190,21 @@ func (h *Handler) renderLegalDocumentsPage(ctx context.Context, w http.ResponseW
 		notice = t(lang, "legal.load_error")
 	}
 
+	editID, _ := parseOptionalDocumentID(r.URL.Query().Get("edit_id"))
+	editDoc, editing := h.loadLegalDocumentForEdit(ctx, editID)
+
+	activeOffer, _, _ := h.store.GetActiveLegalDocument(ctx, domain.LegalDocumentTypeOffer)
+	activePrivacy, _, _ := h.store.GetActiveLegalDocument(ctx, domain.LegalDocumentTypePrivacy)
+
 	rows := make([]legalDocumentView, 0, len(docs))
 	for _, doc := range docs {
 		activeLabel, activeClass := connectorActiveBadge(lang, doc.IsActive)
+		toggleLabel := t(lang, "legal.table.enable")
+		toggleTo := true
+		if doc.IsActive {
+			toggleLabel = t(lang, "legal.table.disable")
+			toggleTo = false
+		}
 		rows = append(rows, legalDocumentView{
 			ID:             doc.ID,
 			Type:           string(doc.Type),
@@ -129,9 +217,18 @@ func (h *Handler) renderLegalDocumentsPage(ctx context.Context, w http.ResponseW
 			ActiveLabel:    activeLabel,
 			ActiveClass:    activeClass,
 			CreatedAt:      doc.CreatedAt.Local().Format("02.01.2006 15:04"),
-			PublicURL:      h.legalDocumentPublicURL(r, doc.Type),
-			CanActivate:    !doc.IsActive,
+			PublicURL:      h.legalDocumentPublicURL(r, doc.Type, doc.ID),
+			ToggleTo:       toggleTo,
+			ToggleLabel:    toggleLabel,
+			DeleteURL:      "/admin/legal-documents/delete?lang=" + lang,
 		})
+	}
+
+	formType := string(domain.LegalDocumentTypeOffer)
+	formSubmit := t(lang, "legal.create_button")
+	if editing {
+		formType = string(editDoc.Type)
+		formSubmit = t(lang, "legal.update_button")
 	}
 
 	h.renderer.render(w, "legal_documents.html", legalDocumentsPageData{
@@ -144,13 +241,38 @@ func (h *Handler) renderLegalDocumentsPage(ctx context.Context, w http.ResponseW
 		},
 		Notice:           notice,
 		ExportURL:        buildExportURL("/admin/legal-documents/export.csv", r.URL.Query(), lang),
-		OfferPublicURL:   h.legalDocumentPublicURL(r, domain.LegalDocumentTypeOffer),
-		PrivacyPublicURL: h.legalDocumentPublicURL(r, domain.LegalDocumentTypePrivacy),
+		OfferPublicURL:   h.activeLegalDocumentURL(r, activeOffer),
+		PrivacyPublicURL: h.activeLegalDocumentURL(r, activePrivacy),
 		Documents:        rows,
+		EditingID:        editDoc.ID,
+		Editing:          editing,
+		FormAction:       "/admin/legal-documents",
+		FormSubmitLabel:  formSubmit,
+		FormType:         formType,
+		FormTitle:        editDoc.Title,
+		FormExternalURL:  editDoc.ExternalURL,
+		FormContent:      editDoc.Content,
+		FormIsActive:     !editing || editDoc.IsActive,
 	})
 }
 
-func (h *Handler) legalDocumentPublicURL(r *http.Request, docType domain.LegalDocumentType) string {
+func (h *Handler) redirectLegalDocuments(w http.ResponseWriter, r *http.Request, lang, notice string) {
+	query := url.Values{}
+	query.Set("lang", lang)
+	if notice != "" {
+		query.Set("notice", notice)
+	}
+	http.Redirect(w, r, "/admin/legal-documents?"+query.Encode(), http.StatusSeeOther)
+}
+
+func (h *Handler) activeLegalDocumentURL(r *http.Request, doc domain.LegalDocument) string {
+	if doc.ID <= 0 {
+		return ""
+	}
+	return h.legalDocumentPublicURL(r, doc.Type, doc.ID)
+}
+
+func (h *Handler) legalDocumentPublicURL(r *http.Request, docType domain.LegalDocumentType, id int64) string {
 	scheme := "http"
 	if r.TLS != nil {
 		scheme = "https"
@@ -162,7 +284,14 @@ func (h *Handler) legalDocumentPublicURL(r *http.Request, docType domain.LegalDo
 	if host == "" {
 		return ""
 	}
-	return fmt.Sprintf("%s://%s/legal/%s", scheme, host, docType)
+	switch docType {
+	case domain.LegalDocumentTypeOffer:
+		return fmt.Sprintf("%s://%s/oferta/%d", scheme, host, id)
+	case domain.LegalDocumentTypePrivacy:
+		return fmt.Sprintf("%s://%s/policy/%d", scheme, host, id)
+	default:
+		return ""
+	}
 }
 
 func (h *Handler) legalDocumentTypeLabel(lang string, docType domain.LegalDocumentType) string {
@@ -189,12 +318,31 @@ func (h *Handler) localizeLegalDocumentError(lang string, err error) string {
 	}
 }
 
+func (h *Handler) loadLegalDocumentForEdit(ctx context.Context, documentID int64) (domain.LegalDocument, bool) {
+	if documentID <= 0 {
+		return domain.LegalDocument{}, false
+	}
+	doc, found, err := h.store.GetLegalDocument(ctx, documentID)
+	if err != nil || !found {
+		return domain.LegalDocument{}, false
+	}
+	return doc, true
+}
+
 func parseDocumentID(raw string) (int64, error) {
 	id, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
 	if err != nil || id <= 0 {
 		return 0, errors.New("invalid document id")
 	}
 	return id, nil
+}
+
+func parseOptionalDocumentID(raw string) (int64, bool) {
+	id, err := parseDocumentID(raw)
+	if err != nil {
+		return 0, false
+	}
+	return id, true
 }
 
 func legalDocumentPreview(content string) string {

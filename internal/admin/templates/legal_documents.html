@@ -15,7 +15,7 @@
       --pico-form-element-spacing-horizontal: .6rem;
     }
     main.container { max-width: 1320px; }
-    .legal-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.35fr); gap: 1rem; align-items: start; }
+    .legal-stack { display: grid; gap: 1rem; margin-top: 1rem; }
     .legal-meta { display: grid; gap: .85rem; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 1rem; }
     .legal-card { padding: .95rem 1rem; border: 1px solid #dbe6f1; border-radius: .95rem; background: rgba(255,255,255,.92); }
     .legal-card small { display:block; margin-bottom: .35rem; color: var(--admin-muted); font-size: .74rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
@@ -25,12 +25,8 @@
     .legal-table td, .legal-table th { vertical-align: top; }
     .legal-preview { max-width: 34rem; white-space: normal; color: var(--admin-muted); font-size: .92rem; }
     .legal-link { display: inline-flex; color: var(--admin-link); text-decoration: underline; word-break: break-all; }
-    .row-actions { display: flex; gap: .45rem; flex-wrap: wrap; }
     textarea[name="content"] { min-height: 11rem; }
-    @media (max-width: 980px) {
-      .legal-grid { grid-template-columns: 1fr; }
-      .legal-meta { grid-template-columns: 1fr; }
-    }
+    @media (max-width: 980px) { .legal-meta { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -47,48 +43,54 @@
   <section class="legal-meta">
     <article class="legal-card">
       <small>{{index .I18N "legal.public.offer"}}</small>
-      <a href="{{.OfferPublicURL}}" target="_blank" rel="noreferrer">{{.OfferPublicURL}}</a>
+      {{if .OfferPublicURL}}<a href="{{.OfferPublicURL}}" target="_blank" rel="noreferrer">{{.OfferPublicURL}}</a>{{else}}—{{end}}
     </article>
     <article class="legal-card">
       <small>{{index .I18N "legal.public.privacy"}}</small>
-      <a href="{{.PrivacyPublicURL}}" target="_blank" rel="noreferrer">{{.PrivacyPublicURL}}</a>
+      {{if .PrivacyPublicURL}}<a href="{{.PrivacyPublicURL}}" target="_blank" rel="noreferrer">{{.PrivacyPublicURL}}</a>{{else}}—{{end}}
     </article>
   </section>
 
-  <section class="legal-grid">
+  <section class="legal-stack">
     <article class="section-card">
       <div class="panel-head">
-        <h3>{{index .I18N "legal.create"}}</h3>
+        <h3>{{if .Editing}}{{index .I18N "legal.edit"}}{{else}}{{index .I18N "legal.create"}}{{end}}</h3>
         <span class="panel-kicker">Versioning</span>
       </div>
-      <form method="POST" action="/admin/legal-documents">
+      <form method="POST" action="{{.FormAction}}">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        {{if .Editing}}<input type="hidden" name="id" value="{{.EditingID}}">{{end}}
         <label>
           {{index .I18N "legal.form.type"}}
-          <select name="doc_type">
-            <option value="offer">{{index .I18N "legal.type.offer"}}</option>
-            <option value="privacy">{{index .I18N "legal.type.privacy"}}</option>
+          <select name="doc_type" {{if .Editing}}disabled{{end}}>
+            <option value="offer" {{if eq .FormType "offer"}}selected{{end}}>{{index .I18N "legal.type.offer"}}</option>
+            <option value="privacy" {{if eq .FormType "privacy"}}selected{{end}}>{{index .I18N "legal.type.privacy"}}</option>
           </select>
+          {{if .Editing}}<input type="hidden" name="doc_type" value="{{.FormType}}">{{end}}
         </label>
         <label>
           {{index .I18N "legal.form.title"}}
-          <input name="title" placeholder="{{index .I18N "legal.form.title_ph"}}">
+          <input name="title" value="{{.FormTitle}}" placeholder="{{index .I18N "legal.form.title_ph"}}">
         </label>
         <label>
-          {{index .I18N "legal.form.external_url"}}
-          <input name="external_url" placeholder="https://...">
+          <span class="field-label">
+            {{index .I18N "legal.form.external_url"}}
+            <span class="help-tip" tabindex="0" data-tip="{{index .I18N "legal.form.external_url_hint"}}">?</span>
+          </span>
+          <input name="external_url" value="{{.FormExternalURL}}" placeholder="https://...">
         </label>
         <label>
           {{index .I18N "legal.form.content"}}
-          <textarea name="content" placeholder="{{index .I18N "legal.form.content_ph"}}"></textarea>
+          <textarea name="content" placeholder="{{index .I18N "legal.form.content_ph"}}">{{.FormContent}}</textarea>
         </label>
         <label>
-          <input type="checkbox" name="is_active" value="true" checked>
+          <input type="checkbox" name="is_active" value="true" {{if .FormIsActive}}checked{{end}}>
           {{index .I18N "legal.form.is_active"}}
         </label>
-        <p class="form-note">{{index .I18N "legal.required"}}</p>
         <div class="form-actions">
-          <button type="submit">{{index .I18N "legal.create_button"}}</button>
+          <span class="help-tip" tabindex="0" data-tip="{{index .I18N "legal.required"}}">?</span>
+          {{if .Editing}}<a href="/admin/legal-documents?lang={{.Lang}}" role="button" class="secondary">{{index .I18N "legal.cancel_edit"}}</a>{{end}}
+          <button type="submit">{{.FormSubmitLabel}}</button>
         </div>
       </form>
     </article>
@@ -135,14 +137,19 @@
               <td>{{.CreatedAt}}</td>
               <td>
                 <div class="row-actions">
-                  <a href="{{.PublicURL}}" role="button" class="secondary" target="_blank" rel="noreferrer">{{index $.I18N "legal.table.open"}}</a>
-                  {{if .CanActivate}}
-                  <form method="POST" action="/admin/legal-documents/activate" style="margin:0;">
+                  <a href="{{.PublicURL}}" role="button" class="action-btn is-view" target="_blank" rel="noreferrer">{{index $.I18N "legal.table.open"}}</a>
+                  <a href="/admin/legal-documents?lang={{$.Lang}}&edit_id={{.ID}}" role="button" class="action-btn is-edit">{{index $.I18N "legal.table.edit"}}</a>
+                  <form method="POST" action="/admin/legal-documents/toggle" style="margin:0;">
                     <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                     <input type="hidden" name="id" value="{{.ID}}">
-                    <button type="submit">{{index $.I18N "legal.table.activate"}}</button>
+                    <input type="hidden" name="active" value="{{if .ToggleTo}}true{{else}}false{{end}}">
+                    <button type="submit" class="action-btn {{if .ToggleTo}}is-enable{{else}}is-disable{{end}}">{{.ToggleLabel}}</button>
                   </form>
-                  {{end}}
+                  <form method="POST" action="/admin/legal-documents/delete?lang={{$.Lang}}" style="margin:0;" onsubmit="return confirm('{{index $.I18N "legal.delete_confirm"}}');">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                    <input type="hidden" name="id" value="{{.ID}}">
+                    <button type="submit" class="action-btn is-delete">{{index $.I18N "legal.table.delete"}}</button>
+                  </form>
                 </div>
               </td>
             </tr>

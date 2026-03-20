@@ -184,7 +184,7 @@ func TestResolveLegalURL_UsesActiveDocumentFallback(t *testing.T) {
 	}
 
 	got := h.resolveLegalURL(ctx, domain.LegalDocumentTypeOffer)
-	want := "http://localhost:8080/legal/offer"
+	want := "http://localhost:8080/oferta/1"
 	if got != want {
 		t.Fatalf("resolveLegalURL() = %q, want %q", got, want)
 	}
