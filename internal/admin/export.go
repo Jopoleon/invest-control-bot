@@ -47,6 +47,35 @@ func (h *Handler) exportConnectorsCSV(w http.ResponseWriter, r *http.Request) {
 	writeCSV(w, exportFilename("connectors"), records)
 }
 
+func (h *Handler) exportLegalDocumentsCSV(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAuth(w, r) {
+		return
+	}
+	rows, err := h.store.ListLegalDocuments(r.Context(), "")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	records := make([][]string, 0, len(rows)+1)
+	records = append(records, []string{
+		"id", "doc_type", "title", "content", "external_url", "version", "is_active", "created_at",
+	})
+	for _, doc := range rows {
+		records = append(records, []string{
+			strconv.FormatInt(doc.ID, 10),
+			string(doc.Type),
+			doc.Title,
+			doc.Content,
+			doc.ExternalURL,
+			strconv.Itoa(doc.Version),
+			strconv.FormatBool(doc.IsActive),
+			doc.CreatedAt.In(time.Local).Format(time.RFC3339),
+		})
+	}
+	writeCSV(w, exportFilename("legal_documents"), records)
+}
+
 func (h *Handler) exportUsersCSV(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAuth(w, r) {
 		return

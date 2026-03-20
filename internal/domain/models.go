@@ -55,6 +55,26 @@ type Consent struct {
 	PrivacyAcceptedAt time.Time
 }
 
+// LegalDocumentType identifies the kind of legal document exposed to users.
+type LegalDocumentType string
+
+const (
+	LegalDocumentTypeOffer   LegalDocumentType = "offer"
+	LegalDocumentTypePrivacy LegalDocumentType = "privacy"
+)
+
+// LegalDocument stores versioned legal text or external URL used in onboarding.
+type LegalDocument struct {
+	ID          int64
+	Type        LegalDocumentType
+	Title       string
+	Content     string
+	ExternalURL string
+	Version     int
+	IsActive    bool
+	CreatedAt   time.Time
+}
+
 // RegistrationStep describes current onboarding step in FSM.
 type RegistrationStep string
 

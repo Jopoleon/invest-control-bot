@@ -7,6 +7,8 @@ func (a *application) newMux() *http.ServeMux {
 	a.adminHandler.Register(mux)
 
 	mux.HandleFunc("/healthz", a.handleHealthz)
+	mux.HandleFunc("/legal/offer", a.handleLegalOffer)
+	mux.HandleFunc("/legal/privacy", a.handleLegalPrivacy)
 	mux.HandleFunc("/mock/pay", a.handleMockPay)
 	mux.HandleFunc("/mock/pay/success", a.handleMockPaySuccess)
 	mux.HandleFunc("/payment/result", a.handlePaymentResult)

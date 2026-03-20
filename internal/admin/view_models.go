@@ -241,3 +241,29 @@ type churnPageData struct {
 	IssueType   string
 	Issues      []churnIssueView
 }
+
+type legalDocumentView struct {
+	ID             int64
+	Type           string
+	TypeLabel      string
+	Title          string
+	ContentPreview string
+	ExternalURL    string
+	Version        int
+	IsActive       bool
+	ActiveLabel    string
+	ActiveClass    string
+	CreatedAt      string
+	PublicURL      string
+	CanActivate    bool
+}
+
+type legalDocumentsPageData struct {
+	basePageData
+
+	Notice           string
+	ExportURL        string
+	OfferPublicURL   string
+	PrivacyPublicURL string
+	Documents        []legalDocumentView
+}

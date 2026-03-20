@@ -20,6 +20,8 @@ type Store struct {
 	connectors      map[int64]domain.Connector
 	payloadIndex    map[string]int64
 	nextConnectorID int64
+	legalDocs       map[int64]domain.LegalDocument
+	nextLegalDocID  int64
 	users           map[int64]domain.User
 	userAutoPay     map[int64]bool
 	consents        map[string]domain.Consent
@@ -39,6 +41,8 @@ func New() *Store {
 		connectors:      make(map[int64]domain.Connector),
 		payloadIndex:    make(map[string]int64),
 		nextConnectorID: 1,
+		legalDocs:       make(map[int64]domain.LegalDocument),
+		nextLegalDocID:  1,
 		users:           make(map[int64]domain.User),
 		userAutoPay:     make(map[int64]bool),
 		consents:        make(map[string]domain.Consent),
@@ -51,6 +55,103 @@ func New() *Store {
 		subsByPayID:     make(map[int64]domain.Subscription),
 		nextSubscrID:    1,
 	}
+}
+
+// CreateLegalDocument stores new versioned legal document.
+func (s *Store) CreateLegalDocument(_ context.Context, doc domain.LegalDocument) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	maxVersion := 0
+	for _, item := range s.legalDocs {
+		if item.Type == doc.Type && item.Version > maxVersion {
+			maxVersion = item.Version
+		}
+	}
+	if doc.Version <= 0 {
+		doc.Version = maxVersion + 1
+	}
+	if doc.CreatedAt.IsZero() {
+		doc.CreatedAt = time.Now().UTC()
+	}
+	if doc.IsActive {
+		for id, item := range s.legalDocs {
+			if item.Type != doc.Type || !item.IsActive {
+				continue
+			}
+			item.IsActive = false
+			s.legalDocs[id] = item
+		}
+	}
+	doc.ID = s.nextLegalDocID
+	s.nextLegalDocID++
+	s.legalDocs[doc.ID] = doc
+	return nil
+}
+
+// ListLegalDocuments returns legal documents ordered by type and version desc.
+func (s *Store) ListLegalDocuments(_ context.Context, docType domain.LegalDocumentType) ([]domain.LegalDocument, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	items := make([]domain.LegalDocument, 0, len(s.legalDocs))
+	for _, item := range s.legalDocs {
+		if docType != "" && item.Type != docType {
+			continue
+		}
+		items = append(items, item)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Type != items[j].Type {
+			return items[i].Type < items[j].Type
+		}
+		if items[i].Version != items[j].Version {
+			return items[i].Version > items[j].Version
+		}
+		return items[i].CreatedAt.After(items[j].CreatedAt)
+	})
+	return items, nil
+}
+
+// GetLegalDocument fetches document by ID.
+func (s *Store) GetLegalDocument(_ context.Context, documentID int64) (domain.LegalDocument, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	item, ok := s.legalDocs[documentID]
+	return item, ok, nil
+}
+
+// GetActiveLegalDocument returns active document for type.
+func (s *Store) GetActiveLegalDocument(_ context.Context, docType domain.LegalDocumentType) (domain.LegalDocument, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, item := range s.legalDocs {
+		if item.Type == docType && item.IsActive {
+			return item, true, nil
+		}
+	}
+	return domain.LegalDocument{}, false, nil
+}
+
+// SetLegalDocumentActive marks one document active within its type.
+func (s *Store) SetLegalDocumentActive(_ context.Context, documentID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	doc, ok := s.legalDocs[documentID]
+	if !ok {
+		return errors.New("legal document not found")
+	}
+	for id, item := range s.legalDocs {
+		if item.Type != doc.Type {
+			continue
+		}
+		item.IsActive = id == documentID
+		s.legalDocs[id] = item
+	}
+	return nil
 }
 
 // CreateConnector inserts new connector and maintains start_payload index.

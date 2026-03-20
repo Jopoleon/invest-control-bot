@@ -3,6 +3,7 @@
   <nav>
     <ul>
       <li><a href="/admin/connectors?lang={{.Lang}}">{{if eq .ActiveNav "connectors"}}<strong>{{end}}{{index .I18N "nav.connectors"}}{{if eq .ActiveNav "connectors"}}</strong>{{end}}</a></li>
+      <li><a href="/admin/legal-documents?lang={{.Lang}}">{{if eq .ActiveNav "legal"}}<strong>{{end}}{{index .I18N "nav.legal"}}{{if eq .ActiveNav "legal"}}</strong>{{end}}</a></li>
       <li><a href="/admin/users?lang={{.Lang}}">{{if eq .ActiveNav "users"}}<strong>{{end}}{{index .I18N "nav.users"}}{{if eq .ActiveNav "users"}}</strong>{{end}}</a></li>
       <li><a href="/admin/billing?lang={{.Lang}}">{{if eq .ActiveNav "billing"}}<strong>{{end}}{{index .I18N "nav.billing"}}{{if eq .ActiveNav "billing"}}</strong>{{end}}</a></li>
       <li><a href="/admin/churn?lang={{.Lang}}">{{if eq .ActiveNav "churn"}}<strong>{{end}}{{index .I18N "nav.churn"}}{{if eq .ActiveNav "churn"}}</strong>{{end}}</a></li>

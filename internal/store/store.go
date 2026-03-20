@@ -24,6 +24,12 @@ type Store interface {
 	SetConnectorActive(ctx context.Context, connectorID int64, active bool) error
 	DeleteConnector(ctx context.Context, connectorID int64) error
 
+	CreateLegalDocument(ctx context.Context, doc domain.LegalDocument) error
+	ListLegalDocuments(ctx context.Context, docType domain.LegalDocumentType) ([]domain.LegalDocument, error)
+	GetLegalDocument(ctx context.Context, documentID int64) (domain.LegalDocument, bool, error)
+	GetActiveLegalDocument(ctx context.Context, docType domain.LegalDocumentType) (domain.LegalDocument, bool, error)
+	SetLegalDocumentActive(ctx context.Context, documentID int64) error
+
 	SaveConsent(ctx context.Context, consent domain.Consent) error
 	GetConsent(ctx context.Context, telegramID int64, connectorID int64) (domain.Consent, bool, error)
 

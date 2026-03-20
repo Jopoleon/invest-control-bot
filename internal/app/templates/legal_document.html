@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg:
+        radial-gradient(circle at top left, rgba(176, 205, 234, .42), transparent 26%),
+        linear-gradient(180deg, #f4f7fb, #eaf0f7);
+    }
+    body { font-family: "Manrope", "Segoe UI", sans-serif; background: var(--bg); margin: 0; padding: 24px; color: #203244; }
+    .card { max-width: 900px; margin: 36px auto; background: rgba(255,255,255,.94); border: 1px solid rgba(36,56,89,.08); border-radius: 18px; box-shadow: 0 18px 48px rgba(24,39,75,.08); overflow: hidden; }
+    .hero { padding: 24px 28px; color: #f7fbff; background: linear-gradient(135deg, #11243d, #1d3f63 48%, #d7e6f7 135%); }
+    .hero small { display:inline-flex; padding:.35rem .7rem; border-radius:999px; background: rgba(255,255,255,.12); font-weight:700; letter-spacing:.05em; text-transform:uppercase; }
+    .hero h1 { margin: .8rem 0 .35rem; font-size: clamp(1.7rem, 3vw, 2.3rem); line-height: 1.05; }
+    .hero p { margin: 0; color: rgba(247,251,255,.84); }
+    .content { padding: 28px; }
+    .content p { margin: 0; white-space: pre-wrap; line-height: 1.65; }
+    .actions { margin-top: 18px; display:flex; gap:10px; flex-wrap:wrap; }
+    .btn { display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:999px; background:#0d61ff; color:#fff; text-decoration:none; }
+    .btn.secondary { background:#eef3fb; color:#203244; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="hero">
+      <small>{{.Subtitle}}</small>
+      <h1>{{.Title}}</h1>
+      <p>Актуальная публичная версия документа.</p>
+    </div>
+    <div class="content">
+      {{if .Content}}
+      <p>{{.Content}}</p>
+      {{else}}
+      <p>Для просмотра полной версии документа используйте ссылку ниже.</p>
+      {{end}}
+      <div class="actions">
+        {{if .ExternalURL}}
+        <a class="btn" href="{{.ExternalURL}}" target="_blank" rel="noreferrer">Открыть внешний источник</a>
+        {{end}}
+        <a class="btn secondary" href="javascript:window.close()">Закрыть</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

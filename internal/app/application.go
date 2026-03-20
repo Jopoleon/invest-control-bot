@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
+	"strings"
 
 	"github.com/Jopoleon/telega-bot-fedor/internal/admin"
 	"github.com/Jopoleon/telega-bot-fedor/internal/bot"
@@ -64,9 +66,25 @@ func newApplication(cfg config.Config, st store.Store) (*application, error) {
 		config:           cfg,
 		store:            st,
 		telegramClient:   tgClient,
-		botHandler:       bot.NewHandler(st, tgClient, paymentService, cfg.Payment.Provider == "robokassa" && cfg.Payment.Robokassa.RecurringEnabled),
+		botHandler:       bot.NewHandler(st, tgClient, paymentService, cfg.Payment.Provider == "robokassa" && cfg.Payment.Robokassa.RecurringEnabled, publicBaseURL(cfg.Telegram.Webhook.PublicURL)),
 		adminHandler:     admin.NewHandler(st, cfg.Security.AdminToken, cfg.Telegram.BotUsername, tgClient),
 		paymentService:   paymentService,
 		robokassaService: robokassaService,
 	}, nil
+}
+
+func publicBaseURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return strings.TrimRight(raw, "/")
+	}
+	u.RawQuery = ""
+	u.Fragment = ""
+	u.Path = strings.TrimSuffix(u.Path, "/telegram/webhook")
+	u.Path = strings.TrimRight(u.Path, "/")
+	return strings.TrimRight(u.String(), "/")
 }

@@ -12,14 +12,16 @@ type Handler struct {
 	tg               *telegram.Client
 	payment          payment.Service
 	recurringEnabled bool
+	publicBaseURL    string
 }
 
 // NewHandler wires bot handler dependencies.
-func NewHandler(st store.Store, tg *telegram.Client, paymentService payment.Service, recurringEnabled bool) *Handler {
+func NewHandler(st store.Store, tg *telegram.Client, paymentService payment.Service, recurringEnabled bool, publicBaseURL string) *Handler {
 	return &Handler{
 		store:            st,
 		tg:               tg,
 		payment:          paymentService,
 		recurringEnabled: recurringEnabled,
+		publicBaseURL:    publicBaseURL,
 	}
 }

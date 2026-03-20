@@ -42,11 +42,11 @@ func (h *Handler) handleStart(ctx context.Context, msg *models.Message) {
 
 	offerURL := connector.OfferURL
 	if offerURL == "" {
-		offerURL = "https://example.com/contract"
+		offerURL = h.resolveLegalURL(ctx, domain.LegalDocumentTypeOffer)
 	}
 	privacyURL := connector.PrivacyURL
 	if privacyURL == "" {
-		privacyURL = "https://example.com/policy"
+		privacyURL = h.resolveLegalURL(ctx, domain.LegalDocumentTypePrivacy)
 	}
 
 	text := fmt.Sprintf(
@@ -64,5 +64,28 @@ func (h *Handler) handleStart(ctx context.Context, msg *models.Message) {
 
 	if err := h.tg.SendMessage(ctx, msg.Chat.ID, text, keyboard); err != nil {
 		slog.Error("send start message failed", "error", err, "chat_id", msg.Chat.ID, "connector_id", connector.ID)
+	}
+}
+
+func (h *Handler) resolveLegalURL(ctx context.Context, docType domain.LegalDocumentType) string {
+	doc, found, err := h.store.GetActiveLegalDocument(ctx, docType)
+	if err != nil {
+		slog.Error("load active legal document failed", "error", err, "doc_type", docType)
+	} else if found {
+		if strings.TrimSpace(doc.ExternalURL) != "" {
+			return doc.ExternalURL
+		}
+		if h.publicBaseURL != "" {
+			return h.publicBaseURL + "/legal/" + string(docType)
+		}
+	}
+
+	switch docType {
+	case domain.LegalDocumentTypeOffer:
+		return "https://example.com/contract"
+	case domain.LegalDocumentTypePrivacy:
+		return "https://example.com/policy"
+	default:
+		return "https://example.com"
 	}
 }

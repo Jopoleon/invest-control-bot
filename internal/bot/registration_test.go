@@ -23,7 +23,7 @@ func TestHandleCallback_ReusesExistingCompletedProfile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create telegram client: %v", err)
 	}
-	h := NewHandler(st, tg, payment.NewMockService("http://localhost:8080"), false)
+	h := NewHandler(st, tg, payment.NewMockService("http://localhost:8080"), false, "http://localhost:8080")
 
 	connectorID := seedBotConnector(t, ctx, st, "in-existing-user")
 	if err := st.SaveUser(ctx, domain.User{
@@ -59,7 +59,7 @@ func TestHandleCallback_RequestsOnlyMissingField(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create telegram client: %v", err)
 	}
-	h := NewHandler(st, tg, payment.NewMockService("http://localhost:8080"), false)
+	h := NewHandler(st, tg, payment.NewMockService("http://localhost:8080"), false, "http://localhost:8080")
 
 	connectorID := seedBotConnector(t, ctx, st, "in-partial-user")
 	if err := st.SaveUser(ctx, domain.User{
@@ -106,7 +106,7 @@ func TestHandlePay_DisablesRecurringWhenCapabilityOff(t *testing.T) {
 		IsTest:        true,
 		BaseURL:       "https://auth.robokassa.ru/Merchant/Index.aspx",
 	})
-	h := NewHandler(st, tg, robokassa, false)
+	h := NewHandler(st, tg, robokassa, false, "http://localhost:8080")
 
 	connectorID := seedBotConnector(t, ctx, st, "in-pay-no-recurring")
 	if err := st.SetUserAutoPayEnabled(ctx, 1003, true, time.Now().UTC()); err != nil {
@@ -160,4 +160,32 @@ func seedBotConnector(t *testing.T, ctx context.Context, st *memory.Store, paylo
 
 func int64ToString(v int64) string {
 	return strconv.FormatInt(v, 10)
+}
+
+func TestResolveLegalURL_UsesActiveDocumentFallback(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	tg, err := telegram.NewClient("", "")
+	if err != nil {
+		t.Fatalf("create telegram client: %v", err)
+	}
+	h := NewHandler(st, tg, payment.NewMockService("http://localhost:8080"), false, "http://localhost:8080")
+
+	if err := st.CreateLegalDocument(ctx, domain.LegalDocument{
+		Type:      domain.LegalDocumentTypeOffer,
+		Title:     "Offer v1",
+		Content:   "Test offer content",
+		IsActive:  true,
+		CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create legal document: %v", err)
+	}
+
+	got := h.resolveLegalURL(ctx, domain.LegalDocumentTypeOffer)
+	want := "http://localhost:8080/legal/offer"
+	if got != want {
+		t.Fatalf("resolveLegalURL() = %q, want %q", got, want)
+	}
 }

@@ -82,6 +82,28 @@ func scanSubscription(scanner rowScanner) (domain.Subscription, error) {
 	return item, nil
 }
 
+func scanLegalDocument(scanner rowScanner) (domain.LegalDocument, error) {
+	var (
+		item    domain.LegalDocument
+		docType string
+	)
+	err := scanner.Scan(
+		&item.ID,
+		&docType,
+		&item.Title,
+		&item.Content,
+		&item.ExternalURL,
+		&item.Version,
+		&item.IsActive,
+		&item.CreatedAt,
+	)
+	if err != nil {
+		return domain.LegalDocument{}, err
+	}
+	item.Type = domain.LegalDocumentType(docType)
+	return item, nil
+}
+
 // CreateConnector inserts connector row.
 func (s *Store) CreateConnector(ctx context.Context, c domain.Connector) error {
 	if c.StartPayload == "" {
@@ -271,6 +293,146 @@ func (s *Store) DeleteConnector(ctx context.Context, connectorID int64) error {
 	}
 	if affected == 0 {
 		return storepkg.ErrConnectorNotFound
+	}
+	return tx.Commit()
+}
+
+// CreateLegalDocument inserts new legal document version and optionally marks it active.
+func (s *Store) CreateLegalDocument(ctx context.Context, doc domain.LegalDocument) error {
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	if doc.CreatedAt.IsZero() {
+		doc.CreatedAt = time.Now().UTC()
+	}
+	if doc.Version <= 0 {
+		if err := tx.QueryRowContext(ctx, `
+			SELECT COALESCE(MAX(version), 0) + 1
+			FROM legal_documents
+			WHERE doc_type = $1
+		`, string(doc.Type)).Scan(&doc.Version); err != nil {
+			return err
+		}
+	}
+	if doc.IsActive {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE legal_documents
+			SET is_active = FALSE
+			WHERE doc_type = $1 AND is_active = TRUE
+		`, string(doc.Type)); err != nil {
+			return err
+		}
+	}
+
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO legal_documents (
+			doc_type, title, content, external_url, version, is_active, created_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7)
+	`,
+		string(doc.Type),
+		doc.Title,
+		doc.Content,
+		doc.ExternalURL,
+		doc.Version,
+		doc.IsActive,
+		doc.CreatedAt,
+	)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// ListLegalDocuments returns all legal document versions.
+func (s *Store) ListLegalDocuments(ctx context.Context, docType domain.LegalDocumentType) ([]domain.LegalDocument, error) {
+	query := `
+		SELECT id, doc_type, title, content, external_url, version, is_active, created_at
+		FROM legal_documents
+	`
+	args := []any{}
+	if docType != "" {
+		query += ` WHERE doc_type = $1`
+		args = append(args, string(docType))
+	}
+	query += ` ORDER BY doc_type ASC, version DESC, created_at DESC`
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]domain.LegalDocument, 0)
+	for rows.Next() {
+		item, err := scanLegalDocument(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+// GetLegalDocument fetches legal document by ID.
+func (s *Store) GetLegalDocument(ctx context.Context, documentID int64) (domain.LegalDocument, bool, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, doc_type, title, content, external_url, version, is_active, created_at
+		FROM legal_documents
+		WHERE id = $1
+	`, documentID)
+	item, err := scanLegalDocument(row)
+	if err == sql.ErrNoRows {
+		return domain.LegalDocument{}, false, nil
+	}
+	if err != nil {
+		return domain.LegalDocument{}, false, err
+	}
+	return item, true, nil
+}
+
+// GetActiveLegalDocument fetches active document version by type.
+func (s *Store) GetActiveLegalDocument(ctx context.Context, docType domain.LegalDocumentType) (domain.LegalDocument, bool, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, doc_type, title, content, external_url, version, is_active, created_at
+		FROM legal_documents
+		WHERE doc_type = $1 AND is_active = TRUE
+		LIMIT 1
+	`, string(docType))
+	item, err := scanLegalDocument(row)
+	if err == sql.ErrNoRows {
+		return domain.LegalDocument{}, false, nil
+	}
+	if err != nil {
+		return domain.LegalDocument{}, false, err
+	}
+	return item, true, nil
+}
+
+// SetLegalDocumentActive activates selected version and deactivates previous active one of same type.
+func (s *Store) SetLegalDocumentActive(ctx context.Context, documentID int64) error {
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	var docType string
+	if err := tx.QueryRowContext(ctx, `SELECT doc_type FROM legal_documents WHERE id = $1`, documentID).Scan(&docType); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE legal_documents
+		SET is_active = CASE WHEN id = $1 THEN TRUE ELSE FALSE END
+		WHERE doc_type = $2
+	`, documentID, docType); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
