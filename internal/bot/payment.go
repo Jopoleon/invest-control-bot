@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
@@ -17,9 +16,8 @@ import (
 
 // handlePay creates checkout URL with currently selected payment provider.
 func (h *Handler) handlePay(ctx context.Context, cb *models.CallbackQuery) {
-	connectorIDRaw := strings.TrimPrefix(cb.Data, "pay:")
-	connectorID, err := strconv.ParseInt(connectorIDRaw, 10, 64)
-	if err != nil || connectorID <= 0 {
+	connectorID, selectedRecurring, hasExplicitRecurring, ok := parsePayCallbackData(cb.Data)
+	if !ok {
 		h.send(ctx, cb.From.ID, "Коннектор не найден или отключен.")
 		return
 	}
@@ -42,6 +40,9 @@ func (h *Handler) handlePay(ctx context.Context, cb *models.CallbackQuery) {
 		slog.Error("load user autopay preference failed", "error", err, "telegram_id", cb.From.ID)
 	}
 	effectiveRecurring := h.recurringEnabled && autoPayEnabled
+	if hasExplicitRecurring {
+		effectiveRecurring = h.recurringEnabled && selectedRecurring
+	}
 	invoiceID := generateInvoiceID()
 
 	checkoutURL, err := h.payment.CreateCheckoutURL(ctx, payment.Request{
@@ -57,6 +58,25 @@ func (h *Handler) handlePay(ctx context.Context, cb *models.CallbackQuery) {
 		h.send(ctx, cb.From.ID, "Не удалось сформировать ссылку оплаты. Попробуйте позже.")
 		return
 	}
+
+	if effectiveRecurring {
+		recurringConsent, consentErr := h.buildRecurringConsent(ctx, cb.From.ID, connector)
+		if consentErr != nil {
+			slog.Error("build recurring consent failed", "error", consentErr, "connector_id", connectorID, "telegram_id", cb.From.ID)
+			h.send(ctx, cb.From.ID, "Автоплатеж пока недоступен: не найдены обязательные документы для согласия.")
+			return
+		}
+		if err := h.store.CreateRecurringConsent(ctx, recurringConsent); err != nil {
+			slog.Error("save recurring consent failed", "error", err, "connector_id", connectorID, "telegram_id", cb.From.ID)
+			h.send(ctx, cb.From.ID, "Не удалось сохранить согласие на автоплатеж. Попробуйте еще раз.")
+			return
+		}
+		h.logAuditEvent(ctx, cb.From.ID, connectorID, domain.AuditActionRecurringConsentGranted, "")
+		if err := h.store.SetUserAutoPayEnabled(ctx, cb.From.ID, true, time.Now().UTC()); err != nil {
+			slog.Error("save user autopay preference after consent failed", "error", err, "telegram_id", cb.From.ID)
+		}
+	}
+
 	token := invoiceID
 	err = h.store.CreatePayment(ctx, domain.Payment{
 		Provider:       h.payment.ProviderName(),

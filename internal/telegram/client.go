@@ -54,6 +54,26 @@ func (c *Client) SendMessage(ctx context.Context, chatID int64, text string, key
 	return err
 }
 
+// EditMessageText updates previously sent bot message and optionally replaces inline keyboard.
+func (c *Client) EditMessageText(ctx context.Context, chatID int64, messageID int, text string, keyboard *models.InlineKeyboardMarkup) error {
+	if !c.enabled {
+		slog.Debug("telegram client disabled, skip editMessageText", "chat_id", chatID, "message_id", messageID)
+		return nil
+	}
+
+	params := &tgbot.EditMessageTextParams{
+		ChatID:    chatID,
+		MessageID: messageID,
+		Text:      text,
+	}
+	if keyboard != nil {
+		params.ReplyMarkup = keyboard
+	}
+
+	_, err := c.bot.EditMessageText(ctx, params)
+	return err
+}
+
 // AnswerCallbackQuery acknowledges button click to stop Telegram client-side spinner.
 func (c *Client) AnswerCallbackQuery(ctx context.Context, callbackQueryID string) error {
 	if !c.enabled {

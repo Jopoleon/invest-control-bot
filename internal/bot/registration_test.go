@@ -249,6 +249,120 @@ func TestHandlePay_DisablesRecurringWhenCapabilityOff(t *testing.T) {
 	}
 }
 
+func TestHandlePay_WithExplicitRecurringOptInCreatesRecurringConsent(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	tg, err := telegram.NewClient("", "")
+	if err != nil {
+		t.Fatalf("create telegram client: %v", err)
+	}
+	robokassa := payment.NewRobokassaService(payment.RobokassaConfig{
+		MerchantLogin: "test-merchant",
+		Password1:     "test-pass1",
+		Password2:     "test-pass2",
+		IsTest:        true,
+		BaseURL:       "https://auth.robokassa.ru/Merchant/Index.aspx",
+	})
+	h := NewHandler(st, tg, robokassa, true, "http://localhost:8080")
+
+	connectorID := seedBotConnector(t, ctx, st, "in-pay-recurring")
+	seedRecurringLegalDocs(t, ctx, st)
+
+	h.handlePay(ctx, &models.CallbackQuery{
+		ID:   "cb-4",
+		From: models.User{ID: 1004},
+		Data: "pay:" + int64ToString(connectorID) + ":1",
+	})
+
+	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{TelegramID: 1004, Limit: 10})
+	if err != nil {
+		t.Fatalf("list payments: %v", err)
+	}
+	if len(payments) != 1 {
+		t.Fatalf("payments len = %d, want 1", len(payments))
+	}
+	if !payments[0].AutoPayEnabled {
+		t.Fatalf("payment AutoPayEnabled = false, want true")
+	}
+	if !strings.Contains(payments[0].CheckoutURL, "Recurring=true") {
+		t.Fatalf("checkout URL should contain recurring flag: %s", payments[0].CheckoutURL)
+	}
+
+	enabled, hasSettings, err := st.GetUserAutoPayEnabled(ctx, 1004)
+	if err != nil {
+		t.Fatalf("get user autopay: %v", err)
+	}
+	if !hasSettings || !enabled {
+		t.Fatalf("autopay preference = (%v,%v), want (true,true)", enabled, hasSettings)
+	}
+
+	consents, err := st.ListRecurringConsentsByTelegram(ctx, 1004)
+	if err != nil {
+		t.Fatalf("list recurring consents: %v", err)
+	}
+	if len(consents) != 1 {
+		t.Fatalf("recurring consents len = %d, want 1", len(consents))
+	}
+	if consents[0].OfferDocumentVersion != 1 || consents[0].UserAgreementDocumentVersion != 1 {
+		t.Fatalf("unexpected recurring consent: %+v", consents[0])
+	}
+}
+
+func TestHandlePay_WithExplicitManualModeOverridesStoredAutopay(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	tg, err := telegram.NewClient("", "")
+	if err != nil {
+		t.Fatalf("create telegram client: %v", err)
+	}
+	robokassa := payment.NewRobokassaService(payment.RobokassaConfig{
+		MerchantLogin: "test-merchant",
+		Password1:     "test-pass1",
+		Password2:     "test-pass2",
+		IsTest:        true,
+		BaseURL:       "https://auth.robokassa.ru/Merchant/Index.aspx",
+	})
+	h := NewHandler(st, tg, robokassa, true, "http://localhost:8080")
+
+	connectorID := seedBotConnector(t, ctx, st, "in-pay-manual-override")
+	seedRecurringLegalDocs(t, ctx, st)
+	if err := st.SetUserAutoPayEnabled(ctx, 1005, true, time.Now().UTC()); err != nil {
+		t.Fatalf("set user autopay: %v", err)
+	}
+
+	h.handlePay(ctx, &models.CallbackQuery{
+		ID:   "cb-5",
+		From: models.User{ID: 1005},
+		Data: "pay:" + int64ToString(connectorID) + ":0",
+	})
+
+	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{TelegramID: 1005, Limit: 10})
+	if err != nil {
+		t.Fatalf("list payments: %v", err)
+	}
+	if len(payments) != 1 {
+		t.Fatalf("payments len = %d, want 1", len(payments))
+	}
+	if payments[0].AutoPayEnabled {
+		t.Fatalf("payment AutoPayEnabled = true, want false")
+	}
+	if strings.Contains(payments[0].CheckoutURL, "Recurring=true") {
+		t.Fatalf("checkout URL should not contain recurring flag: %s", payments[0].CheckoutURL)
+	}
+
+	consents, err := st.ListRecurringConsentsByTelegram(ctx, 1005)
+	if err != nil {
+		t.Fatalf("list recurring consents: %v", err)
+	}
+	if len(consents) != 0 {
+		t.Fatalf("recurring consents len = %d, want 0", len(consents))
+	}
+}
+
 func seedBotConnector(t *testing.T, ctx context.Context, st *memory.Store, payload string) int64 {
 	t.Helper()
 
@@ -275,6 +389,31 @@ func seedBotConnector(t *testing.T, ctx context.Context, st *memory.Store, paylo
 
 func int64ToString(v int64) string {
 	return strconv.FormatInt(v, 10)
+}
+
+func seedRecurringLegalDocs(t *testing.T, ctx context.Context, st *memory.Store) {
+	t.Helper()
+
+	if err := st.CreateLegalDocument(ctx, domain.LegalDocument{
+		Type:      domain.LegalDocumentTypeOffer,
+		Title:     "Offer recurring",
+		Content:   "Offer recurring content",
+		Version:   1,
+		IsActive:  true,
+		CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create recurring offer doc: %v", err)
+	}
+	if err := st.CreateLegalDocument(ctx, domain.LegalDocument{
+		Type:      domain.LegalDocumentTypeUserAgreement,
+		Title:     "Agreement recurring",
+		Content:   "Agreement recurring content",
+		Version:   1,
+		IsActive:  true,
+		CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create recurring agreement doc: %v", err)
+	}
 }
 
 func TestResolveLegalURL_UsesActiveDocumentFallback(t *testing.T) {

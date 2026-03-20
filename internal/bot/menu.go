@@ -13,12 +13,14 @@ import (
 )
 
 const (
-	menuCallbackPrefix       = "menu:"
-	menuCallbackSubscription = "menu:subscription"
-	menuCallbackPayments     = "menu:payments"
-	menuCallbackAutopay      = "menu:autopay"
-	menuCallbackAutopayOn    = "menu:autopay:on"
-	menuCallbackAutopayOff   = "menu:autopay:off"
+	menuCallbackPrefix        = "menu:"
+	menuCallbackSubscription  = "menu:subscription"
+	menuCallbackPayments      = "menu:payments"
+	menuCallbackAutopay       = "menu:autopay"
+	menuCallbackAutopayOn     = "menu:autopay:on"
+	menuCallbackAutopayOff    = "menu:autopay:off"
+	menuCallbackAutopayOffAsk = "menu:autopay:off:ask"
+	menuCallbackAutopayOffNo  = "menu:autopay:off:no"
 )
 
 func (h *Handler) sendMenu(ctx context.Context, chatID int64) {
@@ -56,8 +58,12 @@ func (h *Handler) handleMenuCallback(ctx context.Context, cb *models.CallbackQue
 		h.sendAutopayInfo(ctx, chatID, cb.From.ID)
 	case menuCallbackAutopayOn:
 		h.setAutopayPreference(ctx, chatID, cb.From.ID, true)
+	case menuCallbackAutopayOffAsk:
+		h.confirmAutopayDisable(ctx, cb)
 	case menuCallbackAutopayOff:
-		h.setAutopayPreference(ctx, chatID, cb.From.ID, false)
+		h.disableAutopayConfirmed(ctx, cb)
+	case menuCallbackAutopayOffNo:
+		h.restoreAutopayInfo(ctx, cb)
 	default:
 		h.send(ctx, chatID, "Неизвестная команда меню.")
 	}
@@ -155,20 +161,7 @@ func (h *Handler) sendAutopayInfo(ctx context.Context, chatID, telegramID int64)
 		h.send(ctx, chatID, "Не удалось загрузить настройки автоплатежа.")
 		return
 	}
-	status := "выключен"
-	actionLabel := "Включить автоплатеж"
-	actionCallback := menuCallbackAutopayOn
-	if enabled {
-		status = "включен"
-		actionLabel = "Выключить автоплатеж"
-		actionCallback = menuCallbackAutopayOff
-	}
-	text := "🔁 Автоплатеж\n\nТекущий статус: " + status + ".\nИзменение применяется к следующим платежам через Robokassa recurring."
-	keyboard := &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
-		{
-			{Text: actionLabel, CallbackData: actionCallback},
-		},
-	}}
+	text, keyboard := autopayInfoMessage(enabled)
 	if err := h.tg.SendMessage(ctx, chatID, text, keyboard); err != nil {
 		slog.Error("send autopay info failed", "error", err, "telegram_id", telegramID)
 		return
@@ -176,9 +169,47 @@ func (h *Handler) sendAutopayInfo(ctx context.Context, chatID, telegramID int64)
 	h.logAuditEvent(ctx, telegramID, 0, domain.AuditActionMenuAutoPayOpened, "")
 }
 
+func (h *Handler) confirmAutopayDisable(ctx context.Context, cb *models.CallbackQuery) {
+	if cb == nil || cb.Message.Message == nil {
+		return
+	}
+	text := "🔁 Отключить автоплатеж?\n\nПосле отключения новые автоматические списания выполняться не будут. Текущий оплаченный период сохранится до даты окончания подписки."
+	keyboard := &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+		{
+			{Text: "Да, отключить", CallbackData: menuCallbackAutopayOff},
+			{Text: "Нет, оставить", CallbackData: menuCallbackAutopayOffNo},
+		},
+	}}
+	if err := h.tg.EditMessageText(ctx, cb.Message.Message.Chat.ID, cb.Message.Message.ID, text, keyboard); err != nil {
+		slog.Error("edit autopay disable confirm failed", "error", err, "telegram_id", cb.From.ID)
+		return
+	}
+	h.logAuditEvent(ctx, cb.From.ID, 0, domain.AuditActionAutopayDisableRequested, "")
+}
+
+func (h *Handler) restoreAutopayInfo(ctx context.Context, cb *models.CallbackQuery) {
+	if cb == nil || cb.Message.Message == nil {
+		return
+	}
+	enabled, _, err := h.store.GetUserAutoPayEnabled(ctx, cb.From.ID)
+	if err != nil {
+		slog.Error("load user autopay preference failed", "error", err, "telegram_id", cb.From.ID)
+		h.send(ctx, cb.Message.Message.Chat.ID, "Не удалось загрузить настройки автоплатежа.")
+		return
+	}
+	text, keyboard := autopayInfoMessage(enabled)
+	if err := h.tg.EditMessageText(ctx, cb.Message.Message.Chat.ID, cb.Message.Message.ID, text, keyboard); err != nil {
+		slog.Error("restore autopay info failed", "error", err, "telegram_id", cb.From.ID)
+	}
+}
+
 func (h *Handler) setAutopayPreference(ctx context.Context, chatID, telegramID int64, enabled bool) {
 	if !h.recurringEnabled {
 		h.send(ctx, chatID, "Автоплатеж временно недоступен. Подключим его после активации recurring в Robokassa.")
+		return
+	}
+	if enabled {
+		h.send(ctx, chatID, "Автоплатеж включается на этапе оплаты через отдельное согласие на автоматические списания. При следующей оплате выберите режим с автоплатежом.")
 		return
 	}
 	if err := h.store.SetUserAutoPayEnabled(ctx, telegramID, enabled, time.Now().UTC()); err != nil {
@@ -186,13 +217,43 @@ func (h *Handler) setAutopayPreference(ctx context.Context, chatID, telegramID i
 		h.send(ctx, chatID, "Не удалось изменить настройку автоплатежа.")
 		return
 	}
-	if enabled {
-		h.send(ctx, chatID, "Автоплатеж включен. Следующая оплата будет создана в recurring-режиме.")
-		h.logAuditEvent(ctx, telegramID, 0, domain.AuditActionAutopayEnabled, "")
-		return
-	}
 	h.send(ctx, chatID, "Автоплатеж выключен.")
 	h.logAuditEvent(ctx, telegramID, 0, domain.AuditActionAutopayDisabled, "")
+}
+
+func (h *Handler) disableAutopayConfirmed(ctx context.Context, cb *models.CallbackQuery) {
+	if cb == nil || cb.Message.Message == nil {
+		return
+	}
+	if !h.recurringEnabled {
+		h.send(ctx, cb.Message.Message.Chat.ID, "Автоплатеж временно недоступен. Подключим его после активации recurring в Robokassa.")
+		return
+	}
+	if err := h.store.SetUserAutoPayEnabled(ctx, cb.From.ID, false, time.Now().UTC()); err != nil {
+		slog.Error("disable autopay failed", "error", err, "telegram_id", cb.From.ID)
+		h.send(ctx, cb.Message.Message.Chat.ID, "Не удалось изменить настройку автоплатежа.")
+		return
+	}
+	text := "🔁 Автоплатеж отключен.\n\nНовые автоматические списания больше не будут выполняться. Доступ сохранится до конца уже оплаченного периода."
+	if err := h.tg.EditMessageText(ctx, cb.Message.Message.Chat.ID, cb.Message.Message.ID, text, nil); err != nil {
+		slog.Error("edit autopay disabled message failed", "error", err, "telegram_id", cb.From.ID)
+		return
+	}
+	h.logAuditEvent(ctx, cb.From.ID, 0, domain.AuditActionAutopayDisabled, "")
+}
+
+func autopayInfoMessage(enabled bool) (string, *models.InlineKeyboardMarkup) {
+	text := "🔁 Автоплатеж\n\n"
+	if enabled {
+		text += "Текущий статус: включен.\nСледующие списания будут происходить автоматически, пока вы не отключите автоплатеж."
+		return text, &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+			{
+				{Text: "Отключить автоплатеж", CallbackData: menuCallbackAutopayOffAsk},
+			},
+		}}
+	}
+	text += "Текущий статус: выключен.\nАвтоплатеж подключается на этапе оплаты через отдельное согласие на автоматические списания."
+	return text, nil
 }
 
 func resolveChannelForBot(channelURL, chatID string) string {

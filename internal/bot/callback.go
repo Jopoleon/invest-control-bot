@@ -24,6 +24,8 @@ func (h *Handler) handleCallback(ctx context.Context, cb *models.CallbackQuery) 
 	if !strings.HasPrefix(cb.Data, "accept_terms:") {
 		if strings.HasPrefix(cb.Data, "pay:") {
 			h.handlePay(ctx, cb)
+		} else if strings.HasPrefix(cb.Data, payConsentCallbackPrefix) {
+			h.handlePayConsentToggle(ctx, cb)
 		} else if strings.HasPrefix(cb.Data, menuCallbackPrefix) {
 			h.handleMenuCallback(ctx, cb)
 		}
@@ -109,4 +111,31 @@ func (h *Handler) handleCallback(ctx context.Context, cb *models.CallbackQuery) 
 	h.logAuditEvent(ctx, cb.From.ID, connectorID, domain.AuditActionRegistrationStepRequested, string(nextStep))
 
 	h.send(ctx, cb.From.ID, registrationPrompt(nextStep))
+}
+
+func (h *Handler) handlePayConsentToggle(ctx context.Context, cb *models.CallbackQuery) {
+	if cb == nil || cb.Message.Message == nil {
+		return
+	}
+
+	connectorID, enabled, ok := parsePayConsentCallbackData(cb.Data)
+	if !ok {
+		h.send(ctx, cb.From.ID, "Не удалось обновить настройку автоплатежа.")
+		return
+	}
+	connector, found, err := h.store.GetConnector(ctx, connectorID)
+	if err != nil {
+		slog.Error("load connector for pay consent toggle failed", "error", err, "connector_id", connectorID)
+		return
+	}
+	if !found || !connector.IsActive {
+		h.send(ctx, cb.From.ID, "Коннектор не найден или отключен.")
+		return
+	}
+
+	text, keyboard := h.buildFinalPaymentStep(ctx, connectorID, enabled)
+	if err := h.tg.EditMessageText(ctx, cb.Message.Message.Chat.ID, cb.Message.Message.ID, text, keyboard); err != nil {
+		slog.Error("edit pay consent message failed", "error", err, "chat_id", cb.Message.Message.Chat.ID, "message_id", cb.Message.Message.ID)
+		return
+	}
 }

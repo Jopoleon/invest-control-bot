@@ -68,19 +68,8 @@ func (h *Handler) handleStart(ctx context.Context, msg *models.Message) {
 }
 
 func (h *Handler) resolveLegalURL(ctx context.Context, docType domain.LegalDocumentType) string {
-	doc, found := h.resolveLegalDocument(ctx, docType)
-	if found {
-		if strings.TrimSpace(doc.ExternalURL) != "" {
-			return doc.ExternalURL
-		}
-		if h.publicBaseURL != "" && doc.ID > 0 {
-			switch docType {
-			case domain.LegalDocumentTypeOffer:
-				return h.publicBaseURL + "/oferta/" + strconv.FormatInt(doc.ID, 10)
-			case domain.LegalDocumentTypePrivacy:
-				return h.publicBaseURL + "/policy/" + strconv.FormatInt(doc.ID, 10)
-			}
-		}
+	if url, _, found := h.resolveLegalDocumentURL(ctx, docType); found {
+		return url
 	}
 
 	switch docType {
@@ -88,6 +77,8 @@ func (h *Handler) resolveLegalURL(ctx context.Context, docType domain.LegalDocum
 		return "https://example.com/contract"
 	case domain.LegalDocumentTypePrivacy:
 		return "https://example.com/policy"
+	case domain.LegalDocumentTypeUserAgreement:
+		return ""
 	default:
 		return "https://example.com"
 	}

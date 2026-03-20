@@ -413,6 +413,8 @@
 - `2026-03-20` Реализовано versioning согласий: в `user_consents` теперь сохраняются `offer_document_id/version` и `privacy_document_id/version` для fallback-документов из реестра, а карточка пользователя показывает историю акцепта по коннекторам и версиям документов.
 - `2026-03-20` Зафиксирован отдельный recurring-compliance checklist под требования Robokassa: юридические документы, отдельный opt-in на автосписания, история consent, cancel flow и порядок включения recurring только после активации магазина со стороны Robokassa.
 - `2026-03-20` Для recurring readiness расширен legal registry: добавлен тип документа `user_agreement`, публичные URL `/legal/agreement` и `/agreement/{id}`, а также отдельный data-layer `recurring_consents` и отображение recurring-consent истории в карточке пользователя.
+- `2026-03-20` В bot checkout flow добавлен явный opt-in на автосписания: stateless-toggle перед оплатой, запись `recurring_consents` при выборе режима с автоплатежом, безопасный override `pay:...:0/1`, и перевод menu-autopay в compliance-safe режим без тихого включения recurring.
+- `2026-03-20` Для cancel flow автоплатежа добавлено отдельное подтверждение отключения в боте: запрос на отмену, явное подтверждение/отмена и понятный текст о последствиях отключения без потери уже оплаченного периода.
 
 ## 13) Референсный flow текущего бота (для воспроизведения)
 Источник: `telegram-bot-flow.md`.

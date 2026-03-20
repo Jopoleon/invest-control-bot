@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"net/mail"
-	"strconv"
 	"strings"
 
 	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
@@ -80,13 +79,8 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg *models.Messag
 
 // sendFinalRegistrationMessage sends completion text and pay button.
 func (h *Handler) sendFinalRegistrationMessage(ctx context.Context, chatID, connectorID int64) {
-	payKeyboard := &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{
-		{Text: "Оплатить", CallbackData: "pay:" + strconv.FormatInt(connectorID, 10)},
-	}}}
-	if err := h.tg.SendMessage(ctx, chatID,
-		"✅ Спасибо! Ваша заявка оформлена успешно.\n💳 Осталось оплатить\nЧтобы произвести оплату, нажмите на кнопку «Оплатить» ниже, для переадресации на платежную страницу",
-		payKeyboard,
-	); err != nil {
+	text, payKeyboard := h.buildFinalPaymentStep(ctx, connectorID, false)
+	if err := h.tg.SendMessage(ctx, chatID, text, payKeyboard); err != nil {
 		slog.Error("send final message failed", "error", err, "chat_id", chatID, "connector_id", connectorID)
 	}
 }
