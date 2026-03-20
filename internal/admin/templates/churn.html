@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="{{.Lang}}">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin · {{index .I18N "churn.title"}}</title>
+  <link rel="stylesheet" href="/admin/assets/css/pico.min.css">
+  <link rel="stylesheet" href="/admin/assets/css/admin.css">
+  <style>
+    :root {
+      --pico-font-family: "Manrope", "Segoe UI", sans-serif;
+      --pico-font-size: 87.5%;
+      --pico-spacing: .8rem;
+      --pico-form-element-spacing-vertical: .45rem;
+      --pico-form-element-spacing-horizontal: .6rem;
+    }
+    main.container { max-width: 1360px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: .8rem; }
+    .table-wrap a { color: #0d61ff; text-decoration: underline; }
+    .churn-user strong { display: block; }
+    .churn-user small { color: #5b6b7f; }
+    .row-actions {
+      display: flex;
+      gap: .45rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .row-actions form { margin: 0; }
+  </style>
+</head>
+<body>
+<main class="container">
+  {{template "topbar" .}}
+
+  <article class="page-hero">
+    <span class="page-kicker">{{index .I18N "nav.churn"}}</span>
+    <h1 class="page-title">{{index .I18N "churn.title"}}</h1>
+    <p class="page-subtitle">{{index .I18N "churn.subtitle"}}</p>
+    {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
+  </article>
+
+  <article class="section-card filter-shell">
+    <div class="panel-head">
+      <h3>{{index .I18N "common.filters"}}</h3>
+      <span class="panel-kicker">Filters</span>
+    </div>
+    <form method="GET" action="/admin/churn" class="filter-form">
+      <div class="filter-grid">
+        <label class="filter-field">
+          <span>{{index .I18N "users.filter.telegram_id"}}</span>
+          <input name="telegram_id" value="{{.TelegramID}}" placeholder="264704572">
+        </label>
+        <label class="filter-field">
+          <span>{{index .I18N "billing.filter.connector_id"}}</span>
+          <input name="connector_id" value="{{.ConnectorID}}" placeholder="17">
+        </label>
+        <label class="filter-field">
+          <span>{{index .I18N "churn.filter.issue_type"}}</span>
+          <select name="issue_type">
+            <option value="" {{if eq .IssueType ""}}selected{{end}}>{{index .I18N "churn.issue.any"}}</option>
+            <option value="failed_payment" {{if eq .IssueType "failed_payment"}}selected{{end}}>{{index .I18N "churn.issue.failed_payment"}}</option>
+            <option value="expired_subscription" {{if eq .IssueType "expired_subscription"}}selected{{end}}>{{index .I18N "churn.issue.expired_subscription"}}</option>
+            <option value="revoked_subscription" {{if eq .IssueType "revoked_subscription"}}selected{{end}}>{{index .I18N "churn.issue.revoked_subscription"}}</option>
+            <option value="pending_payment" {{if eq .IssueType "pending_payment"}}selected{{end}}>{{index .I18N "churn.issue.pending_payment"}}</option>
+          </select>
+        </label>
+        <label class="filter-field">
+          <span>{{index .I18N "churn.filter.search"}}</span>
+          <input name="search" value="{{.Search}}" placeholder="{{index .I18N "churn.filter.search_ph"}}">
+        </label>
+      </div>
+      <div class="filter-actions">
+        <input type="hidden" name="lang" value="{{.Lang}}">
+        <a href="/admin/churn?lang={{.Lang}}" role="button" class="secondary">{{index .I18N "users.reset"}}</a>
+        <button type="submit">{{index .I18N "users.apply"}}</button>
+      </div>
+    </form>
+  </article>
+
+  <article class="section-card">
+    <div class="panel-head">
+      <h3>{{index .I18N "churn.title"}} ({{len .Issues}})</h3>
+      <div class="panel-actions">
+        <a href="{{.ExportURL}}" role="button" class="secondary">{{index .I18N "common.export_csv"}}</a>
+        <span class="panel-kicker">Operations</span>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="stat-table">
+        <thead>
+          <tr>
+            <th>{{index .I18N "churn.table.user"}}</th>
+            <th>{{index .I18N "churn.table.connector"}}</th>
+            <th>{{index .I18N "churn.table.issue"}}</th>
+            <th>{{index .I18N "churn.table.payment"}}</th>
+            <th>{{index .I18N "churn.table.subscription"}}</th>
+            <th>{{index .I18N "churn.table.amount"}}</th>
+            <th>{{index .I18N "churn.table.last_event"}}</th>
+            <th>{{index .I18N "churn.table.actions"}}</th>
+          </tr>
+        </thead>
+        <tbody>
+        {{range .Issues}}
+          <tr>
+            <td class="churn-user">
+              <strong><a href="{{.UserDetailURL}}">{{if .FullName}}{{.FullName}}{{else}}{{.TelegramID}}{{end}}</a></strong>
+              <small class="mono">{{.TelegramID}}</small>
+              {{if .TelegramUsername}}<small>@{{.TelegramUsername}}</small>{{end}}
+            </td>
+            <td>{{.Connector}}</td>
+            <td><span class="badge {{.IssueClass}}">{{.IssueLabel}}</span></td>
+            <td>{{if .PaymentStatus}}<span class="badge {{.PaymentClass}}">{{.PaymentLabel}}</span>{{end}}</td>
+            <td>{{if .SubscriptionStatus}}<span class="badge {{.SubscriptionClass}}">{{.SubscriptionLabel}}</span>{{end}}</td>
+            <td>{{if gt .LastAmountRUB 0}}{{.LastAmountRUB}} ₽{{end}}</td>
+            <td class="mono">{{.LastEventAt}}</td>
+            <td class="row-actions">
+              {{if .CanSendPayLink}}
+              <form method="POST" action="{{.PaymentLinkURL}}">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="telegram_id" value="{{.TelegramID}}">
+                <input type="hidden" name="connector_id" value="{{.ConnectorID}}">
+                <button type="submit" class="secondary">{{index $.I18N "users.actions.paylink_send"}}</button>
+              </form>
+              {{end}}
+              <a href="{{.UserDetailURL}}" role="button" class="secondary">{{index $.I18N "users.detail.profile"}}</a>
+            </td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </article>
+</main>
+</body>
+</html>

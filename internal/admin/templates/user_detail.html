@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Admin · {{index .I18N "users.detail.profile"}}</title>
   <link rel="stylesheet" href="/admin/assets/css/pico.min.css">
+  <link rel="stylesheet" href="/admin/assets/css/admin.css">
   <link rel="stylesheet" href="/admin/assets/css/gridjs-mermaid.min.css">
   <style>
     :root {
@@ -153,6 +154,31 @@
       margin: 0;
       letter-spacing: -.02em;
     }
+    .action-grid {
+      display: grid;
+      grid-template-columns: 1.4fr .9fr;
+      gap: 1rem;
+    }
+    .action-card {
+      padding: 1rem;
+      border: 1px solid #dbe6f1;
+      border-radius: .95rem;
+      background: rgba(255, 255, 255, .92);
+    }
+    .action-card h4 {
+      margin: 0 0 .75rem;
+    }
+    .action-card form {
+      margin: 0;
+    }
+    .action-card textarea {
+      min-height: 136px;
+      resize: vertical;
+    }
+    .action-note {
+      color: #5b6b7f;
+      font-size: .88rem;
+    }
     .section-kicker {
       display: inline-flex;
       align-items: center;
@@ -184,6 +210,12 @@
     }
     .gridjs-pagination {
       padding: .7rem .2rem 0;
+    }
+    .row-actions {
+      display: flex;
+      gap: .45rem;
+      flex-wrap: wrap;
+      align-items: center;
     }
     .row-actions form { margin: 0; }
     .row-actions button { margin: 0; padding: .35rem .65rem; font-size: .78rem; }
@@ -230,6 +262,9 @@
       }
       .section-card {
         padding: .95rem;
+      }
+      .action-grid {
+        grid-template-columns: 1fr;
       }
     }
   </style>
@@ -290,6 +325,28 @@
       <div class="summary-card">
         <small>{{index .I18N "users.detail.events"}}</small>
         <strong>{{len .Events}}</strong>
+      </div>
+    </div>
+  </article>
+
+  <article class="section-card">
+    <div class="section-head">
+      <h3>{{index .I18N "users.actions.title"}}</h3>
+      <span class="section-kicker">Operations</span>
+    </div>
+    <div class="action-grid">
+      <div class="action-card">
+        <h4>{{index .I18N "users.actions.message"}}</h4>
+        <form method="POST" action="{{.MessageActionURL}}">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <input type="hidden" name="telegram_id" value="{{.User.TelegramID}}">
+          <textarea name="message" placeholder="{{index .I18N "users.actions.message_ph"}}" required></textarea>
+          <button type="submit">{{index .I18N "users.actions.message_send"}}</button>
+        </form>
+      </div>
+      <div class="action-card">
+        <h4>{{index .I18N "users.actions.paylink"}}</h4>
+        <p class="action-note">{{index .I18N "users.actions.paylink_hint"}}</p>
       </div>
     </div>
   </article>
@@ -364,6 +421,14 @@
             <td class="mono">{{.EndsAt}}</td>
             <td class="mono">{{.CreatedAt}}</td>
             <td class="row-actions">
+              {{if .CanSendPayLink}}
+              <form method="POST" action="{{.PaymentLinkURL}}">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="telegram_id" value="{{$.User.TelegramID}}">
+                <input type="hidden" name="subscription_id" value="{{.ID}}">
+                <button type="submit" class="secondary">{{index $.I18N "users.actions.paylink_send"}}</button>
+              </form>
+              {{end}}
               {{if .CanRevoke}}
               <form method="POST" action="{{.RevokeURL}}" onsubmit="return confirm('{{index $.I18N "users.revoke.confirm"}}');">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">

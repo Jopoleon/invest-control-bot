@@ -30,6 +30,7 @@ func (h *Handler) usersPage(w http.ResponseWriter, r *http.Request) {
 		},
 		TelegramID: strings.TrimSpace(r.URL.Query().Get("telegram_id")),
 		Search:     strings.TrimSpace(r.URL.Query().Get("search")),
+		ExportURL:  buildExportURL("/admin/users/export.csv", r.URL.Query(), lang),
 	}
 
 	query := domain.UserListQuery{Limit: 300, Search: data.Search}
@@ -89,8 +90,9 @@ func renderUserDetailError(h *Handler, w http.ResponseWriter, r *http.Request, l
 			TopbarPath: "/admin/users",
 			ActiveNav:  "users",
 		},
-		Notice:  notice,
-		BackURL: "/admin/users?lang=" + lang,
+		Notice:           notice,
+		BackURL:          "/admin/users?lang=" + lang,
+		MessageActionURL: "/admin/users/message?lang=" + lang,
 	})
 }
 
@@ -150,8 +152,9 @@ func (h *Handler) renderUserDetailPage(ctx context.Context, w http.ResponseWrite
 			TopbarPath: "/admin/users",
 			ActiveNav:  "users",
 		},
-		Notice:  notice,
-		BackURL: "/admin/users?lang=" + lang,
+		Notice:           notice,
+		BackURL:          "/admin/users?lang=" + lang,
+		MessageActionURL: "/admin/users/message?lang=" + lang,
 		User: userView{
 			TelegramID:       item.TelegramID,
 			TelegramUsername: item.TelegramUsername,
@@ -198,6 +201,10 @@ func (h *Handler) renderUserDetailPage(ctx context.Context, w http.ResponseWrite
 	for _, s := range subs {
 		statusLabel, statusClass := subscriptionStatusBadge(lang, s.Status)
 		autoPayLabel, autoPayClass := autoPayBadge(lang, s.AutoPayEnabled, true)
+		canSendPayLink := false
+		if connector, found, err := h.store.GetConnector(ctx, s.ConnectorID); err == nil && found {
+			canSendPayLink = buildAdminBotStartURL(h.botUsername, connector.StartPayload) != ""
+		}
 		data.Subscriptions = append(data.Subscriptions, subscriptionView{
 			ID:             s.ID,
 			Status:         string(s.Status),
@@ -215,6 +222,8 @@ func (h *Handler) renderUserDetailPage(ctx context.Context, w http.ResponseWrite
 			CreatedAt:      s.CreatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
 			CanRevoke:      s.Status == domain.SubscriptionStatusActive,
 			RevokeURL:      buildSubscriptionRevokeURL(lang, telegramID, s.ID),
+			CanSendPayLink: canSendPayLink,
+			PaymentLinkURL: buildUserPaymentLinkURL(lang, telegramID, s.ID),
 		})
 	}
 
@@ -231,6 +240,145 @@ func (h *Handler) renderUserDetailPage(ctx context.Context, w http.ResponseWrite
 	}
 
 	h.renderer.render(w, "user_detail.html", data)
+}
+
+func (h *Handler) sendUserMessage(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAuth(w, r) {
+		return
+	}
+	lang := h.resolveLang(w, r)
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		h.unauthorized(w)
+		return
+	}
+	if !h.verifyCSRF(r) {
+		w.WriteHeader(http.StatusForbidden)
+		h.renderUserDetailPage(r.Context(), w, r, lang, parseInt64Default(r.FormValue("telegram_id")), t(lang, "csrf.invalid"))
+		return
+	}
+
+	telegramID := parseInt64Default(r.FormValue("telegram_id"))
+	if telegramID <= 0 {
+		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.invalid_id"))
+		return
+	}
+	text := strings.TrimSpace(r.FormValue("message"))
+	if text == "" {
+		h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, t(lang, "users.actions.message_empty"))
+		return
+	}
+
+	now := time.Now().UTC()
+	if err := h.tg.SendMessage(r.Context(), telegramID, text, nil); err != nil {
+		_ = h.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
+			TelegramID: telegramID,
+			Action:     "admin_message_send_failed",
+			Details:    err.Error(),
+			CreatedAt:  now,
+		})
+		h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, err.Error())
+		return
+	}
+
+	_ = h.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
+		TelegramID: telegramID,
+		Action:     "admin_message_sent",
+		Details:    trimAuditDetails(text, 500),
+		CreatedAt:  now,
+	})
+	h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, t(lang, "users.actions.message_sent"))
+}
+
+func (h *Handler) sendUserPaymentLink(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAuth(w, r) {
+		return
+	}
+	lang := h.resolveLang(w, r)
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		h.unauthorized(w)
+		return
+	}
+	if !h.verifyCSRF(r) {
+		w.WriteHeader(http.StatusForbidden)
+		h.renderUserDetailPage(r.Context(), w, r, lang, parseInt64Default(r.FormValue("telegram_id")), t(lang, "csrf.invalid"))
+		return
+	}
+
+	telegramID := parseInt64Default(r.FormValue("telegram_id"))
+	subID := parseInt64Default(r.FormValue("subscription_id"))
+	connectorID := parseInt64Default(r.FormValue("connector_id"))
+	if telegramID <= 0 || (subID <= 0 && connectorID <= 0) {
+		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.invalid_id"))
+		return
+	}
+
+	var (
+		sub       domain.Subscription
+		ok        bool
+		err       error
+		connector domain.Connector
+		found     bool
+	)
+	if subID > 0 {
+		sub, ok, err = h.store.GetSubscriptionByID(r.Context(), subID)
+		if err != nil || !ok || sub.TelegramID != telegramID {
+			h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, t(lang, "users.revoke.not_found"))
+			return
+		}
+		connectorID = sub.ConnectorID
+	}
+
+	connector, found, err = h.store.GetConnector(r.Context(), connectorID)
+	if err != nil || !found {
+		h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, t(lang, "users.actions.paylink_unavailable"))
+		return
+	}
+	renewURL := buildAdminBotStartURL(h.botUsername, connector.StartPayload)
+	if renewURL == "" {
+		h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, t(lang, "users.actions.paylink_unavailable"))
+		return
+	}
+
+	text := t(lang, "users.actions.paylink_text")
+	if strings.TrimSpace(connector.Name) != "" {
+		text = fmt.Sprintf(t(lang, "users.actions.paylink_text_named"), connector.Name)
+	}
+	keyboard := &models.InlineKeyboardMarkup{
+		InlineKeyboard: [][]models.InlineKeyboardButton{{
+			{Text: t(lang, "users.actions.paylink_button"), URL: renewURL},
+		}},
+	}
+	now := time.Now().UTC()
+	if err := h.tg.SendMessage(r.Context(), telegramID, text, keyboard); err != nil {
+		_ = h.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
+			TelegramID:  telegramID,
+			ConnectorID: connector.ID,
+			Action:      "admin_payment_link_send_failed",
+			Details:     err.Error(),
+			CreatedAt:   now,
+		})
+		h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, err.Error())
+		return
+	}
+
+	_ = h.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
+		TelegramID:  telegramID,
+		ConnectorID: connector.ID,
+		Action:      "admin_payment_link_sent",
+		Details:     "subscription_id=" + strconv.FormatInt(subID, 10) + ",connector_id=" + strconv.FormatInt(connectorID, 10),
+		CreatedAt:   now,
+	})
+	h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, t(lang, "users.actions.paylink_sent"))
 }
 
 // revokeSubscription performs manual admin-side subscription revocation.
@@ -344,6 +492,14 @@ func buildSubscriptionRevokeURL(lang string, telegramID, subscriptionID int64) s
 	return "/admin/subscriptions/revoke?" + params.Encode()
 }
 
+func buildUserPaymentLinkURL(lang string, telegramID, subscriptionID int64) string {
+	params := url.Values{}
+	params.Set("lang", lang)
+	params.Set("telegram_id", strconv.FormatInt(telegramID, 10))
+	params.Set("subscription_id", strconv.FormatInt(subscriptionID, 10))
+	return "/admin/users/send-payment-link?" + params.Encode()
+}
+
 func parseInt64Default(raw string) int64 {
 	value, _ := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
 	return value
@@ -372,4 +528,15 @@ func buildAdminBotStartURL(botUsername, startPayload string) string {
 		return ""
 	}
 	return "https://t.me/" + username + "?start=" + payload
+}
+
+func trimAuditDetails(raw string, limit int) string {
+	text := strings.TrimSpace(raw)
+	if limit <= 0 || len(text) <= limit {
+		return text
+	}
+	if limit <= 3 {
+		return text[:limit]
+	}
+	return text[:limit-3] + "..."
 }

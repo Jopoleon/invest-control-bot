@@ -26,10 +26,11 @@ func (h *Handler) eventsPage(w http.ResponseWriter, r *http.Request) {
 			TopbarPath: "/admin/events",
 			ActiveNav:  "events",
 		},
-		SortBy:   "created_at",
-		SortDir:  "desc",
-		Page:     1,
-		PageSize: 50,
+		ExportURL: buildExportURL("/admin/events/export.csv", r.URL.Query(), lang),
+		SortBy:    "created_at",
+		SortDir:   "desc",
+		Page:      1,
+		PageSize:  50,
 	}
 	query := domain.AuditEventListQuery{
 		SortBy:   data.SortBy,

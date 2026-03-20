@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Admin · {{index .I18N "events.title"}}</title>
   <link rel="stylesheet" href="/admin/assets/css/pico.min.css">
+  <link rel="stylesheet" href="/admin/assets/css/admin.css">
   <link rel="stylesheet" href="/admin/assets/css/gridjs-mermaid.min.css">
   <style>
     :root {
@@ -14,65 +15,102 @@
       --pico-form-element-spacing-vertical: .45rem;
       --pico-form-element-spacing-horizontal: .6rem;
     }
-    body { background: linear-gradient(180deg, #f5f8fc, #eef3f9); }
     main.container { max-width: 1280px; }
-    .topbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: .75rem;
-      flex-wrap: wrap;
-      margin: 1rem 0;
-    }
-    .topbar nav ul { align-items: center; }
-    .langs a[aria-current="true"] { font-weight: 700; text-decoration: underline; }
-    .notice {
-      padding: .75rem 1rem;
-      border: 1px solid #ffd8a8;
-      border-radius: .75rem;
-      background: #fff4e6;
-      color: #8f4b00;
-      margin: .75rem 0 0;
-      font-weight: 600;
-    }
     .table-wrap { overflow: auto; }
     #eventsSource { display: none; }
-    .gridjs-wrapper table td, .gridjs-wrapper table th { white-space: nowrap; }
     .gridjs-wrapper table td:last-child { white-space: normal; min-width: 280px; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: .8rem; }
-    .gridjs-footer {
-      background: #f7fafc;
-      color: #405266;
-    }
-    .gridjs-summary {
-      color: #405266;
-    }
-    .gridjs-pages button {
-      color: #24354d;
-      background: #fff;
-      border-color: #d6e0ea;
-    }
-    .gridjs-pages button:hover {
-      background: #edf4fb;
-    }
-    .gridjs-pages button.gridjs-currentPage {
-      color: #0f3f88;
-      background: #e7f0ff;
-      border-color: #b9cffb;
-    }
   </style>
 </head>
 <body>
 <main class="container">
   {{template "topbar" .}}
 
-  <article>
-    <h1>{{index .I18N "events.title"}}</h1>
-    <p>{{index .I18N "events.subtitle"}}</p>
+  <article class="page-hero">
+    <span class="page-kicker">{{index .I18N "nav.events"}}</span>
+    <h1 class="page-title">{{index .I18N "events.title"}}</h1>
+    <p class="page-subtitle">{{index .I18N "events.subtitle"}}</p>
     {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
   </article>
 
-  <article>
+  <article class="section-card filter-shell">
+    <div class="panel-head">
+      <h3>{{index .I18N "common.filters"}}</h3>
+      <span class="panel-kicker">Filters</span>
+    </div>
+    <form method="GET" action="/admin/events" class="filter-form">
+      <div class="filter-grid">
+        <label class="filter-field">
+          <span>{{index .I18N "events.filter.telegram_id"}}</span>
+          <input name="telegram_id" value="{{.TelegramID}}" placeholder="264704572">
+        </label>
+        <label class="filter-field">
+          <span>{{index .I18N "events.filter.connector_id"}}</span>
+          <input name="connector_id" value="{{.ConnectorID}}" placeholder="17">
+        </label>
+        <label class="filter-field">
+          <span>{{index .I18N "events.filter.action"}}</span>
+          <input name="action" value="{{.Action}}" placeholder="payment_succeeded">
+        </label>
+        <label class="filter-field">
+          <span>{{index .I18N "events.filter.search"}}</span>
+          <input name="search" value="{{.Search}}" placeholder="details">
+        </label>
+      </div>
+      <div class="filter-grid">
+        <label class="filter-field">
+          <span>{{index .I18N "events.filter.date_from"}}</span>
+          <input type="date" name="date_from" value="{{.DateFrom}}">
+        </label>
+        <label class="filter-field">
+          <span>{{index .I18N "events.filter.date_to"}}</span>
+          <input type="date" name="date_to" value="{{.DateTo}}">
+        </label>
+        <label class="filter-field">
+          <span>{{index .I18N "events.filter.sort_by"}}</span>
+          <select name="sort_by">
+            <option value="created_at" {{if eq .SortBy "created_at"}}selected{{end}}>created_at</option>
+            <option value="telegram_id" {{if eq .SortBy "telegram_id"}}selected{{end}}>telegram_id</option>
+            <option value="connector_id" {{if eq .SortBy "connector_id"}}selected{{end}}>connector_id</option>
+            <option value="action" {{if eq .SortBy "action"}}selected{{end}}>action</option>
+          </select>
+        </label>
+        <label class="filter-field">
+          <span>{{index .I18N "events.filter.sort_dir"}}</span>
+          <select name="sort_dir">
+            <option value="desc" {{if eq .SortDir "desc"}}selected{{end}}>{{index .I18N "events.sort.desc"}}</option>
+            <option value="asc" {{if eq .SortDir "asc"}}selected{{end}}>{{index .I18N "events.sort.asc"}}</option>
+          </select>
+        </label>
+      </div>
+      <div class="filter-grid is-two">
+        <label class="filter-field">
+          <span>{{index .I18N "events.filter.page_size"}}</span>
+          <select name="page_size">
+            <option value="10" {{if eq .PageSize 10}}selected{{end}}>10</option>
+            <option value="25" {{if eq .PageSize 25}}selected{{end}}>25</option>
+            <option value="50" {{if eq .PageSize 50}}selected{{end}}>50</option>
+            <option value="100" {{if eq .PageSize 100}}selected{{end}}>100</option>
+            <option value="200" {{if eq .PageSize 200}}selected{{end}}>200</option>
+          </select>
+        </label>
+      </div>
+      <div class="filter-actions">
+        <input type="hidden" name="lang" value="{{.Lang}}">
+        <a href="/admin/events?lang={{.Lang}}" role="button" class="secondary">{{index .I18N "events.reset"}}</a>
+        <button type="submit">{{index .I18N "events.apply"}}</button>
+      </div>
+    </form>
+  </article>
+
+  <article class="section-card">
+    <div class="panel-head">
+      <h3>{{index .I18N "events.title"}} ({{len .Rows}})</h3>
+      <div class="panel-actions">
+        <a href="{{.ExportURL}}" role="button" class="secondary">{{index .I18N "common.export_csv"}}</a>
+        <span class="panel-kicker">Audit Trail</span>
+      </div>
+    </div>
     <div class="table-wrap">
       <div id="eventsGrid"></div>
       <table id="eventsSource">
@@ -97,6 +135,22 @@
         {{end}}
         </tbody>
       </table>
+    </div>
+    <div class="pager-bar">
+      <div class="pager-summary">
+        {{index .I18N "events.total"}}: {{.TotalItems}} · {{index .I18N "events.page"}} {{.Page}} / {{.TotalPages}}
+      </div>
+      <div class="pager-links">
+        {{if .HasPrev}}
+        <a href="{{.FirstURL}}">{{index .I18N "events.first"}}</a>
+        <a href="{{.PrevURL}}">{{index .I18N "events.prev"}}</a>
+        {{end}}
+        <span class="is-current">{{.Page}}</span>
+        {{if .HasNext}}
+        <a href="{{.NextURL}}">{{index .I18N "events.next"}}</a>
+        <a href="{{.LastURL}}">{{index .I18N "events.last"}}</a>
+        {{end}}
+      </div>
     </div>
   </article>
 </main>
@@ -137,9 +191,9 @@
 
     new window.gridjs.Grid({
       from: table,
-      search: true,
-      sort: true,
-      pagination: { limit: 50 },
+      search: false,
+      sort: false,
+      pagination: false,
       language: labels
     }).render(mount);
   });

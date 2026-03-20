@@ -34,6 +34,7 @@ type connectorsPageData struct {
 
 	Notice          string
 	RequiredMessage string
+	ExportURL       string
 	Connectors      []connectorView
 }
 
@@ -65,8 +66,9 @@ type auditEventView struct {
 type eventsPageData struct {
 	basePageData
 
-	Notice string
-	Rows   []auditEventView
+	Notice    string
+	ExportURL string
+	Rows      []auditEventView
 
 	TelegramID  string
 	ConnectorID string
@@ -126,6 +128,8 @@ type subscriptionView struct {
 	CreatedAt      string
 	CanRevoke      bool
 	RevokeURL      string
+	CanSendPayLink bool
+	PaymentLinkURL string
 }
 
 type billingPageData struct {
@@ -140,8 +144,31 @@ type billingPageData struct {
 	DateFrom           string
 	DateTo             string
 
-	Payments      []paymentView
-	Subscriptions []subscriptionView
+	Payments               []paymentView
+	Subscriptions          []subscriptionView
+	PaymentsExportURL      string
+	SubscriptionsExportURL string
+	Summary                billingSummaryView
+	Groups                 []billingGroupView
+}
+
+type billingSummaryView struct {
+	TotalPayments       int
+	PaidPayments        int
+	FailedPayments      int
+	ActiveSubscriptions int
+	PaidAmountRUB       int64
+	PendingAmountRUB    int64
+}
+
+type billingGroupView struct {
+	ConnectorID         int64
+	Connector           string
+	PaidAmountRUB       int64
+	PaidPayments        int
+	PendingPayments     int
+	FailedPayments      int
+	ActiveSubscriptions int
 }
 
 type userView struct {
@@ -162,16 +189,55 @@ type usersPageData struct {
 	Notice     string
 	TelegramID string
 	Search     string
+	ExportURL  string
 	Users      []userView
 }
 
 type userDetailPageData struct {
 	basePageData
 
-	Notice        string
-	BackURL       string
-	User          userView
-	Payments      []paymentView
-	Subscriptions []subscriptionView
-	Events        []auditEventView
+	Notice           string
+	BackURL          string
+	MessageActionURL string
+	User             userView
+	Payments         []paymentView
+	Subscriptions    []subscriptionView
+	Events           []auditEventView
+}
+
+type churnIssueView struct {
+	TelegramID         int64
+	TelegramUsername   string
+	FullName           string
+	Email              string
+	Phone              string
+	ConnectorID        int64
+	Connector          string
+	IssueType          string
+	IssueLabel         string
+	IssueClass         string
+	PaymentStatus      string
+	PaymentLabel       string
+	PaymentClass       string
+	SubscriptionID     int64
+	SubscriptionStatus string
+	SubscriptionLabel  string
+	SubscriptionClass  string
+	LastAmountRUB      int64
+	LastEventAt        string
+	UserDetailURL      string
+	CanSendPayLink     bool
+	PaymentLinkURL     string
+}
+
+type churnPageData struct {
+	basePageData
+
+	Notice      string
+	ExportURL   string
+	TelegramID  string
+	ConnectorID string
+	Search      string
+	IssueType   string
+	Issues      []churnIssueView
 }

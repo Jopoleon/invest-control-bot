@@ -236,6 +236,7 @@ func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWrite
 		},
 		Notice:          notice,
 		RequiredMessage: t(lang, "connectors.required"),
+		ExportURL:       buildExportURL("/admin/connectors/export.csv", r.URL.Query(), lang),
 		Connectors:      rows,
 	})
 }

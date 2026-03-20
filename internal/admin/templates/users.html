@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Admin · {{index .I18N "users.title"}}</title>
   <link rel="stylesheet" href="/admin/assets/css/pico.min.css">
+  <link rel="stylesheet" href="/admin/assets/css/admin.css">
   <link rel="stylesheet" href="/admin/assets/css/gridjs-mermaid.min.css">
   <style>
     :root {
@@ -14,85 +15,56 @@
       --pico-form-element-spacing-vertical: .45rem;
       --pico-form-element-spacing-horizontal: .6rem;
     }
-    body { background: linear-gradient(180deg, #f5f8fc, #eef3f9); }
     main.container { max-width: 1320px; }
-    .topbar { display: flex; justify-content: space-between; align-items: center; gap: .75rem; flex-wrap: wrap; margin: 1rem 0; }
-    .topbar nav ul { align-items: center; }
-    .langs a[aria-current="true"] { font-weight: 700; text-decoration: underline; }
-    .notice { padding: .75rem 1rem; border: 1px solid #ffd8a8; border-radius: .75rem; background: #fff4e6; color: #8f4b00; margin: .75rem 0 0; font-weight: 600; }
     .table-wrap { overflow: auto; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: .8rem; }
     #usersSource { display: none; }
-    .gridjs-wrapper table td, .gridjs-wrapper table th { white-space: nowrap; }
     .table-wrap a { color: #0d61ff; text-decoration: underline; }
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      padding: .28rem .62rem;
-      border-radius: 999px;
-      font-size: .73rem;
-      font-weight: 700;
-      line-height: 1;
-      letter-spacing: .02em;
-      border: 1px solid transparent;
-    }
-    .badge.is-success { background: #e8f7ee; color: #17663a; border-color: #b8e2c6; }
-    .badge.is-warning { background: #fff6dd; color: #7f5a00; border-color: #f0d98f; }
-    .badge.is-danger { background: #fdebec; color: #a1262d; border-color: #f3b4ba; }
-    .badge.is-muted { background: #eef2f6; color: #536273; border-color: #d2dae3; }
-    .badge.is-accent { background: #e7f0ff; color: #174ea6; border-color: #b9cffb; }
-    .gridjs-footer {
-      background: #f7fafc;
-      color: #405266;
-    }
-    .gridjs-summary {
-      color: #405266;
-    }
-    .gridjs-pages button {
-      color: #24354d;
-      background: #fff;
-      border-color: #d6e0ea;
-    }
-    .gridjs-pages button:hover {
-      background: #edf4fb;
-    }
-    .gridjs-pages button.gridjs-currentPage {
-      color: #0f3f88;
-      background: #e7f0ff;
-      border-color: #b9cffb;
-    }
   </style>
 </head>
 <body>
 <main class="container">
   {{template "topbar" .}}
 
-  <article>
-    <h1>{{index .I18N "users.title"}}</h1>
-    <p>{{index .I18N "users.subtitle"}}</p>
+  <article class="page-hero">
+    <span class="page-kicker">{{index .I18N "nav.users"}}</span>
+    <h1 class="page-title">{{index .I18N "users.title"}}</h1>
+    <p class="page-subtitle">{{index .I18N "users.subtitle"}}</p>
     {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
   </article>
 
-  <article>
-    <form method="GET" action="/admin/users">
-      <div class="grid">
-        <label>
-          {{index .I18N "users.filter.telegram_id"}}
+  <article class="section-card filter-shell">
+    <div class="panel-head">
+      <h3>{{index .I18N "common.filters"}}</h3>
+      <span class="panel-kicker">Filters</span>
+    </div>
+    <form method="GET" action="/admin/users" class="filter-form">
+      <div class="filter-grid is-two">
+        <label class="filter-field">
+          <span>{{index .I18N "users.filter.telegram_id"}}</span>
           <input name="telegram_id" value="{{.TelegramID}}" placeholder="264704572">
         </label>
-        <label>
-          {{index .I18N "users.filter.search"}}
+        <label class="filter-field">
+          <span>{{index .I18N "users.filter.search"}}</span>
           <input name="search" value="{{.Search}}" placeholder="{{index .I18N "users.filter.search_ph"}}">
         </label>
       </div>
-      <input type="hidden" name="lang" value="{{.Lang}}">
-      <button type="submit">{{index .I18N "users.apply"}}</button>
-      <a href="/admin/users?lang={{.Lang}}" role="button" class="secondary">{{index .I18N "users.reset"}}</a>
+      <div class="filter-actions">
+        <input type="hidden" name="lang" value="{{.Lang}}">
+        <a href="/admin/users?lang={{.Lang}}" role="button" class="secondary">{{index .I18N "users.reset"}}</a>
+        <button type="submit">{{index .I18N "users.apply"}}</button>
+      </div>
     </form>
   </article>
 
-  <article>
-    <h3>{{index .I18N "users.title"}} ({{len .Users}})</h3>
+  <article class="section-card">
+    <div class="panel-head">
+      <h3>{{index .I18N "users.title"}} ({{len .Users}})</h3>
+      <div class="panel-actions">
+        <a href="{{.ExportURL}}" role="button" class="secondary">{{index .I18N "common.export_csv"}}</a>
+        <span class="panel-kicker">Registry</span>
+      </div>
+    </div>
     <div class="table-wrap">
       <div id="usersGrid"></div>
       <table id="usersSource">

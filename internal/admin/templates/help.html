@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Admin · {{index .I18N "nav.guide"}}</title>
   <link rel="stylesheet" href="/admin/assets/css/pico.min.css">
+  <link rel="stylesheet" href="/admin/assets/css/admin.css">
   <style>
     :root {
       --pico-font-family: "Manrope", "Segoe UI", sans-serif;
@@ -13,18 +14,7 @@
       --pico-form-element-spacing-vertical: .45rem;
       --pico-form-element-spacing-horizontal: .6rem;
     }
-    body { background: linear-gradient(180deg, #f5f8fc, #eef3f9); }
     main.container { max-width: 980px; }
-    .topbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: .75rem;
-      flex-wrap: wrap;
-      margin: 1rem 0;
-    }
-    .topbar nav ul { align-items: center; }
-    .langs a[aria-current="true"] { font-weight: 700; text-decoration: underline; }
     article section + section { margin-top: 1.1rem; padding-top: 1rem; border-top: 1px dashed #cdd7e5; }
   </style>
 </head>
@@ -32,9 +22,13 @@
 <main class="container">
   {{template "topbar" .}}
 
-  <article>
-    <h1>{{index .I18N "guide.title"}}</h1>
+  <article class="page-hero">
+    <span class="page-kicker">{{index .I18N "nav.guide"}}</span>
+    <h1 class="page-title">{{index .I18N "guide.title"}}</h1>
+    <p class="page-subtitle">Краткие правила работы с коннекторами, deep link'ами и тестированием flow.</p>
+  </article>
 
+  <article class="section-card">
     <section>
       <h3>{{index .I18N "guide.s1"}}</h3>
       <p>{{index .I18N "guide.s1.p"}}</p>
