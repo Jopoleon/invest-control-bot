@@ -106,3 +106,23 @@ func TestLogoutRevokesSession(t *testing.T) {
 		t.Fatalf("requireAuth() = true after logout, want false")
 	}
 }
+
+func TestRegisterProtectsAdminRoutesWithMiddleware(t *testing.T) {
+	st := memory.New()
+	h := NewHandler(st, "test-admin-token", "test_bot", nil)
+
+	mux := http.NewServeMux()
+	h.Register(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/connectors?lang=ru", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("middleware status = %d, want %d", rec.Code, http.StatusFound)
+	}
+	location := rec.Header().Get("Location")
+	if !strings.HasPrefix(location, "/admin/login?next=") {
+		t.Fatalf("redirect location = %q", location)
+	}
+}

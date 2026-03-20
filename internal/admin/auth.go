@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
@@ -19,6 +20,8 @@ const (
 	adminSessionSubject        = "admin"
 	adminLegacyTokenCookieName = "admin_token"
 )
+
+type adminAuthContextKey struct{}
 
 type authorizedSession struct {
 	session   domain.AdminSession
@@ -176,16 +179,37 @@ func shouldUseSecureCookies(r *http.Request) bool {
 	return strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https")
 }
 
+func (h *Handler) withAdminSession(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if h.adminToken == "" {
+			next.ServeHTTP(w, withAdminAuthorized(r))
+			return
+		}
+		if ok, _ := h.authorizedSession(w, r); ok {
+			next.ServeHTTP(w, withAdminAuthorized(r))
+			return
+		}
+		h.redirectToLogin(w, r)
+	})
+}
+
 func (h *Handler) requireAuth(w http.ResponseWriter, r *http.Request) bool {
+	if isAdminAuthorized(r) {
+		return true
+	}
 	if h.authorized(w, r) {
 		return true
 	}
+	h.redirectToLogin(w, r)
+	return false
+}
+
+func (h *Handler) redirectToLogin(w http.ResponseWriter, r *http.Request) {
 	next := r.URL.Path
 	if r.URL.RawQuery != "" {
 		next += "?" + r.URL.RawQuery
 	}
 	http.Redirect(w, r, "/admin/login?next="+url.QueryEscape(next), http.StatusFound)
-	return false
 }
 
 // unauthorized writes minimal unauthorized response for admin routes.
@@ -209,4 +233,16 @@ func trimForStorage(value string, max int) string {
 		return value[:max]
 	}
 	return value
+}
+
+func withAdminAuthorized(r *http.Request) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), adminAuthContextKey{}, true))
+}
+
+func isAdminAuthorized(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	authorized, _ := r.Context().Value(adminAuthContextKey{}).(bool)
+	return authorized
 }
