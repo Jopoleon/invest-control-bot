@@ -37,4 +37,8 @@ const (
 	AuditActionAdminSubscriptionRevokeFailed = "admin_subscription_revoke_chat_failed"
 	AuditActionAdminSubscriptionRevokedChat  = "admin_subscription_revoked_from_chat"
 	AuditActionAdminSubscriptionRevoked      = "admin_subscription_revoked"
+	AuditActionAdminLoginSuccess             = "admin_login_success"
+	AuditActionAdminLoginFailed              = "admin_login_failed"
+	AuditActionAdminLogout                   = "admin_logout"
+	AuditActionAdminSessionRevoked           = "admin_session_revoked"
 )

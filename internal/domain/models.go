@@ -75,6 +75,21 @@ type LegalDocument struct {
 	CreatedAt   time.Time
 }
 
+// AdminSession stores server-side browser session for admin panel access.
+type AdminSession struct {
+	ID             int64
+	TokenHash      string
+	Subject        string
+	CreatedAt      time.Time
+	ExpiresAt      time.Time
+	LastSeenAt     time.Time
+	RevokedAt      *time.Time
+	IP             string
+	UserAgent      string
+	RotatedAt      *time.Time
+	ReplacedByHash string
+}
+
 // RegistrationStep describes current onboarding step in FSM.
 type RegistrationStep string
 

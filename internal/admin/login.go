@@ -1,8 +1,11 @@
 package admin
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
 )
 
 // loginPage renders login form and issues admin cookie on successful token validation.
@@ -17,7 +20,7 @@ func (h *Handler) loginPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, next, http.StatusFound)
 		return
 	}
-	if h.authorized(r) {
+	if h.authorized(w, r) {
 		http.Redirect(w, r, next, http.StatusFound)
 		return
 	}
@@ -57,12 +60,18 @@ func (h *Handler) loginPage(w http.ResponseWriter, r *http.Request) {
 		}
 		if token != h.adminToken {
 			h.loginRateLimiter.RegisterFailure(r)
+			h.logAdminAudit(r, domain.AuditActionAdminLoginFailed, fmt.Sprintf("ip=%s", clientIP(r)))
 			data.Notice = t(lang, "login.bad_token")
 			h.renderer.render(w, "login.html", data)
 			return
 		}
 		h.loginRateLimiter.RegisterSuccess(r)
-		h.setAdminTokenCookie(w, r, token)
+		if err := h.createAdminSession(w, r); err != nil {
+			data.Notice = err.Error()
+			h.renderer.render(w, "login.html", data)
+			return
+		}
+		h.logAdminAudit(r, domain.AuditActionAdminLoginSuccess, fmt.Sprintf("ip=%s", clientIP(r)))
 		http.Redirect(w, r, data.Next, http.StatusFound)
 		return
 	}
@@ -75,6 +84,7 @@ func (h *Handler) loginPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
-	h.clearAdminTokenCookie(w, r)
+	h.revokeCurrentAdminSession(w, r)
+	h.logAdminAudit(r, domain.AuditActionAdminLogout, fmt.Sprintf("ip=%s", clientIP(r)))
 	http.Redirect(w, r, "/admin/login", http.StatusFound)
 }

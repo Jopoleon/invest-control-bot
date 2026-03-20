@@ -238,7 +238,7 @@
 Примечание: CSV-экспорт уже реализован для `connectors`, `legal_documents`, `users`, `events`, `billing/payments`, `billing/subscriptions`, `churn`; экран оферт реализован в базовом виде (версии, активация, внешняя ссылка/текст, публичные страницы `/legal/offer` и `/legal/privacy`), остаются привязка версии документа к акцептам и дальнейшие операционные срезы.
 
 ### Итерация 11: Auth / session hardening для админки
-Статус: `запланировано`.
+Статус: `выполнено частично`.
 - Убрать модель "вечный ADMIN_AUTH_TOKEN в cookie" как основной runtime-механизм.
 - Ввести единый auth middleware для всех `/admin/*` маршрутов, кроме `/admin/login`.
 - Целевая схема для browser-admin:
@@ -317,6 +317,7 @@
 - на каждый `/admin/*` идет server-side session lookup;
 - browser admin работает без bearer token в URL/JS storage;
 - текущие CSRF/login-rate-limit проверки не деградируют.
+Примечание: уже реализованы `admin_sessions`, hash-only хранение session token, browser session cookie, server-side lookup на каждом `requireAuth`, absolute/idle expiry, logout revoke и audit events по login/logout/session revoke; остаются единая route middleware и optional screen для активных сессий.
 
 ## 8) Нефункциональные требования
 - Надежность webhook: идемпотентность, ретраи, таблица необработанных событий.
@@ -399,6 +400,7 @@
 - `2026-03-20` Добавлен экран `Оферты и ПДн`: хранение версий юридических документов в БД (`legal_documents`), создание новых версий, редактирование существующих, активация нужной версии, CSV-экспорт и публичные страницы конкретных версий (`/oferta/{id}`, `/policy/{id}`); бот использует активные документы как fallback, если у коннектора нет собственных ссылок.
 - `2026-03-20` Поведение экрана оферт скорректировано: создание/редактирование переведено на `POST/Redirect/Get`, а статус документов стал обычным toggle `включить/выключить` без автоотключения старых версий при создании новой.
 - `2026-03-20` Action-buttons в admin-таблицах приведены к единой semantic-схеме: destructive = красный, edit = синий, open/view = нейтрально-синий, send/enable = зеленый, disable = amber/muted; подсказки переводятся в tooltip-паттерн с иконкой `?`.
+- `2026-03-20` Начата `Итерация 11` по auth/session hardening: добавлена таблица `admin_sessions`, браузерная админка переведена с raw admin token cookie на server-side sessions с hash токена, absolute/idle expiry, revoke/logout и audit events; добавлены автотесты на login/session/logout flow.
 - `2026-03-20` Добавлена отдельная итерация по усилению admin auth/session: фиксируем переход к signed session cookie + server-side session validation, вместо опоры на долгоживущий статический токен в браузере.
 
 ## 13) Референсный flow текущего бота (для воспроизведения)

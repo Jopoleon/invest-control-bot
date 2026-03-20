@@ -104,6 +104,27 @@ func scanLegalDocument(scanner rowScanner) (domain.LegalDocument, error) {
 	return item, nil
 }
 
+func scanAdminSession(scanner rowScanner) (domain.AdminSession, error) {
+	var session domain.AdminSession
+	err := scanner.Scan(
+		&session.ID,
+		&session.TokenHash,
+		&session.Subject,
+		&session.CreatedAt,
+		&session.ExpiresAt,
+		&session.LastSeenAt,
+		&session.RevokedAt,
+		&session.IP,
+		&session.UserAgent,
+		&session.RotatedAt,
+		&session.ReplacedByHash,
+	)
+	if err != nil {
+		return domain.AdminSession{}, err
+	}
+	return session, nil
+}
+
 // CreateConnector inserts connector row.
 func (s *Store) CreateConnector(ctx context.Context, c domain.Connector) error {
 	if c.StartPayload == "" {
@@ -448,6 +469,80 @@ func (s *Store) SetLegalDocumentActive(ctx context.Context, documentID int64, ac
 // DeleteLegalDocument removes legal document by ID.
 func (s *Store) DeleteLegalDocument(ctx context.Context, documentID int64) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM legal_documents WHERE id = $1`, documentID)
+	return err
+}
+
+// CreateAdminSession inserts admin session row.
+func (s *Store) CreateAdminSession(ctx context.Context, session domain.AdminSession) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO admin_sessions (
+			session_token_hash, subject, created_at, expires_at, last_seen_at,
+			revoked_at, ip, user_agent, rotated_at, replaced_by_hash
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+	`,
+		session.TokenHash,
+		session.Subject,
+		session.CreatedAt,
+		session.ExpiresAt,
+		session.LastSeenAt,
+		session.RevokedAt,
+		session.IP,
+		session.UserAgent,
+		session.RotatedAt,
+		session.ReplacedByHash,
+	)
+	return err
+}
+
+// GetAdminSessionByTokenHash fetches admin session by token hash.
+func (s *Store) GetAdminSessionByTokenHash(ctx context.Context, tokenHash string) (domain.AdminSession, bool, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, session_token_hash, subject, created_at, expires_at, last_seen_at,
+		       revoked_at, ip, user_agent, rotated_at, replaced_by_hash
+		FROM admin_sessions
+		WHERE session_token_hash = $1
+		LIMIT 1
+	`, tokenHash)
+	session, err := scanAdminSession(row)
+	if err == sql.ErrNoRows {
+		return domain.AdminSession{}, false, nil
+	}
+	if err != nil {
+		return domain.AdminSession{}, false, err
+	}
+	return session, true, nil
+}
+
+// TouchAdminSession updates last access timestamp.
+func (s *Store) TouchAdminSession(ctx context.Context, sessionID int64, lastSeenAt time.Time) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE admin_sessions
+		SET last_seen_at = $2
+		WHERE id = $1
+	`, sessionID, lastSeenAt)
+	return err
+}
+
+// RotateAdminSession replaces token hash for active session.
+func (s *Store) RotateAdminSession(ctx context.Context, sessionID int64, newTokenHash string, rotatedAt time.Time) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE admin_sessions
+		SET replaced_by_hash = $2,
+		    session_token_hash = $2,
+		    rotated_at = $3,
+		    last_seen_at = $3
+		WHERE id = $1
+	`, sessionID, newTokenHash, rotatedAt)
+	return err
+}
+
+// RevokeAdminSession marks session revoked.
+func (s *Store) RevokeAdminSession(ctx context.Context, sessionID int64, revokedAt time.Time) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE admin_sessions
+		SET revoked_at = $2
+		WHERE id = $1
+	`, sessionID, revokedAt)
 	return err
 }
 

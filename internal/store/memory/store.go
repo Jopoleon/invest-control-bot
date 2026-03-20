@@ -22,6 +22,9 @@ type Store struct {
 	nextConnectorID int64
 	legalDocs       map[int64]domain.LegalDocument
 	nextLegalDocID  int64
+	adminSessions   map[int64]domain.AdminSession
+	adminByHash     map[string]int64
+	nextAdminSessID int64
 	users           map[int64]domain.User
 	userAutoPay     map[int64]bool
 	consents        map[string]domain.Consent
@@ -43,6 +46,9 @@ func New() *Store {
 		nextConnectorID: 1,
 		legalDocs:       make(map[int64]domain.LegalDocument),
 		nextLegalDocID:  1,
+		adminSessions:   make(map[int64]domain.AdminSession),
+		adminByHash:     make(map[string]int64),
+		nextAdminSessID: 1,
 		users:           make(map[int64]domain.User),
 		userAutoPay:     make(map[int64]bool),
 		consents:        make(map[string]domain.Consent),
@@ -55,6 +61,78 @@ func New() *Store {
 		subsByPayID:     make(map[int64]domain.Subscription),
 		nextSubscrID:    1,
 	}
+}
+
+// CreateAdminSession stores browser admin session.
+func (s *Store) CreateAdminSession(_ context.Context, session domain.AdminSession) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	session.ID = s.nextAdminSessID
+	s.nextAdminSessID++
+	s.adminSessions[session.ID] = session
+	s.adminByHash[session.TokenHash] = session.ID
+	return nil
+}
+
+// GetAdminSessionByTokenHash finds admin session by hashed token.
+func (s *Store) GetAdminSessionByTokenHash(_ context.Context, tokenHash string) (domain.AdminSession, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	id, ok := s.adminByHash[tokenHash]
+	if !ok {
+		return domain.AdminSession{}, false, nil
+	}
+	session, ok := s.adminSessions[id]
+	return session, ok, nil
+}
+
+// TouchAdminSession updates last activity timestamp.
+func (s *Store) TouchAdminSession(_ context.Context, sessionID int64, lastSeenAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	session, ok := s.adminSessions[sessionID]
+	if !ok {
+		return errors.New("admin session not found")
+	}
+	session.LastSeenAt = lastSeenAt
+	s.adminSessions[sessionID] = session
+	return nil
+}
+
+// RotateAdminSession swaps token hash for existing session.
+func (s *Store) RotateAdminSession(_ context.Context, sessionID int64, newTokenHash string, rotatedAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	session, ok := s.adminSessions[sessionID]
+	if !ok {
+		return errors.New("admin session not found")
+	}
+	delete(s.adminByHash, session.TokenHash)
+	session.ReplacedByHash = newTokenHash
+	session.TokenHash = newTokenHash
+	session.RotatedAt = &rotatedAt
+	session.LastSeenAt = rotatedAt
+	s.adminSessions[sessionID] = session
+	s.adminByHash[newTokenHash] = sessionID
+	return nil
+}
+
+// RevokeAdminSession invalidates session immediately.
+func (s *Store) RevokeAdminSession(_ context.Context, sessionID int64, revokedAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	session, ok := s.adminSessions[sessionID]
+	if !ok {
+		return errors.New("admin session not found")
+	}
+	session.RevokedAt = &revokedAt
+	s.adminSessions[sessionID] = session
+	return nil
 }
 
 // CreateLegalDocument stores new versioned legal document.

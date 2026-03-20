@@ -414,11 +414,12 @@ article {
 .stat-table {
   width: 100%;
   border-collapse: collapse;
+  font-size: .84rem;
 }
 
 .stat-table th,
 .stat-table td {
-  padding: .75rem .8rem;
+  padding: .62rem .72rem;
   border-bottom: 1px solid #e4ebf2;
   text-align: left;
   white-space: nowrap;
@@ -501,6 +502,27 @@ article {
 
 .table-wrap {
   overflow: auto;
+  border: 1px solid #e3ebf3;
+  border-radius: .95rem;
+  background: rgba(255, 255, 255, .88);
+}
+
+.table-wrap table {
+  width: 100%;
+  font-size: .84rem;
+}
+
+.table-wrap th,
+.table-wrap td {
+  padding: .58rem .7rem;
+}
+
+.table-wrap thead th {
+  color: var(--admin-muted);
+  font-size: .7rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
 }
 
 .mono {
@@ -547,15 +569,17 @@ a {
   border-radius: .95rem;
   overflow: hidden;
   background: rgba(255, 255, 255, .92);
+  font-size: .84rem;
 }
 
 .gridjs-wrapper table td,
 .gridjs-wrapper table th {
   white-space: nowrap;
+  padding: .56rem .66rem !important;
 }
 
 .gridjs-head {
-  padding: .4rem .2rem .8rem;
+  padding: .3rem .2rem .65rem;
 }
 
 .gridjs-search-input {

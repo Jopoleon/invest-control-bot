@@ -3,7 +3,9 @@ package admin
 import (
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
 	"github.com/Jopoleon/telega-bot-fedor/internal/store"
 	"github.com/Jopoleon/telega-bot-fedor/internal/telegram"
 )
@@ -34,6 +36,14 @@ func NewHandler(st store.Store, adminToken, botUsername string, tg *telegram.Cli
 
 		loginRateLimiter: newLoginRateLimiter(),
 	}
+}
+
+func (h *Handler) logAdminAudit(r *http.Request, action, details string) {
+	_ = h.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
+		Action:    action,
+		Details:   details,
+		CreatedAt: time.Now().UTC(),
+	})
 }
 
 // Register mounts admin routes into provided mux.
