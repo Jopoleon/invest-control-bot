@@ -1,14 +1,16 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
-	"github.com/Jopoleon/telega-bot-fedor/internal/payment"
+	"github.com/go-telegram/bot/models"
 )
 
 type paymentPageAction struct {
@@ -149,6 +151,7 @@ func (a *application) handlePaymentFail(w http.ResponseWriter, r *http.Request) 
 					Details:     "payment_id=" + strconv.FormatInt(paymentRow.ID, 10),
 					CreatedAt:   time.Now().UTC(),
 				})
+				a.notifyFailedRecurringPayment(r.Context(), paymentRow)
 			}
 		}
 	}
@@ -186,128 +189,26 @@ func (a *application) handlePaymentRebill(w http.ResponseWriter, r *http.Request
 		_, _ = w.Write([]byte("subscription_id is required"))
 		return
 	}
-
-	subscription, found, err := a.store.GetSubscriptionByID(r.Context(), subscriptionID)
+	payload, err := a.triggerRebill(r.Context(), subscriptionID, "admin_http")
 	if err != nil {
-		logStoreError("get subscription for rebill failed", err, "subscription_id", subscriptionID)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	if !found {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	if subscription.Status != domain.SubscriptionStatusActive {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte("subscription is not active"))
-		return
-	}
-	if !subscription.AutoPayEnabled {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte("autopay is disabled for subscription"))
-		return
-	}
-	if pending, ok, err := a.store.GetPendingRebillPaymentBySubscription(r.Context(), subscription.ID); err != nil {
-		logStoreError("get pending rebill payment failed", err, "subscription_id", subscription.ID)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	} else if ok {
-		writeRebillResponse(w, rebillResponse{OK: true, InvoiceID: pending.Token, Existing: true})
-		return
-	}
-
-	parentPayment, found, err := a.store.GetPaymentByID(r.Context(), subscription.PaymentID)
-	if err != nil {
-		logStoreError("get parent payment for rebill failed", err, "payment_id", subscription.PaymentID)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	if !found || strings.TrimSpace(parentPayment.Token) == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte("parent payment is missing token"))
-		return
-	}
-	connector, found, err := a.store.GetConnector(r.Context(), subscription.ConnectorID)
-	if err != nil {
-		logStoreError("get connector for rebill failed", err, "connector_id", subscription.ConnectorID)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	if !found {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte("connector not found"))
-		return
-	}
-
-	invoiceID := generateInvoiceID()
-	now := time.Now().UTC()
-	pendingPayment := domain.Payment{
-		Provider:          "robokassa",
-		ProviderPaymentID: "rebill_parent:" + parentPayment.Token,
-		Status:            domain.PaymentStatusPending,
-		Token:             invoiceID,
-		TelegramID:        subscription.TelegramID,
-		ConnectorID:       subscription.ConnectorID,
-		SubscriptionID:    subscription.ID,
-		ParentPaymentID:   parentPayment.ID,
-		AmountRUB:         connector.PriceRUB,
-		AutoPayEnabled:    true,
-		CreatedAt:         now,
-		UpdatedAt:         now,
-	}
-	if err := a.store.CreatePayment(r.Context(), pendingPayment); err != nil {
-		if existing, ok, lookupErr := a.store.GetPendingRebillPaymentBySubscription(r.Context(), subscription.ID); lookupErr == nil && ok {
-			writeRebillResponse(w, rebillResponse{OK: true, InvoiceID: existing.Token, Existing: true})
-			return
+		switch err.Error() {
+		case "subscription not found":
+			w.WriteHeader(http.StatusNotFound)
+		case "subscription is not active", "autopay is disabled for subscription", "parent payment is missing token", "connector not found":
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(err.Error()))
+		default:
+			if errors.Is(err, errRebillRequestFailed) {
+				w.WriteHeader(http.StatusBadGateway)
+				_, _ = w.Write([]byte("rebill request failed"))
+				return
+			}
+			logStoreError("trigger rebill failed", err, "subscription_id", subscriptionID)
+			w.WriteHeader(http.StatusInternalServerError)
 		}
-		logStoreError("create rebill payment failed", err, "invoice_id", invoiceID, "subscription_id", subscription.ID)
-		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	createdPayment, found, err := a.store.GetPaymentByToken(r.Context(), invoiceID)
-	if err != nil {
-		logStoreError("load created rebill payment failed", err, "invoice_id", invoiceID)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	if !found {
-		logWarn("created rebill payment not found", "invoice_id", invoiceID)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	pendingPayment = createdPayment
-
-	if err := a.robokassaService.CreateRebill(r.Context(), payment.RebillRequest{
-		InvoiceID:         invoiceID,
-		PreviousInvoiceID: parentPayment.Token,
-		AmountRUB:         connector.PriceRUB,
-		Description:       connector.Name,
-	}); err != nil {
-		if _, markErr := a.store.UpdatePaymentFailed(r.Context(), pendingPayment.ID, "rebill_request_failed:"+parentPayment.Token, time.Now().UTC()); markErr != nil {
-			logStoreError("mark rebill payment failed failed", markErr, "payment_id", pendingPayment.ID)
-		}
-		_ = a.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
-			TelegramID:  subscription.TelegramID,
-			ConnectorID: subscription.ConnectorID,
-			Action:      domain.AuditActionRebillRequestFailed,
-			Details:     "subscription_id=" + strconv.FormatInt(subscription.ID, 10) + ";invoice_id=" + invoiceID + ";error=" + err.Error(),
-			CreatedAt:   time.Now().UTC(),
-		})
-		logStoreError("robokassa rebill request failed", err, "subscription_id", subscriptionID, "invoice_id", invoiceID)
-		w.WriteHeader(http.StatusBadGateway)
-		_, _ = w.Write([]byte("rebill request failed"))
-		return
-	}
-	if err := a.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
-		TelegramID:  subscription.TelegramID,
-		ConnectorID: subscription.ConnectorID,
-		Action:      domain.AuditActionRebillRequested,
-		Details:     "subscription_id=" + strconv.FormatInt(subscription.ID, 10) + ";invoice_id=" + invoiceID + ";parent=" + parentPayment.Token,
-		CreatedAt:   now,
-	}); err != nil {
-		logAuditError(domain.AuditActionRebillRequested, err)
-	}
-	writeRebillResponse(w, rebillResponse{OK: true, InvoiceID: invoiceID})
+	writeRebillResponse(w, payload)
 }
 
 func renderPaymentPage(w http.ResponseWriter, data paymentPageData) {
@@ -323,4 +224,37 @@ type rebillResponse struct {
 func writeRebillResponse(w http.ResponseWriter, payload rebillResponse) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func (a *application) notifyFailedRecurringPayment(ctx context.Context, paymentRow domain.Payment) {
+	if !paymentRow.AutoPayEnabled || paymentRow.SubscriptionID <= 0 {
+		return
+	}
+	connector, found, err := a.store.GetConnector(ctx, paymentRow.ConnectorID)
+	if err != nil || !found {
+		return
+	}
+	renewURL := buildBotStartURL(a.config.Telegram.BotUsername, connector.StartPayload)
+	text := "⚠️ Автоматическое списание не прошло. Чтобы не потерять доступ, оплатите подписку вручную по кнопке ниже."
+	var keyboard *models.InlineKeyboardMarkup
+	if renewURL != "" {
+		keyboard = &models.InlineKeyboardMarkup{
+			InlineKeyboard: [][]models.InlineKeyboardButton{{
+				{Text: "Оплатить вручную", URL: renewURL},
+			}},
+		}
+	}
+	if err := a.telegramClient.SendMessage(ctx, paymentRow.TelegramID, text, keyboard); err != nil {
+		logWarn("failed recurring payment notify failed", "payment_id", paymentRow.ID, "telegram_id", paymentRow.TelegramID, "error", err)
+		return
+	}
+	if err := a.store.SaveAuditEvent(ctx, domain.AuditEvent{
+		TelegramID:  paymentRow.TelegramID,
+		ConnectorID: paymentRow.ConnectorID,
+		Action:      domain.AuditActionRecurringPaymentFailedNotice,
+		Details:     "payment_id=" + strconv.FormatInt(paymentRow.ID, 10),
+		CreatedAt:   time.Now().UTC(),
+	}); err != nil {
+		logAuditError(domain.AuditActionRecurringPaymentFailedNotice, err)
+	}
 }

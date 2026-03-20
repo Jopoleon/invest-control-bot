@@ -200,6 +200,7 @@ type userDetailPageData struct {
 	BackURL           string
 	MessageActionURL  string
 	User              userView
+	RecurringSummary  recurringSummaryView
 	Consents          []consentView
 	RecurringConsents []recurringConsentView
 	Payments          []paymentView
@@ -220,6 +221,15 @@ type recurringConsentView struct {
 	AcceptedAt            string
 	OfferDocumentLabel    string
 	UserAgreementDocLabel string
+}
+
+type recurringSummaryView struct {
+	StatusLabel          string
+	StatusClass          string
+	LastConsentAt        string
+	LastConsentConnector string
+	HealthLabel          string
+	HealthClass          string
 }
 
 type churnIssueView struct {

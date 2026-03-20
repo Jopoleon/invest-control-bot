@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -23,7 +24,7 @@ const (
 )
 
 // newSubscriptionLifecycleScheduler wires periodic reminder and expiration jobs.
-func newSubscriptionLifecycleScheduler(st store.Store, tg *telegram.Client, botUsername string) (gocron.Scheduler, error) {
+func newSubscriptionLifecycleScheduler(appCtx *application) (gocron.Scheduler, error) {
 	scheduler, err := gocron.NewScheduler()
 	if err != nil {
 		return nil, fmt.Errorf("create subscription lifecycle scheduler: %w", err)
@@ -35,7 +36,7 @@ func newSubscriptionLifecycleScheduler(st store.Store, tg *telegram.Client, botU
 	if _, err := scheduler.NewJob(
 		gocron.DurationJob(subscriptionJobEvery),
 		gocron.NewTask(func() {
-			processSubscriptionReminders(context.Background(), st, tg, botUsername)
+			processSubscriptionReminders(context.Background(), appCtx.store, appCtx.telegramClient, appCtx.config.Telegram.BotUsername)
 		}),
 		jobOptions...,
 	); err != nil {
@@ -45,7 +46,7 @@ func newSubscriptionLifecycleScheduler(st store.Store, tg *telegram.Client, botU
 	if _, err := scheduler.NewJob(
 		gocron.DurationJob(subscriptionJobEvery),
 		gocron.NewTask(func() {
-			processSubscriptionExpiryNotices(context.Background(), st, tg, botUsername)
+			processSubscriptionExpiryNotices(context.Background(), appCtx.store, appCtx.telegramClient, appCtx.config.Telegram.BotUsername)
 		}),
 		jobOptions...,
 	); err != nil {
@@ -55,22 +56,70 @@ func newSubscriptionLifecycleScheduler(st store.Store, tg *telegram.Client, botU
 	if _, err := scheduler.NewJob(
 		gocron.DurationJob(subscriptionJobEvery),
 		gocron.NewTask(func() {
-			processExpiredSubscriptions(context.Background(), st, tg, botUsername)
+			processExpiredSubscriptions(context.Background(), appCtx.store, appCtx.telegramClient, appCtx.config.Telegram.BotUsername)
 		}),
 		jobOptions...,
 	); err != nil {
 		_ = scheduler.Shutdown()
 		return nil, fmt.Errorf("register subscription expiration job: %w", err)
 	}
+	if appCtx.robokassaService != nil && appCtx.config.Payment.Robokassa.RecurringEnabled {
+		if _, err := scheduler.NewJob(
+			gocron.DurationJob(subscriptionJobEvery),
+			gocron.NewTask(func() {
+				processRecurringRebills(context.Background(), appCtx)
+			}),
+			jobOptions...,
+		); err != nil {
+			_ = scheduler.Shutdown()
+			return nil, fmt.Errorf("register recurring rebill job: %w", err)
+		}
+	}
 
 	return scheduler, nil
 }
 
 // runSubscriptionLifecyclePass executes both lifecycle phases once.
-func runSubscriptionLifecyclePass(ctx context.Context, st store.Store, tg *telegram.Client, botUsername string) {
-	processSubscriptionReminders(ctx, st, tg, botUsername)
-	processSubscriptionExpiryNotices(ctx, st, tg, botUsername)
-	processExpiredSubscriptions(ctx, st, tg, botUsername)
+func runSubscriptionLifecyclePass(ctx context.Context, appCtx *application) {
+	processSubscriptionReminders(ctx, appCtx.store, appCtx.telegramClient, appCtx.config.Telegram.BotUsername)
+	processSubscriptionExpiryNotices(ctx, appCtx.store, appCtx.telegramClient, appCtx.config.Telegram.BotUsername)
+	if appCtx.robokassaService != nil && appCtx.config.Payment.Robokassa.RecurringEnabled {
+		processRecurringRebills(ctx, appCtx)
+	}
+	processExpiredSubscriptions(ctx, appCtx.store, appCtx.telegramClient, appCtx.config.Telegram.BotUsername)
+}
+
+func processRecurringRebills(ctx context.Context, appCtx *application) {
+	subs, err := appCtx.store.ListSubscriptions(ctx, domain.SubscriptionListQuery{
+		Status: domain.SubscriptionStatusActive,
+		Limit:  subscriptionJobLimit,
+	})
+	if err != nil {
+		slog.Error("list subscriptions for recurring rebill failed", "error", err)
+		return
+	}
+
+	now := time.Now().UTC()
+	for _, sub := range subs {
+		if !sub.AutoPayEnabled {
+			continue
+		}
+		shouldTrigger, err := appCtx.shouldTriggerScheduledRebill(ctx, sub, now)
+		if err != nil {
+			slog.Error("check scheduled rebill eligibility failed", "error", err, "subscription_id", sub.ID)
+			continue
+		}
+		if !shouldTrigger {
+			continue
+		}
+		if _, err := appCtx.triggerRebill(ctx, sub.ID, "scheduler"); err != nil {
+			if errors.Is(err, errRebillRequestFailed) {
+				slog.Warn("scheduled rebill request failed", "subscription_id", sub.ID, "error", err)
+				continue
+			}
+			slog.Error("scheduled rebill failed", "error", err, "subscription_id", sub.ID)
+		}
+	}
 }
 
 func processSubscriptionReminders(ctx context.Context, st store.Store, tg *telegram.Client, botUsername string) {

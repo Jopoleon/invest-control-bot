@@ -415,6 +415,8 @@
 - `2026-03-20` Для recurring readiness расширен legal registry: добавлен тип документа `user_agreement`, публичные URL `/legal/agreement` и `/agreement/{id}`, а также отдельный data-layer `recurring_consents` и отображение recurring-consent истории в карточке пользователя.
 - `2026-03-20` В bot checkout flow добавлен явный opt-in на автосписания: stateless-toggle перед оплатой, запись `recurring_consents` при выборе режима с автоплатежом, безопасный override `pay:...:0/1`, и перевод menu-autopay в compliance-safe режим без тихого включения recurring.
 - `2026-03-20` Для cancel flow автоплатежа добавлено отдельное подтверждение отключения в боте: запрос на отмену, явное подтверждение/отмена и понятный текст о последствиях отключения без потери уже оплаченного периода.
+- `2026-03-20` Карточка пользователя расширена operational recurring-summary: явный статус автоплатежа, последний opt-in, последний коннектор и диагностический health-статус (`нет consent` / `enabled without consent` / `consistent` / `disabled by user`).
+- `2026-03-20` Для recurring backend automation добавлены scheduler-aware retry windows T-3/T-2/T-1, общий `triggerRebill` для admin/scheduler, уведомление пользователю о неуспешном автосписании со ссылкой на ручную оплату и автотесты на retry-окна и scheduled rebill flow.
 
 ## 13) Референсный flow текущего бота (для воспроизведения)
 Источник: `telegram-bot-flow.md`.

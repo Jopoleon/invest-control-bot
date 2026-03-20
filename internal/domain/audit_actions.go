@@ -19,6 +19,7 @@ const (
 	AuditActionAutopayEnabled                = "autopay_enabled"
 	AuditActionAutopayDisabled               = "autopay_disabled"
 	AuditActionRecurringConsentGranted       = "recurring_consent_granted"
+	AuditActionRecurringPaymentFailedNotice  = "recurring_payment_failed_notice"
 	AuditActionRobokassaResultReceived       = "robokassa_result_received"
 	AuditActionPaymentFailed                 = "payment_failed"
 	AuditActionRebillRequestFailed           = "rebill_request_failed"

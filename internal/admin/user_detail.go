@@ -114,6 +114,7 @@ func (h *Handler) renderUserDetailPage(ctx context.Context, w http.ResponseWrite
 			UpdatedAt: item.UpdatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
 		},
 	}
+	data.RecurringSummary = buildRecurringSummary(lang, autoPayEnabled, hasAutoPaySettings, recurringConsents, connectorNames)
 
 	data.Consents = make([]consentView, 0, len(consents))
 	for _, consent := range consents {
@@ -213,4 +214,32 @@ func consentDocumentLabel(lang string, documentID int64, version int) string {
 		return t(lang, "users.consents.custom")
 	}
 	return t(lang, "users.consents.version_prefix") + " " + strconv.Itoa(version) + " · ID " + strconv.FormatInt(documentID, 10)
+}
+
+func buildRecurringSummary(lang string, autoPayEnabled, hasAutoPaySettings bool, recurringConsents []domain.RecurringConsent, connectorNames map[int64]string) recurringSummaryView {
+	statusLabel, statusClass := autoPayBadge(lang, autoPayEnabled, hasAutoPaySettings)
+	summary := recurringSummaryView{
+		StatusLabel:          statusLabel,
+		StatusClass:          statusClass,
+		LastConsentAt:        "—",
+		LastConsentConnector: "—",
+		HealthLabel:          t(lang, "users.recurring.health_no_consent"),
+		HealthClass:          "is-warning",
+	}
+	if len(recurringConsents) > 0 {
+		latest := recurringConsents[0]
+		summary.LastConsentAt = latest.AcceptedAt.In(time.Local).Format("2006-01-02 15:04:05")
+		summary.LastConsentConnector = connectorDisplayName(connectorNames, latest.ConnectorID)
+		summary.HealthLabel = t(lang, "users.recurring.health_consistent")
+		summary.HealthClass = "is-success"
+	}
+	if autoPayEnabled && len(recurringConsents) == 0 {
+		summary.HealthLabel = t(lang, "users.recurring.health_missing_consent")
+		summary.HealthClass = "is-danger"
+	}
+	if !autoPayEnabled && len(recurringConsents) > 0 {
+		summary.HealthLabel = t(lang, "users.recurring.health_disabled")
+		summary.HealthClass = "is-muted"
+	}
+	return summary
 }

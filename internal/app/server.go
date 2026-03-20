@@ -33,7 +33,7 @@ func New(cfg config.Config, st store.Store) (*Server, error) {
 		ReadTimeout:  cfg.HTTP.ReadTimeout,
 		WriteTimeout: cfg.HTTP.WriteTimeout,
 	}
-	lifecycleScheduler, err := newSubscriptionLifecycleScheduler(st, appCtx.telegramClient, cfg.Telegram.BotUsername)
+	lifecycleScheduler, err := newSubscriptionLifecycleScheduler(appCtx)
 	if err != nil {
 		return nil, fmt.Errorf("create subscription lifecycle scheduler: %w", err)
 	}
@@ -42,7 +42,7 @@ func New(cfg config.Config, st store.Store) (*Server, error) {
 		httpServer:         httpServer,
 		lifecycleScheduler: lifecycleScheduler,
 		lifecycleRunOnStart: func() {
-			runSubscriptionLifecyclePass(context.Background(), st, appCtx.telegramClient, cfg.Telegram.BotUsername)
+			runSubscriptionLifecyclePass(context.Background(), appCtx)
 		},
 	}, nil
 }

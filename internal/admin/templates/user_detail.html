@@ -335,6 +335,35 @@
         <small>{{index .I18N "users.detail.recurring_consents"}}</small>
         <strong>{{len .RecurringConsents}}</strong>
       </div>
+      <div class="summary-card">
+        <small>{{index .I18N "users.recurring.summary_status"}}</small>
+        <strong><span class="badge {{.RecurringSummary.StatusClass}}">{{.RecurringSummary.StatusLabel}}</span></strong>
+      </div>
+    </div>
+  </article>
+
+  <article class="section-card">
+    <div class="section-head">
+      <h3>{{index .I18N "users.recurring.summary_title"}}</h3>
+      <span class="section-kicker">Recurring</span>
+    </div>
+    <div class="profile-grid">
+      <div class="profile-card">
+        <small>{{index .I18N "users.recurring.summary_status"}}</small>
+        <span><span class="badge {{.RecurringSummary.StatusClass}}">{{.RecurringSummary.StatusLabel}}</span></span>
+      </div>
+      <div class="profile-card">
+        <small>{{index .I18N "users.recurring.summary_last_at"}}</small>
+        <span class="mono">{{.RecurringSummary.LastConsentAt}}</span>
+      </div>
+      <div class="profile-card">
+        <small>{{index .I18N "users.recurring.summary_last_connector"}}</small>
+        <span>{{.RecurringSummary.LastConsentConnector}}</span>
+      </div>
+      <div class="profile-card">
+        <small>{{index .I18N "users.recurring.summary_health"}}</small>
+        <span><span class="badge {{.RecurringSummary.HealthClass}}">{{.RecurringSummary.HealthLabel}}</span></span>
+      </div>
     </div>
   </article>
 
