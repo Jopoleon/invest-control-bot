@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
-	storepkg "github.com/Jopoleon/telega-bot-fedor/internal/store"
+	"github.com/Jopoleon/invest-control-bot/internal/domain"
+	storepkg "github.com/Jopoleon/invest-control-bot/internal/store"
 )
 
 // Store is a thread-safe in-memory implementation used for local development.

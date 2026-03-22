@@ -1,6 +1,6 @@
 package admin
 
-import "github.com/Jopoleon/telega-bot-fedor/internal/domain"
+import "github.com/Jopoleon/invest-control-bot/internal/domain"
 
 func connectorActiveBadge(lang string, active bool) (string, string) {
 	if active {

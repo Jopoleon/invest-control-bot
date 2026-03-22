@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
-	"github.com/Jopoleon/telega-bot-fedor/internal/store"
-	"github.com/Jopoleon/telega-bot-fedor/internal/telegram"
+	"github.com/Jopoleon/invest-control-bot/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/store"
+	"github.com/Jopoleon/invest-control-bot/internal/telegram"
 	"github.com/go-co-op/gocron/v2"
 	"github.com/go-telegram/bot/models"
 )

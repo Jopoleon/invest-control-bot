@@ -1,4 +1,4 @@
-module github.com/Jopoleon/telega-bot-fedor
+module github.com/Jopoleon/invest-control-bot
 
 go 1.25
 

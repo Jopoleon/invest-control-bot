@@ -7,12 +7,12 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/Jopoleon/telega-bot-fedor/internal/admin"
-	"github.com/Jopoleon/telega-bot-fedor/internal/bot"
-	"github.com/Jopoleon/telega-bot-fedor/internal/config"
-	"github.com/Jopoleon/telega-bot-fedor/internal/payment"
-	"github.com/Jopoleon/telega-bot-fedor/internal/store"
-	"github.com/Jopoleon/telega-bot-fedor/internal/telegram"
+	"github.com/Jopoleon/invest-control-bot/internal/admin"
+	"github.com/Jopoleon/invest-control-bot/internal/bot"
+	"github.com/Jopoleon/invest-control-bot/internal/config"
+	"github.com/Jopoleon/invest-control-bot/internal/payment"
+	"github.com/Jopoleon/invest-control-bot/internal/store"
+	"github.com/Jopoleon/invest-control-bot/internal/telegram"
 )
 
 type application struct {

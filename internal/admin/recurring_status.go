@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/domain"
 )
 
 type recurringPaymentState struct {

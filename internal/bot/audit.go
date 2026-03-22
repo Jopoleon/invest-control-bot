@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/domain"
 )
 
 // logAuditEvent persists business-significant user actions for support and compliance.

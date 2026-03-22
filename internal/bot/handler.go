@@ -1,9 +1,9 @@
 package bot
 
 import (
-	"github.com/Jopoleon/telega-bot-fedor/internal/payment"
-	"github.com/Jopoleon/telega-bot-fedor/internal/store"
-	"github.com/Jopoleon/telega-bot-fedor/internal/telegram"
+	"github.com/Jopoleon/invest-control-bot/internal/payment"
+	"github.com/Jopoleon/invest-control-bot/internal/store"
+	"github.com/Jopoleon/invest-control-bot/internal/telegram"
 )
 
 // Handler orchestrates Telegram bot user flows (onboarding, consents, mock payment).

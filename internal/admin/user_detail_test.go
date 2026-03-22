@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/domain"
 )
 
 func TestBuildRecurringSummary_EnabledWithoutConsent(t *testing.T) {

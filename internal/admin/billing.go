@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/domain"
 )
 
 // billingPage renders payments/subscriptions with admin filters.

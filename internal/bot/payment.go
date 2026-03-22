@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
-	"github.com/Jopoleon/telega-bot-fedor/internal/payment"
+	"github.com/Jopoleon/invest-control-bot/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/payment"
 	"github.com/go-telegram/bot/models"
 )
 

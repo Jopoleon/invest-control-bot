@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/domain"
 )
 
 // loginPage renders login form and issues admin cookie on successful token validation.

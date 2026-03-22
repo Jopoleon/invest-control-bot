@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/domain"
 	"github.com/go-telegram/bot/models"
 )
 

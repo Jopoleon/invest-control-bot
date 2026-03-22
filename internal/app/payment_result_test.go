@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Jopoleon/telega-bot-fedor/internal/config"
-	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
-	"github.com/Jopoleon/telega-bot-fedor/internal/store"
-	"github.com/Jopoleon/telega-bot-fedor/internal/store/memory"
+	"github.com/Jopoleon/invest-control-bot/internal/config"
+	"github.com/Jopoleon/invest-control-bot/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/store"
+	"github.com/Jopoleon/invest-control-bot/internal/store/memory"
 )
 
 func TestPaymentResult_SuccessAndIdempotency(t *testing.T) {

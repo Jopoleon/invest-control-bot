@@ -3,7 +3,7 @@ package bot
 import (
 	"strings"
 
-	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/domain"
 )
 
 func normalizeTelegramUsername(raw string) string {

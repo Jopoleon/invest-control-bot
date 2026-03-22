@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Jopoleon/telega-bot-fedor/internal/config"
-	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
-	"github.com/Jopoleon/telega-bot-fedor/internal/store/memory"
+	"github.com/Jopoleon/invest-control-bot/internal/config"
+	"github.com/Jopoleon/invest-control-bot/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/store/memory"
 )
 
 func TestShouldTriggerScheduledRebill_FirstAttemptWindow(t *testing.T) {

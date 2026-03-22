@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
-	"github.com/Jopoleon/telega-bot-fedor/internal/store"
-	"github.com/Jopoleon/telega-bot-fedor/internal/telegram"
+	"github.com/Jopoleon/invest-control-bot/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/store"
+	"github.com/Jopoleon/invest-control-bot/internal/telegram"
 )
 
 // Handler serves admin HTTP pages and operations for connector management.

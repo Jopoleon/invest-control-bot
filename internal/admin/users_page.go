@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/domain"
 )
 
 func (h *Handler) usersPage(w http.ResponseWriter, r *http.Request) {

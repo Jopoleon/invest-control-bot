@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Jopoleon/telega-bot-fedor/internal/config"
-	"github.com/Jopoleon/telega-bot-fedor/internal/store"
+	"github.com/Jopoleon/invest-control-bot/internal/config"
+	"github.com/Jopoleon/invest-control-bot/internal/store"
 	"github.com/go-co-op/gocron/v2"
 )
 

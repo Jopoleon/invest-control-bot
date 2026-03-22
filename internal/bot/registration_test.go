@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Jopoleon/telega-bot-fedor/internal/domain"
-	"github.com/Jopoleon/telega-bot-fedor/internal/payment"
-	"github.com/Jopoleon/telega-bot-fedor/internal/store/memory"
-	"github.com/Jopoleon/telega-bot-fedor/internal/telegram"
+	"github.com/Jopoleon/invest-control-bot/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/payment"
+	"github.com/Jopoleon/invest-control-bot/internal/store/memory"
+	"github.com/Jopoleon/invest-control-bot/internal/telegram"
 	"github.com/go-telegram/bot/models"
 )
 
