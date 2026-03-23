@@ -1,0 +1,9 @@
+.env
+.env.*
+.idea
+.codex
+logs
+vendor
+review-log.md
+personal_notes.md
+scrnshts
