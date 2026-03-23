@@ -11,7 +11,6 @@ import (
 	"github.com/Jopoleon/invest-control-bot/internal/bootstrap"
 	"github.com/Jopoleon/invest-control-bot/internal/config"
 	"github.com/Jopoleon/invest-control-bot/internal/logger"
-	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 // main is the backend entrypoint used for local/dev runs and VPS deployments.
