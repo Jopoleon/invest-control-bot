@@ -21,7 +21,7 @@ type Server struct {
 
 // New builds fully wired HTTP server with current dependencies.
 func New(cfg config.Config, st store.Store) (*Server, error) {
-	appCtx, err := newApplication(cfg, st)
+	appCtx, err := newApplication(cfg, st, appInitOptions{ensureTelegramSetup: true})
 	if err != nil {
 		return nil, err
 	}

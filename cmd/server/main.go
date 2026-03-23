@@ -6,17 +6,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/Jopoleon/invest-control-bot/internal/app"
+	"github.com/Jopoleon/invest-control-bot/internal/bootstrap"
 	"github.com/Jopoleon/invest-control-bot/internal/config"
 	"github.com/Jopoleon/invest-control-bot/internal/logger"
-	"github.com/Jopoleon/invest-control-bot/internal/store"
-	"github.com/Jopoleon/invest-control-bot/internal/store/memory"
-	postgresstore "github.com/Jopoleon/invest-control-bot/internal/store/postgres"
-	"github.com/Jopoleon/invest-control-bot/migrations"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/jmoiron/sqlx"
 )
 
 // main is the backend entrypoint used for local/dev runs and VPS deployments.
@@ -31,6 +26,10 @@ func main() {
 		slog.Error("load config failed", "error", err)
 		os.Exit(1)
 	}
+	if cfg.Runtime != config.RuntimeServer {
+		slog.Error("invalid APP_RUNTIME for cmd/server", "runtime", cfg.Runtime, "expected", config.RuntimeServer)
+		os.Exit(1)
+	}
 	effectiveLevel, err := logger.Init(cfg.Logging.Level, cfg.Logging.FilePath)
 	if err != nil {
 		slog.Error("logger init with file failed", "error", err, "file_path", cfg.Logging.FilePath)
@@ -38,7 +37,7 @@ func main() {
 	}
 	slog.Info("config loaded", "config", cfg, "effective_log_level", effectiveLevel, "log_file_path", cfg.Logging.FilePath)
 
-	st, cleanup, err := initStore(cfg)
+	st, cleanup, err := bootstrap.OpenStore(cfg)
 	if err != nil {
 		slog.Error("init store failed", "error", err)
 		os.Exit(1)
@@ -59,43 +58,4 @@ func main() {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)
 	}
-}
-
-func initStore(cfg config.Config) (store.Store, func(), error) {
-	switch cfg.Postgres.Driver {
-	case "memory":
-		slog.Warn("DB_DRIVER=memory enabled, data will not persist between restarts")
-		return memory.New(), func() {}, nil
-	case "postgres":
-		db, err := sqlx.Open("pgx", cfg.Postgres.DSN)
-		if err != nil {
-			return nil, func() {}, err
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := db.PingContext(ctx); err != nil {
-			_ = db.Close()
-			return nil, func() {}, err
-		}
-		if cfg.Postgres.WithMigration {
-			applied, err := migrations.ApplyUp(db)
-			if err != nil {
-				_ = db.Close()
-				return nil, func() {}, err
-			}
-			slog.Info("postgres migrations applied", "count", applied)
-		}
-		slog.Info("postgres connection is ready")
-		return postgresstore.New(db), func() { _ = db.Close() }, nil
-	default:
-		return nil, func() {}, &unsupportedDBDriverError{Driver: cfg.Postgres.Driver}
-	}
-}
-
-type unsupportedDBDriverError struct {
-	Driver string
-}
-
-func (e *unsupportedDBDriverError) Error() string {
-	return "unsupported DB_DRIVER: " + e.Driver
 }

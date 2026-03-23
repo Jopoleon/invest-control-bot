@@ -11,3 +11,4 @@ personal_notes.md
 /tmp/
 /vendor
 *.log
+.vercel

@@ -364,7 +364,7 @@ func TestProcessRecurringRebills_TriggersScheduledAttempt(t *testing.T) {
 	defer rebillMock.Close()
 
 	cfg := testRecurringConfig(rebillMock.URL)
-	appCtx, err := newApplication(cfg, st)
+	appCtx, err := newApplication(cfg, st, appInitOptions{ensureTelegramSetup: true})
 	if err != nil {
 		t.Fatalf("newApplication: %v", err)
 	}
@@ -393,7 +393,7 @@ func testApplicationForRecurring(t *testing.T, st *memory.Store) *application {
 	t.Helper()
 
 	cfg := testRecurringConfig("")
-	appCtx, err := newApplication(cfg, st)
+	appCtx, err := newApplication(cfg, st, appInitOptions{ensureTelegramSetup: true})
 	if err != nil {
 		t.Fatalf("newApplication: %v", err)
 	}

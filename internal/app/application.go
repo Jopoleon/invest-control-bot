@@ -15,6 +15,10 @@ import (
 	"github.com/Jopoleon/invest-control-bot/internal/telegram"
 )
 
+type appInitOptions struct {
+	ensureTelegramSetup bool
+}
+
 type application struct {
 	config           config.Config
 	store            store.Store
@@ -25,16 +29,18 @@ type application struct {
 	robokassaService *payment.RobokassaService
 }
 
-func newApplication(cfg config.Config, st store.Store) (*application, error) {
+func newApplication(cfg config.Config, st store.Store, opts appInitOptions) (*application, error) {
 	tgClient, err := telegram.NewClient(cfg.Telegram.BotToken, cfg.Telegram.Webhook.SecretToken)
 	if err != nil {
 		return nil, fmt.Errorf("create telegram client: %w", err)
 	}
-	if err := tgClient.EnsureWebhook(context.Background(), cfg.Telegram.Webhook.PublicURL, cfg.Telegram.Webhook.SecretToken); err != nil {
-		return nil, fmt.Errorf("ensure telegram webhook: %w", err)
-	}
-	if err := tgClient.EnsureDefaultMenu(context.Background()); err != nil {
-		return nil, fmt.Errorf("ensure telegram menu button: %w", err)
+	if opts.ensureTelegramSetup {
+		if err := tgClient.EnsureWebhook(context.Background(), cfg.Telegram.Webhook.PublicURL, cfg.Telegram.Webhook.SecretToken); err != nil {
+			return nil, fmt.Errorf("ensure telegram webhook: %w", err)
+		}
+		if err := tgClient.EnsureDefaultMenu(context.Background()); err != nil {
+			return nil, fmt.Errorf("ensure telegram menu button: %w", err)
+		}
 	}
 
 	mockBaseURL := cfg.Payment.MockBaseURL

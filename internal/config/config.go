@@ -17,12 +17,17 @@ const (
 	EnvLocal = "local"
 	EnvStage = "stage"
 	EnvProd  = "prod"
+
+	// Supported process runtime modes.
+	RuntimeServer = "server"
+	RuntimeVercel = "vercel"
 )
 
 // Config is the root runtime configuration object.
 type Config struct {
 	AppName     string
 	Environment string
+	Runtime     string
 
 	HTTP HTTPConfig
 
@@ -124,6 +129,7 @@ func Load() (Config, error) {
 	cfg := Config{
 		AppName:     getEnv("APP_NAME", "telega-bot-fedor"),
 		Environment: strings.ToLower(getEnv("APP_ENV", EnvLocal)),
+		Runtime:     strings.ToLower(getEnv("APP_RUNTIME", RuntimeServer)),
 		HTTP: HTTPConfig{
 			Address:      getEnv("HTTP_ADDR", ":8080"),
 			ReadTimeout:  getDurationEnv("HTTP_READ_TIMEOUT", 10*time.Second),
@@ -193,6 +199,12 @@ func (c Config) Validate() error {
 	case EnvLocal, EnvStage, EnvProd:
 	default:
 		errs = append(errs, "APP_ENV must be one of: local, stage, prod")
+	}
+
+	switch c.Runtime {
+	case RuntimeServer, RuntimeVercel:
+	default:
+		errs = append(errs, "APP_RUNTIME must be one of: server, vercel")
 	}
 
 	if c.HTTP.Address == "" {
