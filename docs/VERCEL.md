@@ -18,6 +18,7 @@ Vercel пытался поднять долгоживущий Go-сервер (`
 - `APP_ENV=prod`
 - `APP_RUNTIME=vercel`
 - `HTTP_ADDR=:8080` не нужен для Vercel Function, но не мешает
+- `DB_DSN=postgres://...` preferred for managed serverless Postgres
 - `DB_DRIVER=postgres`
 - `DB_HOST`
 - `DB_PORT`

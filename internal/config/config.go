@@ -137,6 +137,7 @@ func Load() (Config, error) {
 		},
 		Postgres: PostgresConfig{
 			Driver:        strings.ToLower(getEnv("DB_DRIVER", "postgres")),
+			DSN:           strings.TrimSpace(getEnv("DB_DSN", os.Getenv("DATABASE_URL"))),
 			Host:          getEnv("DB_HOST", "localhost"),
 			Port:          getIntEnv("DB_PORT", 5432),
 			Username:      getEnv("DB_USERNAME", "postgres"),
@@ -182,7 +183,9 @@ func Load() (Config, error) {
 			AdminToken:    os.Getenv("ADMIN_AUTH_TOKEN"),
 		},
 	}
-	cfg.Postgres.DSN = buildPostgresDSN(cfg.Postgres)
+	if strings.TrimSpace(cfg.Postgres.DSN) == "" {
+		cfg.Postgres.DSN = buildPostgresDSN(cfg.Postgres)
+	}
 
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -253,8 +256,8 @@ func (c Config) Validate() error {
 		if c.Postgres.Driver == "postgres" && c.Postgres.SSLMode == "" {
 			errs = append(errs, "DB_SSL is required for postgres non-local environments")
 		}
-		if c.Postgres.DSN == "" {
-			errs = append(errs, "constructed postgres DSN is empty")
+		if strings.TrimSpace(c.Postgres.DSN) == "" {
+			errs = append(errs, "postgres DSN is empty; set DB_DSN or DB_* connection parts")
 		}
 		if c.Telegram.BotToken == "" {
 			errs = append(errs, "TELEGRAM_BOT_TOKEN is required for non-local environments")
