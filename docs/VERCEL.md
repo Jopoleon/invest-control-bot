@@ -9,7 +9,7 @@ Vercel пытался поднять долгоживущий Go-сервер (`
 
 ## Что сделано
 - Весь текущий mux отдается через `api/index.go` как одна Go Function.
-- Lifecycle/scheduler вынесен в `api/cron/lifecycle.go` и запускается через Vercel Cron.
+- Lifecycle/scheduler вынесен в `api/cron/lifecycle.go` как отдельный endpoint.
 - `vercel.json` переписывает все пользовательские маршруты на `/api/index`.
 
 ## Что настроить в Vercel
@@ -54,11 +54,19 @@ Preview deployment не должен переписывать production webhook
 ## Build & Runtime Settings
 Если в проекте были вручную выставлены `Build Command` / `Output Directory` / `Install Command` / `Development Command`, убери их. Для этого проекта Vercel должен использовать `vercel.json` и Go Functions из `api/`.
 
-## Cron
-Lifecycle теперь вызывается Vercel Cron каждые 5 минут:
+## Lifecycle Endpoint
+Для lifecycle оставлен отдельный endpoint:
 - `/api/cron/lifecycle`
 
-При желании можно добавить `VERCEL_CRON_SECRET` и использовать query token в path вручную, но базово уже есть проверка `User-Agent: vercel-cron/1.0`.
+На Vercel Hobby встроенный Cron с частым расписанием недоступен, поэтому endpoint не планируется автоматически внутри Vercel.
+
+Его можно запускать:
+- вручную
+- внешним cron
+- GitHub Actions
+- любым scheduler с `GET` запросом
+
+При желании можно добавить `VERCEL_CRON_SECRET` и использовать query token в URL, но базово уже есть проверка `User-Agent: vercel-cron/1.0`.
 
 ## CLI
 Установить CLI:
