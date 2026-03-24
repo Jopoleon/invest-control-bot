@@ -72,11 +72,11 @@ func newApplication(cfg config.Config, st store.Store, opts appInitOptions) (*ap
 		config:           cfg,
 		store:            st,
 		telegramClient:   tgClient,
-		botHandler:       bot.NewHandler(st, tgClient, paymentService, cfg.Payment.Provider == "robokassa" && cfg.Payment.Robokassa.RecurringEnabled, publicBaseURL(cfg.Telegram.Webhook.PublicURL)),
+		botHandler:       bot.NewHandler(st, tgClient, paymentService, cfg.Payment.Provider == "robokassa" && cfg.Payment.Robokassa.RecurringEnabled, publicBaseURL(cfg.Telegram.Webhook.PublicURL), cfg.Security.EncryptionKey),
 		paymentService:   paymentService,
 		robokassaService: robokassaService,
 	}
-	appCtx.adminHandler = admin.NewHandler(st, cfg.Security.AdminToken, cfg.Telegram.BotUsername, tgClient, func(ctx context.Context, subscriptionID int64) (admin.RebillResult, error) {
+	appCtx.adminHandler = admin.NewHandler(st, cfg.Security.AdminToken, cfg.Telegram.BotUsername, publicBaseURL(cfg.Telegram.Webhook.PublicURL), cfg.Security.EncryptionKey, tgClient, func(ctx context.Context, subscriptionID int64) (admin.RebillResult, error) {
 		payload, err := appCtx.triggerRebill(ctx, subscriptionID, "admin_ui")
 		if err != nil {
 			return admin.RebillResult{}, err

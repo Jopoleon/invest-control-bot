@@ -15,7 +15,7 @@ import (
 
 func TestLoginCreatesServerSessionAndAllowsProtectedPage(t *testing.T) {
 	st := memory.New()
-	h := NewHandler(st, "test-admin-token", "test_bot", nil, nil)
+	h := NewHandler(st, "test-admin-token", "test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil)
 
 	loginGet := httptest.NewRequest(http.MethodGet, "/admin/login?lang=ru", nil)
 	loginGetRec := httptest.NewRecorder()
@@ -75,7 +75,7 @@ func TestLoginCreatesServerSessionAndAllowsProtectedPage(t *testing.T) {
 
 func TestLogoutRevokesSession(t *testing.T) {
 	st := memory.New()
-	h := NewHandler(st, "test-admin-token", "test_bot", nil, nil)
+	h := NewHandler(st, "test-admin-token", "test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/login", nil)
 	rec := httptest.NewRecorder()
@@ -112,7 +112,7 @@ func TestLogoutRevokesSession(t *testing.T) {
 
 func TestRegisterProtectsAdminRoutesWithMiddleware(t *testing.T) {
 	st := memory.New()
-	h := NewHandler(st, "test-admin-token", "test_bot", nil, nil)
+	h := NewHandler(st, "test-admin-token", "test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil)
 
 	mux := http.NewServeMux()
 	h.Register(mux)
@@ -133,7 +133,7 @@ func TestRegisterProtectsAdminRoutesWithMiddleware(t *testing.T) {
 func TestCreateAdminSession_CleansExpiredAndRevokedSessions(t *testing.T) {
 	ctx := context.Background()
 	st := memory.New()
-	h := NewHandler(st, "test-admin-token", "test_bot", nil, nil)
+	h := NewHandler(st, "test-admin-token", "test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil)
 	now := time.Now().UTC()
 
 	if err := st.CreateAdminSession(ctx, domain.AdminSession{

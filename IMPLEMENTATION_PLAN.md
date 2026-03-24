@@ -1,7 +1,7 @@
 # План реализации сервиса (рабочий документ)
 
-Статус: v1.11 (admin CSV export shipped, UI system refreshed)
-Дата обновления: 2026-03-20
+Статус: v1.12 (public recurring compliance pages in progress)
+Дата обновления: 2026-03-24
 Основание: `tz.md`, `telegram-bot-flow.md`
 
 ## 1) Цель
@@ -198,6 +198,10 @@
 - выключить автоплатеж;
 - сменить карту;
 - отменить подписку.
+- Public compliance UX для согласования с Robokassa:
+- публичная страница оформления recurring-подписки c checkbox и legal links;
+- публичная страница отмены автоплатежа без авторизации по подписанной ссылке;
+- возможность приложить support-ready скриншоты checkout/cancel страниц в переписку с Robokassa.
 
 ### Итерация 9: Пользователи и churn-management в админке
 - Статус: `выполнено частично`.
@@ -415,6 +419,7 @@
 - `2026-03-20` Для recurring readiness расширен legal registry: добавлен тип документа `user_agreement`, публичные URL `/legal/agreement` и `/agreement/{id}`, а также отдельный data-layer `recurring_consents` и отображение recurring-consent истории в карточке пользователя.
 - `2026-03-20` В bot checkout flow добавлен явный opt-in на автосписания: stateless-toggle перед оплатой, запись `recurring_consents` при выборе режима с автоплатежом, безопасный override `pay:...:0/1`, и перевод menu-autopay в compliance-safe режим без тихого включения recurring.
 - `2026-03-20` Для cancel flow автоплатежа добавлено отдельное подтверждение отключения в боте: запрос на отмену, явное подтверждение/отмена и понятный текст о последствиях отключения без потери уже оплаченного периода.
+- `2026-03-24` Добавлены публичные recurring-compliance страницы: `/subscribe/{start_payload}` для оформления подписки с recurring opt-in текстом и legal links, и `/unsubscribe/{token}` для отключения автоплатежа без авторизации по подписанной ссылке; cancel-link встроен в bot-autopay flow.
 - `2026-03-20` Карточка пользователя расширена operational recurring-summary: явный статус автоплатежа, последний opt-in, последний коннектор и диагностический health-статус (`нет consent` / `enabled without consent` / `consistent` / `disabled by user`).
 - `2026-03-20` Для recurring backend automation добавлены scheduler-aware retry windows T-3/T-2/T-1, общий `triggerRebill` для admin/scheduler, уведомление пользователю о неуспешном автосписании со ссылкой на ручную оплату и автотесты на retry-окна и scheduled rebill flow.
 - `2026-03-20` Auth/session слой админки доведен до route-level middleware: публичными оставлены только `/admin/login` и `/admin/assets/*`, а все остальные `/admin/*` маршруты защищаются единым server-side session middleware без повторных lookup внутри handlers.

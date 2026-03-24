@@ -397,6 +397,12 @@
       <div class="action-card">
         <h4>{{index .I18N "users.actions.paylink"}}</h4>
         <span class="help-tip" tabindex="0" data-tip="{{index .I18N "users.actions.paylink_hint"}}">?</span>
+        {{if .AutopayCancelURL}}
+        <div style="margin-top: 1rem; display: grid; gap: 0.75rem;">
+          <a href="{{.AutopayCancelURL}}" target="_blank" rel="noreferrer" role="button" class="secondary">{{index .I18N "users.actions.autopay_cancel_page"}}</a>
+          <small>{{index .I18N "users.actions.autopay_cancel_hint"}}</small>
+        </div>
+        {{end}}
       </div>
     </div>
   </article>

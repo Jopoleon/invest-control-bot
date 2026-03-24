@@ -161,7 +161,8 @@ func (h *Handler) sendAutopayInfo(ctx context.Context, chatID, telegramID int64)
 		h.send(ctx, chatID, "Не удалось загрузить настройки автоплатежа.")
 		return
 	}
-	text, keyboard := autopayInfoMessage(enabled)
+	checkoutURL := h.lookupAutopayCheckoutURL(ctx, telegramID)
+	text, keyboard := autopayInfoMessage(enabled, h.buildAutopayCancelURL(telegramID), checkoutURL)
 	if err := h.tg.SendMessage(ctx, chatID, text, keyboard); err != nil {
 		slog.Error("send autopay info failed", "error", err, "telegram_id", telegramID)
 		return
@@ -197,7 +198,8 @@ func (h *Handler) restoreAutopayInfo(ctx context.Context, cb *models.CallbackQue
 		h.send(ctx, cb.Message.Message.Chat.ID, "Не удалось загрузить настройки автоплатежа.")
 		return
 	}
-	text, keyboard := autopayInfoMessage(enabled)
+	checkoutURL := h.lookupAutopayCheckoutURL(ctx, cb.From.ID)
+	text, keyboard := autopayInfoMessage(enabled, h.buildAutopayCancelURL(cb.From.ID), checkoutURL)
 	if err := h.tg.EditMessageText(ctx, cb.Message.Message.Chat.ID, cb.Message.Message.ID, text, keyboard); err != nil {
 		slog.Error("restore autopay info failed", "error", err, "telegram_id", cb.From.ID)
 	}
@@ -242,18 +244,56 @@ func (h *Handler) disableAutopayConfirmed(ctx context.Context, cb *models.Callba
 	h.logAuditEvent(ctx, cb.From.ID, 0, domain.AuditActionAutopayDisabled, "")
 }
 
-func autopayInfoMessage(enabled bool) (string, *models.InlineKeyboardMarkup) {
+func (h *Handler) lookupAutopayCheckoutURL(ctx context.Context, telegramID int64) string {
+	subs, err := h.store.ListSubscriptions(ctx, domain.SubscriptionListQuery{
+		TelegramID: telegramID,
+		Status:     domain.SubscriptionStatusActive,
+		Limit:      20,
+	})
+	if err != nil {
+		slog.Error("list subscriptions for autopay checkout url failed", "error", err, "telegram_id", telegramID)
+		return ""
+	}
+	for _, sub := range subs {
+		if url := h.buildAutopayCheckoutURL(sub.ConnectorID); url != "" {
+			return url
+		}
+	}
+	return ""
+}
+
+func autopayInfoMessage(enabled bool, cancelURL, checkoutURL string) (string, *models.InlineKeyboardMarkup) {
 	text := "🔁 Автоплатеж\n\n"
 	if enabled {
 		text += "Текущий статус: включен.\nСледующие списания будут происходить автоматически, пока вы не отключите автоплатеж."
-		return text, &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+		rows := [][]models.InlineKeyboardButton{
 			{
 				{Text: "Отключить автоплатеж", CallbackData: menuCallbackAutopayOffAsk},
 			},
-		}}
+		}
+		if strings.TrimSpace(cancelURL) != "" {
+			text += "\n\nТакже вы можете отключить автоплатеж на публичной странице управления подпиской."
+			rows = append(rows, []models.InlineKeyboardButton{
+				{Text: "Страница отключения", URL: cancelURL},
+			})
+		}
+		if strings.TrimSpace(checkoutURL) != "" {
+			rows = append(rows, []models.InlineKeyboardButton{
+				{Text: "Страница оформления", URL: checkoutURL},
+			})
+		}
+		return text, &models.InlineKeyboardMarkup{InlineKeyboard: rows}
 	}
 	text += "Текущий статус: выключен.\nАвтоплатеж подключается на этапе оплаты через отдельное согласие на автоматические списания."
-	return text, nil
+	if strings.TrimSpace(checkoutURL) == "" {
+		return text, nil
+	}
+	text += "\n\nОткрыть страницу оформления можно кнопкой ниже."
+	return text, &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
+		{
+			{Text: "Страница оформления", URL: checkoutURL},
+		},
+	}}
 }
 
 func resolveChannelForBot(channelURL, chatID string) string {

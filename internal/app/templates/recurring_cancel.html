@@ -1,0 +1,303 @@
+{{define "recurring_cancel.html"}}
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}}</title>
+  <style>
+    :root {
+      --bg: #f4efe7;
+      --paper: rgba(255,255,255,0.94);
+      --ink: #17202b;
+      --muted: #5d6670;
+      --line: rgba(23,32,43,0.10);
+      --danger: #b94141;
+      --danger-dark: #8f2828;
+      --danger-soft: rgba(185,65,65,0.09);
+      --ok: #e7f7ef;
+      --ok-line: #94d1a8;
+      --err: #fff1f1;
+      --err-line: #efb2b2;
+    }
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top right, rgba(185,65,65,0.11), transparent 36%),
+        linear-gradient(180deg, #f9f5ef 0%, var(--bg) 100%);
+    }
+    .shell {
+      min-height: 100svh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+    }
+    .stage {
+      width: min(1120px, 100%);
+      padding: 20px;
+      border-radius: 30px;
+      border: 1px solid var(--line);
+      background: var(--paper);
+      box-shadow: 0 28px 80px rgba(26,34,44,0.08);
+      backdrop-filter: blur(10px);
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.95fr);
+      gap: 20px;
+      align-items: start;
+    }
+    .left, .right {
+      display: grid;
+      gap: 14px;
+      min-width: 0;
+    }
+    .eyebrow {
+      display: inline-flex;
+      width: fit-content;
+      padding: 8px 13px;
+      border-radius: 999px;
+      background: var(--danger-soft);
+      color: var(--danger-dark);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 800;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(34px, 4vw, 58px);
+      line-height: 0.94;
+      letter-spacing: -0.05em;
+      max-width: 12ch;
+    }
+    .lead {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 16px;
+      max-width: 42rem;
+    }
+    .notice {
+      padding: 13px 15px;
+      border-radius: 16px;
+      line-height: 1.55;
+      font-size: 14px;
+    }
+    .notice.success { background: var(--ok); border: 1px solid var(--ok-line); color: #235235; }
+    .notice.error { background: var(--err); border: 1px solid var(--err-line); color: #7c2c2c; }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .meta {
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.56);
+    }
+    .meta small {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .meta strong {
+      display: block;
+      font-size: 15px;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
+    }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      padding: 9px 13px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      background: #eef2f5;
+      color: #40515f;
+      width: fit-content;
+    }
+    .status::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: currentColor;
+    }
+    .status.on { background: var(--danger-soft); color: var(--danger-dark); }
+    .status.off { background: rgba(15,123,108,0.10); color: #0f6a56; }
+    .subs {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .sub {
+      padding: 15px 17px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.64);
+    }
+    .sub h2 {
+      margin: 0 0 6px;
+      font-size: 18px;
+      letter-spacing: -0.03em;
+      overflow-wrap: anywhere;
+    }
+    .sub p {
+      margin: 3px 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    .sub a { color: var(--danger-dark); }
+    .panel {
+      padding: 16px;
+      border-radius: 22px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255,255,255,0.62) 0%, rgba(255,255,255,0.42) 100%);
+    }
+    .panel h3 {
+      margin: 0 0 10px;
+      font-size: 24px;
+      letter-spacing: -0.04em;
+    }
+    .panel p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 15px;
+    }
+    .actions {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+    button {
+      min-height: 50px;
+      padding: 0 20px;
+      border-radius: 15px;
+      border: 0;
+      background: var(--danger);
+      color: #fff;
+      font-weight: 800;
+      font-size: 15px;
+      cursor: pointer;
+      transition: 140ms ease;
+    }
+    button:hover { background: var(--danger-dark); transform: translateY(-1px); }
+    .footnote {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 14px;
+    }
+    @media (max-width: 920px) {
+      .shell {
+        display: block;
+        min-height: auto;
+        padding: 14px;
+      }
+      .stage { padding: 16px; }
+      .layout,
+      .meta-grid,
+      .subs { grid-template-columns: 1fr; }
+      h1 { max-width: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="stage">
+      <div class="layout">
+        <section class="left">
+          <span class="eyebrow">Управление автосписанием</span>
+          <div>
+            <h1>{{.Title}}</h1>
+            {{if .UserName}}<p class="lead">Страница отключения автоплатежа для {{.UserName}}. Уже оплаченный период сохранится до конца срока подписки.</p>{{else}}<p class="lead">На этой странице можно отключить автоматические списания без авторизации в админке и без обращения в поддержку.</p>{{end}}
+          </div>
+
+          {{if .SuccessMessage}}<div class="notice success">{{.SuccessMessage}}</div>{{end}}
+          {{if .ErrorMessage}}<div class="notice error">{{.ErrorMessage}}</div>{{end}}
+
+          {{if not .ErrorMessage}}
+            <div class="meta-grid">
+              <div class="meta">
+                <small>Telegram ID</small>
+                <strong>{{.TelegramID}}</strong>
+              </div>
+              <div class="meta">
+                <small>Ссылка действует до</small>
+                <strong>{{.ExpiresAt}}</strong>
+              </div>
+              <div class="meta">
+                <small>Статус</small>
+                <strong><span class="status {{if .AutoPayEnabled}}on{{else}}off{{end}}">{{if .AutoPayEnabled}}включен{{else}}выключен{{end}}</span></strong>
+              </div>
+              <div class="meta">
+                <small>После действия</small>
+                <strong>{{if .AutoPayEnabled}}Новые списания прекратятся{{else}}Автосписания уже остановлены{{end}}</strong>
+              </div>
+            </div>
+
+            <div class="subs">
+              {{if .ActiveSubscriptions}}
+                {{range .ActiveSubscriptions}}
+                  <article class="sub">
+                    <h2>{{.Name}}</h2>
+                    <p>Сумма: {{.PriceRUB}} ₽</p>
+                    <p>Период: {{.PeriodDays}} дн.</p>
+                    <p>Действует до: {{.EndsAtLabel}}</p>
+                    {{if .ChannelURL}}<p>Канал: <a href="{{.ChannelURL}}" target="_blank" rel="noreferrer">{{.ChannelURL}}</a></p>{{end}}
+                  </article>
+                {{end}}
+              {{else}}
+                <article class="sub">
+                  <h2>Активных подписок сейчас нет</h2>
+                  <p>Если автоплатеж был включен, он все равно будет отключен для будущих списаний.</p>
+                </article>
+              {{end}}
+            </div>
+          {{end}}
+        </section>
+
+        <aside class="right">
+          <div class="panel">
+            <h3>Отключение без потери доступа</h3>
+            <p>После подтверждения новые автоматические списания выполняться не будут. Уже оплаченный период останется активным до даты окончания подписки.</p>
+          </div>
+
+          {{if not .ErrorMessage}}
+            <div class="actions">
+              {{if .AutoPayEnabled}}
+                <form method="post">
+                  <button type="submit">Отключить автоплатеж</button>
+                </form>
+                <p class="footnote">Это действие не удаляет текущую активную подписку немедленно. Оно только запрещает будущие автосписания.</p>
+              {{else}}
+                <div class="panel">
+                  <h3>Автоплатеж уже выключен</h3>
+                  <p>Повторное подключение возможно на следующем шаге новой оплаты через Telegram-бот.</p>
+                </div>
+              {{end}}
+            </div>
+          {{end}}
+        </aside>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
+{{end}}

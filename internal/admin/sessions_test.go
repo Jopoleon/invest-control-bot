@@ -15,7 +15,7 @@ import (
 
 func TestSessionsPageRenders(t *testing.T) {
 	st := memory.New()
-	h := NewHandler(st, "test-admin-token", "test_bot", nil, nil)
+	h := NewHandler(st, "test-admin-token", "test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil)
 	now := time.Now().UTC()
 	if err := st.CreateAdminSession(context.Background(), domain.AdminSession{
 		TokenHash:  "hash1",
@@ -43,7 +43,7 @@ func TestSessionsPageRenders(t *testing.T) {
 
 func TestRevokeAdminSessionMarksSessionRevoked(t *testing.T) {
 	st := memory.New()
-	h := NewHandler(st, "test-admin-token", "test_bot", nil, nil)
+	h := NewHandler(st, "test-admin-token", "test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil)
 	now := time.Now().UTC()
 	if err := st.CreateAdminSession(context.Background(), domain.AdminSession{
 		TokenHash:  "hash2",

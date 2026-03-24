@@ -201,6 +201,7 @@ type userDetailPageData struct {
 	Notice            string
 	BackURL           string
 	MessageActionURL  string
+	AutopayCancelURL  string
 	User              userView
 	RecurringSummary  recurringSummaryView
 	Consents          []consentView

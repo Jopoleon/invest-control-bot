@@ -1,0 +1,356 @@
+{{define "recurring_checkout.html"}}
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}}</title>
+  <style>
+    :root {
+      --bg: #f3efe8;
+      --paper: rgba(255,255,255,0.92);
+      --ink: #17202b;
+      --muted: #5a6470;
+      --line: rgba(23,32,43,0.10);
+      --accent: #0f7b6c;
+      --accent-dark: #0b5f54;
+      --accent-soft: rgba(15,123,108,0.09);
+      --panel: #16212b;
+      --warn: #fff6d8;
+      --warn-line: #e4c866;
+    }
+    * { box-sizing: border-box; }
+    html, body { min-height: 100%; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(15,123,108,0.14), transparent 34%),
+        linear-gradient(180deg, #f9f5ef 0%, var(--bg) 100%);
+    }
+    .shell {
+      min-height: 100svh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+    }
+    .stage {
+      width: min(1160px, 100%);
+      padding: 22px;
+      border-radius: 30px;
+      border: 1px solid var(--line);
+      background: var(--paper);
+      box-shadow: 0 28px 80px rgba(26,34,44,0.08);
+      backdrop-filter: blur(10px);
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(330px, 0.95fr);
+      gap: 22px;
+      align-items: stretch;
+    }
+    .left {
+      display: grid;
+      gap: 18px;
+      min-width: 0;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 13px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent-dark);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 800;
+      width: fit-content;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(34px, 4.3vw, 62px);
+      line-height: 0.92;
+      letter-spacing: -0.055em;
+      max-width: 11ch;
+      overflow-wrap: anywhere;
+    }
+    .lead {
+      margin: 0;
+      max-width: 44rem;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.58;
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .metric {
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.52);
+    }
+    .metric small {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .metric strong {
+      display: block;
+      font-size: 16px;
+      line-height: 1.35;
+    }
+    .terms {
+      padding: 20px 22px;
+      border-radius: 24px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.56);
+    }
+    .terms-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 12px;
+    }
+    .terms h2 {
+      margin: 0;
+      font-size: 23px;
+      letter-spacing: -0.04em;
+    }
+    .terms-note {
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .checklist {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 10px;
+    }
+    .checklist li {
+      display: grid;
+      grid-template-columns: 10px 1fr;
+      gap: 12px;
+      align-items: start;
+      line-height: 1.5;
+      color: var(--ink);
+    }
+    .checklist li::before {
+      content: "";
+      width: 10px;
+      height: 10px;
+      margin-top: 7px;
+      border-radius: 999px;
+      background: var(--accent);
+    }
+    .right {
+      display: grid;
+      gap: 14px;
+      padding: 14px;
+      border-radius: 24px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255,255,255,0.62) 0%, rgba(255,255,255,0.42) 100%);
+    }
+    .price-box {
+      padding: 18px 20px;
+      border-radius: 22px;
+      background: var(--panel);
+      color: #fff;
+    }
+    .price-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      opacity: 0.72;
+    }
+    .price-value {
+      margin-top: 8px;
+      font-size: clamp(36px, 4.2vw, 52px);
+      font-weight: 800;
+      letter-spacing: -0.05em;
+      line-height: 0.96;
+    }
+    .channel {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .channel a { color: var(--accent-dark); }
+    .consent {
+      padding: 16px 18px;
+      border-radius: 20px;
+      border: 1px solid var(--line);
+      background: var(--accent-soft);
+    }
+    .consent label {
+      display: grid;
+      grid-template-columns: 18px 1fr;
+      gap: 12px;
+      align-items: start;
+      font-size: 15px;
+      line-height: 1.55;
+      font-weight: 700;
+    }
+    .consent input {
+      margin: 3px 0 0;
+      width: 18px;
+      height: 18px;
+      accent-color: var(--accent);
+    }
+    .consent small {
+      display: block;
+      margin-top: 9px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .links {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .links a, .action {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 46px;
+      padding: 0 14px;
+      border-radius: 14px;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 700;
+      text-align: center;
+      transition: 140ms ease;
+    }
+    .links a {
+      border: 1px solid var(--line);
+      color: var(--ink);
+      background: #fff;
+    }
+    .links a:hover,
+    .action:hover { transform: translateY(-1px); }
+    .action {
+      border: 0;
+      background: var(--accent);
+      color: #fff;
+      min-height: 50px;
+      font-size: 15px;
+    }
+    .action:hover { background: var(--accent-dark); }
+    .warnings {
+      display: grid;
+      gap: 10px;
+    }
+    .warning {
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: var(--warn);
+      border: 1px solid var(--warn-line);
+      color: #6c5a18;
+      line-height: 1.5;
+      font-size: 13px;
+    }
+    @media (max-width: 920px) {
+      .shell {
+        display: block;
+        min-height: auto;
+        padding: 14px;
+      }
+      .stage { padding: 16px; }
+      .layout { grid-template-columns: 1fr; }
+      .metrics, .links { grid-template-columns: 1fr; }
+      .right { padding: 0; border: 0; background: transparent; }
+      .terms-head { display: block; }
+      .terms-note { margin-top: 6px; white-space: normal; }
+      h1 { max-width: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="stage">
+      <div class="layout">
+        <section class="left">
+          <span class="eyebrow">Подписка с автосписанием</span>
+          <div>
+            <h1>{{.ConnectorName}}</h1>
+            {{if .ConnectorDesc}}<p class="lead">{{.ConnectorDesc}}</p>{{else}}<p class="lead">Оформление регулярной подписки с ежемесячной оплатой и сохранением непрерывного доступа.</p>{{end}}
+          </div>
+
+          <div class="metrics">
+            <div class="metric">
+              <small>Списание</small>
+              <strong>{{.PriceRUB}} ₽</strong>
+            </div>
+            <div class="metric">
+              <small>Период</small>
+              <strong>Каждые {{.PeriodDays}} дн.</strong>
+            </div>
+            <div class="metric">
+              <small>Формат</small>
+              <strong>Автосписание</strong>
+            </div>
+          </div>
+
+          <div class="terms">
+            <div class="terms-head">
+              <h2>Условия подписки</h2>
+              <span class="terms-note">Без скрытых списаний и сложной отмены</span>
+            </div>
+            <ul class="checklist">
+              <li>Стоимость каждого списания фиксируется по тарифу и видна пользователю до оплаты.</li>
+              <li>Периодичность продления: каждые {{.PeriodDays}} дн., пока пользователь не отключит автоплатеж.</li>
+              <li>Отмена доступна на отдельной публичной странице управления подпиской без входа в админку.</li>
+              <li>История согласий на автосписания и действий пользователя сохраняется в системе.</li>
+            </ul>
+          </div>
+        </section>
+
+        <aside class="right">
+          <div class="price-box">
+            <div class="price-label">Периодический платеж</div>
+            <div class="price-value">{{.PriceRUB}} ₽</div>
+          </div>
+
+          {{if .ChannelURL}}<p class="channel">Канал после оплаты: <a href="{{.ChannelURL}}" target="_blank" rel="noreferrer">{{.ChannelURL}}</a></p>{{end}}
+
+          <div class="consent">
+            <label>
+              <input type="checkbox" aria-label="Согласие на автоматические списания">
+              <span>Я согласен на автоматические списания согласно условиям оферты.</span>
+            </label>
+            <small>Чекбокс не проставлен по умолчанию. Финальное согласие фиксируется на следующем шаге оформления в Telegram-боте и сохраняется в истории согласий пользователя.</small>
+          </div>
+
+          <div class="links">
+            {{if .OfferURL}}<a href="{{.OfferURL}}" target="_blank" rel="noreferrer">Оферта</a>{{end}}
+            {{if .PrivacyURL}}<a href="{{.PrivacyURL}}" target="_blank" rel="noreferrer">Политика ПДн</a>{{end}}
+            {{if .AgreementURL}}<a href="{{.AgreementURL}}" target="_blank" rel="noreferrer">Соглашение</a>{{end}}
+          </div>
+
+          {{if .BotStartURL}}<a class="action" href="{{.BotStartURL}}">Продолжить оформление в Telegram</a>{{end}}
+
+          <div class="warnings">
+            {{if not .HasRecurringDocs}}<div class="warning">Для полноценного recurring-flow должны быть опубликованы активные версии оферты и пользовательского соглашения.</div>{{end}}
+            {{if .RecurringDisabled}}<div class="warning">Интерфейс автоплатежа подготовлен. Реальное включение recurring зависит от активации услуги магазином Robokassa.</div>{{end}}
+          </div>
+        </aside>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
+{{end}}

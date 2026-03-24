@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/recurringlink"
 	"github.com/Jopoleon/invest-control-bot/internal/store"
 	"github.com/Jopoleon/invest-control-bot/internal/telegram"
 )
@@ -16,6 +17,8 @@ type Handler struct {
 	store           store.Store
 	adminToken      string
 	botUsername     string
+	publicBaseURL   string
+	encryptionKey   string
 	tg              *telegram.Client
 	renderer        *renderer
 	retriggerRebill func(ctx context.Context, subscriptionID int64) (RebillResult, error)
@@ -29,7 +32,7 @@ type RebillResult struct {
 }
 
 // NewHandler creates admin handler and preloads HTML templates.
-func NewHandler(st store.Store, adminToken, botUsername string, tg *telegram.Client, rebillTrigger func(context.Context, int64) (RebillResult, error)) *Handler {
+func NewHandler(st store.Store, adminToken, botUsername, publicBaseURL, encryptionKey string, tg *telegram.Client, rebillTrigger func(context.Context, int64) (RebillResult, error)) *Handler {
 	r, err := newRenderer()
 	if err != nil {
 		panic(err)
@@ -38,12 +41,25 @@ func NewHandler(st store.Store, adminToken, botUsername string, tg *telegram.Cli
 		store:           st,
 		adminToken:      adminToken,
 		botUsername:     strings.TrimPrefix(strings.TrimSpace(botUsername), "@"),
+		publicBaseURL:   strings.TrimRight(strings.TrimSpace(publicBaseURL), "/"),
+		encryptionKey:   strings.TrimSpace(encryptionKey),
 		tg:              tg,
 		renderer:        r,
 		retriggerRebill: rebillTrigger,
 
 		loginRateLimiter: newLoginRateLimiter(),
 	}
+}
+
+func (h *Handler) buildAutopayCancelURL(telegramID int64) string {
+	if telegramID <= 0 || h.publicBaseURL == "" || h.encryptionKey == "" {
+		return ""
+	}
+	token, err := recurringlink.BuildCancelToken(h.encryptionKey, telegramID, time.Now().UTC().Add(180*24*time.Hour))
+	if err != nil {
+		return ""
+	}
+	return h.publicBaseURL + "/unsubscribe/" + token
 }
 
 func (h *Handler) logAdminAudit(r *http.Request, action, details string) {

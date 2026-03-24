@@ -23,7 +23,7 @@ func TestHandleCallback_ReusesExistingCompletedProfile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create telegram client: %v", err)
 	}
-	h := NewHandler(st, tg, payment.NewMockService("http://localhost:8080"), false, "http://localhost:8080")
+	h := NewHandler(st, tg, payment.NewMockService("http://localhost:8080"), false, "http://localhost:8080", "test-encryption-key-123456789012345")
 
 	connectorID := seedBotConnector(t, ctx, st, "in-existing-user")
 	if err := st.SaveUser(ctx, domain.User{
@@ -59,7 +59,7 @@ func TestHandleCallback_RequestsOnlyMissingField(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create telegram client: %v", err)
 	}
-	h := NewHandler(st, tg, payment.NewMockService("http://localhost:8080"), false, "http://localhost:8080")
+	h := NewHandler(st, tg, payment.NewMockService("http://localhost:8080"), false, "http://localhost:8080", "test-encryption-key-123456789012345")
 
 	connectorID := seedBotConnector(t, ctx, st, "in-partial-user")
 	if err := st.SaveUser(ctx, domain.User{
@@ -99,7 +99,7 @@ func TestHandleCallback_SavesLegalDocumentVersionsForFallbackDocs(t *testing.T) 
 	if err != nil {
 		t.Fatalf("create telegram client: %v", err)
 	}
-	h := NewHandler(st, tg, payment.NewMockService("http://localhost:8080"), false, "http://localhost:8080")
+	h := NewHandler(st, tg, payment.NewMockService("http://localhost:8080"), false, "http://localhost:8080", "test-encryption-key-123456789012345")
 
 	connectorID := seedBotConnector(t, ctx, st, "in-consent-versioned")
 	if err := st.CreateLegalDocument(ctx, domain.LegalDocument{
@@ -153,7 +153,7 @@ func TestHandleCallback_LeavesConsentVersionsEmptyForConnectorCustomURLs(t *test
 	if err != nil {
 		t.Fatalf("create telegram client: %v", err)
 	}
-	h := NewHandler(st, tg, payment.NewMockService("http://localhost:8080"), false, "http://localhost:8080")
+	h := NewHandler(st, tg, payment.NewMockService("http://localhost:8080"), false, "http://localhost:8080", "test-encryption-key-123456789012345")
 
 	if err := st.CreateConnector(ctx, domain.Connector{
 		StartPayload: "in-consent-custom",
@@ -221,7 +221,7 @@ func TestHandlePay_DisablesRecurringWhenCapabilityOff(t *testing.T) {
 		IsTest:        true,
 		BaseURL:       "https://auth.robokassa.ru/Merchant/Index.aspx",
 	})
-	h := NewHandler(st, tg, robokassa, false, "http://localhost:8080")
+	h := NewHandler(st, tg, robokassa, false, "http://localhost:8080", "test-encryption-key-123456789012345")
 
 	connectorID := seedBotConnector(t, ctx, st, "in-pay-no-recurring")
 	if err := st.SetUserAutoPayEnabled(ctx, 1003, true, time.Now().UTC()); err != nil {
@@ -265,7 +265,7 @@ func TestHandlePay_WithExplicitRecurringOptInCreatesRecurringConsent(t *testing.
 		IsTest:        true,
 		BaseURL:       "https://auth.robokassa.ru/Merchant/Index.aspx",
 	})
-	h := NewHandler(st, tg, robokassa, true, "http://localhost:8080")
+	h := NewHandler(st, tg, robokassa, true, "http://localhost:8080", "test-encryption-key-123456789012345")
 
 	connectorID := seedBotConnector(t, ctx, st, "in-pay-recurring")
 	seedRecurringLegalDocs(t, ctx, st)
@@ -326,7 +326,7 @@ func TestHandlePay_WithExplicitManualModeOverridesStoredAutopay(t *testing.T) {
 		IsTest:        true,
 		BaseURL:       "https://auth.robokassa.ru/Merchant/Index.aspx",
 	})
-	h := NewHandler(st, tg, robokassa, true, "http://localhost:8080")
+	h := NewHandler(st, tg, robokassa, true, "http://localhost:8080", "test-encryption-key-123456789012345")
 
 	connectorID := seedBotConnector(t, ctx, st, "in-pay-manual-override")
 	seedRecurringLegalDocs(t, ctx, st)
@@ -425,7 +425,7 @@ func TestResolveLegalURL_UsesActiveDocumentFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create telegram client: %v", err)
 	}
-	h := NewHandler(st, tg, payment.NewMockService("http://localhost:8080"), false, "http://localhost:8080")
+	h := NewHandler(st, tg, payment.NewMockService("http://localhost:8080"), false, "http://localhost:8080", "test-encryption-key-123456789012345")
 
 	if err := st.CreateLegalDocument(ctx, domain.LegalDocument{
 		Type:      domain.LegalDocumentTypeOffer,

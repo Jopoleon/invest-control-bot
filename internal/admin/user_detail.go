@@ -100,6 +100,7 @@ func (h *Handler) renderUserDetailPage(ctx context.Context, w http.ResponseWrite
 		Notice:           notice,
 		BackURL:          "/admin/users?lang=" + lang,
 		MessageActionURL: "/admin/users/message?lang=" + lang,
+		AutopayCancelURL: h.buildAutopayCancelURL(item.TelegramID),
 		User: userView{
 			TelegramID:       item.TelegramID,
 			TelegramUsername: item.TelegramUsername,
