@@ -29,6 +29,7 @@ type recurringCheckoutPageData struct {
 	BotStartURL       string
 	HasRecurringDocs  bool
 	RecurringDisabled bool
+	HelperNote        string
 }
 
 type recurringCancelPageData struct {
@@ -41,9 +42,11 @@ type recurringCancelPageData struct {
 	ErrorMessage        string
 	ExpiresAt           string
 	ActiveSubscriptions []recurringCancelSubscriptionView
+	OtherSubscriptions  int
 }
 
 type recurringCancelSubscriptionView struct {
+	SubscriptionID int64
 	Name        string
 	PriceRUB    int64
 	PeriodDays  int
@@ -91,6 +94,7 @@ func (a *application) handleRecurringCheckout(w http.ResponseWriter, r *http.Req
 		BotStartURL:       buildBotStartURL(a.config.Telegram.BotUsername, connector.StartPayload),
 		HasRecurringDocs:  offerURL != "" && agreementURL != "",
 		RecurringDisabled: !a.config.Payment.Robokassa.RecurringEnabled,
+		HelperNote:        "Автоплатеж подключается во время новой оплаты этого тарифа. Уже действующая подписка не переводится на автосписания задним числом.",
 	})
 }
 
@@ -132,28 +136,65 @@ func (a *application) handleRecurringCancel(w http.ResponseWriter, r *http.Reque
 
 func (a *application) processRecurringCancelPost(w http.ResponseWriter, r *http.Request, token string, telegramID int64) {
 	now := time.Now().UTC()
-	if err := a.store.SetUserAutoPayEnabled(r.Context(), telegramID, false, now); err != nil {
-		logStoreError("disable autopay via public page failed", err, "telegram_id", telegramID)
+	if err := r.ParseForm(); err != nil {
 		pageData, _ := a.buildRecurringCancelPageData(r.Context(), token, telegramID, now.Add(recurringCancelPageTokenTTL))
-		pageData.ErrorMessage = "Не удалось отключить автоплатеж. Попробуйте еще раз позже."
+		pageData.ErrorMessage = "Некорректный запрос отключения автоплатежа."
 		renderAppTemplate(w, "recurring_cancel.html", pageData)
 		return
 	}
+	subscriptionID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("subscription_id")), 10, 64)
+	if err != nil || subscriptionID <= 0 {
+		pageData, _ := a.buildRecurringCancelPageData(r.Context(), token, telegramID, now.Add(recurringCancelPageTokenTTL))
+		pageData.ErrorMessage = "Не выбрана подписка для отключения автоплатежа."
+		renderAppTemplate(w, "recurring_cancel.html", pageData)
+		return
+	}
+	sub, found, err := a.store.GetSubscriptionByID(r.Context(), subscriptionID)
+	if err != nil || !found || sub.TelegramID != telegramID {
+		pageData, _ := a.buildRecurringCancelPageData(r.Context(), token, telegramID, now.Add(recurringCancelPageTokenTTL))
+		pageData.ErrorMessage = "Подписка для отключения автоплатежа не найдена."
+		renderAppTemplate(w, "recurring_cancel.html", pageData)
+		return
+	}
+	if sub.Status != domain.SubscriptionStatusActive || !sub.AutoPayEnabled {
+		pageData, _ := a.buildRecurringCancelPageData(r.Context(), token, telegramID, now.Add(recurringCancelPageTokenTTL))
+		pageData.ErrorMessage = "Для этой подписки автоплатеж уже выключен."
+		renderAppTemplate(w, "recurring_cancel.html", pageData)
+		return
+	}
+	if err := a.store.SetSubscriptionAutoPayEnabled(r.Context(), sub.ID, false, now); err != nil {
+		logStoreError("disable subscription autopay via public page failed", err, "telegram_id", telegramID, "subscription_id", sub.ID)
+		pageData, _ := a.buildRecurringCancelPageData(r.Context(), token, telegramID, now.Add(recurringCancelPageTokenTTL))
+		pageData.ErrorMessage = "Не удалось отключить автоплатеж для выбранной подписки. Попробуйте еще раз позже."
+		renderAppTemplate(w, "recurring_cancel.html", pageData)
+		return
+	}
+	a.syncUserAutoPayPreferenceAfterPublicCancel(r.Context(), telegramID, now)
+	connectorName := ""
+	if connector, found, err := a.store.GetConnector(r.Context(), sub.ConnectorID); err == nil && found {
+		connectorName = connector.Name
+	}
 	if err := a.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
-		TelegramID: telegramID,
-		Action:     domain.AuditActionAutopayDisabled,
-		Details:    "source=web_cancel_page",
-		CreatedAt:  now,
+		TelegramID:  telegramID,
+		ConnectorID: sub.ConnectorID,
+		Action:      domain.AuditActionAutopayDisabled,
+		Details:     "source=web_cancel_page;subscription_id=" + strconv.FormatInt(sub.ID, 10),
+		CreatedAt:   now,
 	}); err != nil {
 		logAuditError(domain.AuditActionAutopayDisabled, err)
 	}
-	if err := a.telegramClient.SendMessage(r.Context(), telegramID,
-		"🔁 Автоплатеж отключен через страницу управления подпиской. Новые автоматические списания больше не будут выполняться, а доступ сохранится до конца уже оплаченного периода.",
-		nil,
-	); err != nil {
+	message := "🔁 Автоплатеж отключен через страницу управления подпиской. Новые автоматические списания больше не будут выполняться, а доступ сохранится до конца уже оплаченного периода."
+	if strings.TrimSpace(connectorName) != "" {
+		message = "🔁 Автоплатеж для подписки \"" + connectorName + "\" отключен через страницу управления. Новые автоматические списания для этого тарифа больше не будут выполняться, а доступ сохранится до конца уже оплаченного периода."
+	}
+	if err := a.telegramClient.SendMessage(r.Context(), telegramID, message, nil); err != nil {
 		slog.Error("send public cancel confirmation failed", "error", err, "telegram_id", telegramID)
 	}
-	http.Redirect(w, r, "/unsubscribe/"+url.PathEscape(token)+"?done=1", http.StatusSeeOther)
+	done := "1"
+	if connectorName != "" {
+		done = url.QueryEscape(connectorName)
+	}
+	http.Redirect(w, r, "/unsubscribe/"+url.PathEscape(token)+"?done="+done, http.StatusSeeOther)
 }
 
 func (a *application) buildRecurringCancelPageData(ctx context.Context, token string, telegramID int64, expiresAt time.Time) (recurringCancelPageData, int) {
@@ -165,6 +206,9 @@ func (a *application) buildRecurringCancelPageData(ctx context.Context, token st
 	}
 	if done, _ := ctx.Value(recurringCancelDoneContextKey{}).(string); strings.TrimSpace(done) != "" {
 		data.SuccessMessage = "Автоплатеж отключен. Уже оплаченный период сохранится до конца срока подписки."
+		if done != "1" {
+			data.SuccessMessage = "Автоплатеж для подписки \"" + done + "\" отключен. Уже оплаченный период сохранится до конца срока подписки."
+		}
 	}
 	user, found, err := a.store.GetUser(ctx, telegramID)
 	if err != nil {
@@ -198,7 +242,12 @@ func (a *application) buildRecurringCancelPageData(ctx context.Context, token st
 		if err != nil || !ok {
 			continue
 		}
+		if !sub.AutoPayEnabled {
+			data.OtherSubscriptions++
+			continue
+		}
 		data.ActiveSubscriptions = append(data.ActiveSubscriptions, recurringCancelSubscriptionView{
+			SubscriptionID: sub.ID,
 			Name:        connector.Name,
 			PriceRUB:    connector.PriceRUB,
 			PeriodDays:  connector.PeriodDays,
@@ -206,6 +255,7 @@ func (a *application) buildRecurringCancelPageData(ctx context.Context, token st
 			ChannelURL:  resolveConnectorChannelURL(connector.ChannelURL, connector.ChatID),
 		})
 	}
+	data.AutoPayEnabled = len(data.ActiveSubscriptions) > 0
 	return data, http.StatusOK
 }
 
@@ -251,4 +301,26 @@ func (a *application) resolvePublicLegalURL(ctx context.Context, docType domain.
 
 func recurringCancelContext(r *http.Request) context.Context {
 	return context.WithValue(r.Context(), recurringCancelDoneContextKey{}, strings.TrimSpace(r.URL.Query().Get("done")))
+}
+
+func (a *application) syncUserAutoPayPreferenceAfterPublicCancel(ctx context.Context, telegramID int64, now time.Time) {
+	subs, err := a.store.ListSubscriptions(ctx, domain.SubscriptionListQuery{
+		TelegramID: telegramID,
+		Status:     domain.SubscriptionStatusActive,
+		Limit:      20,
+	})
+	if err != nil {
+		logStoreError("list subscriptions for user autopay sync failed", err, "telegram_id", telegramID)
+		return
+	}
+	enabled := false
+	for _, sub := range subs {
+		if sub.AutoPayEnabled {
+			enabled = true
+			break
+		}
+	}
+	if err := a.store.SetUserAutoPayEnabled(ctx, telegramID, enabled, now); err != nil {
+		logStoreError("sync user autopay after public cancel failed", err, "telegram_id", telegramID)
+	}
 }

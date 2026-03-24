@@ -94,7 +94,7 @@ func (h *Handler) handleCallback(ctx context.Context, cb *models.CallbackQuery) 
 			slog.Error("delete registration state failed", "error", err, "telegram_id", cb.From.ID)
 		}
 		h.logAuditEvent(ctx, cb.From.ID, connectorID, domain.AuditActionRegistrationReusedProfile, "")
-		h.sendFinalRegistrationMessage(ctx, cb.From.ID, connectorID)
+		h.sendFinalRegistrationMessage(ctx, cb.From.ID, cb.From.ID, connectorID)
 		return
 	}
 

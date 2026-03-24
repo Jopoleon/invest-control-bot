@@ -3,6 +3,7 @@ module github.com/Jopoleon/invest-control-bot
 go 1.25
 
 require (
+	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/go-co-op/gocron/v2 v2.18.0
 	github.com/go-telegram/bot v1.18.0
 	github.com/jackc/pgx/v5 v5.7.6

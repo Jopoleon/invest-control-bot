@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -92,7 +93,10 @@ func TestRecurringCancelPage_DisablesAutopay(t *testing.T) {
 		t.Fatalf("cancel page does not contain disable action: %q", string(getBody))
 	}
 
-	postReq := httptest.NewRequest(http.MethodPost, "/unsubscribe/"+token, nil)
+	postReq := httptest.NewRequest(http.MethodPost, "/unsubscribe/"+token, strings.NewReader(url.Values{
+		"subscription_id": []string{"1"},
+	}.Encode()))
+	postReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	postRR := httptest.NewRecorder()
 	handler.ServeHTTP(postRR, postReq)
 	if postRR.Code != http.StatusSeeOther {
@@ -105,6 +109,13 @@ func TestRecurringCancelPage_DisablesAutopay(t *testing.T) {
 	}
 	if enabled {
 		t.Fatalf("autopay should be disabled after public cancel")
+	}
+	subs, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{TelegramID: 91001, Status: domain.SubscriptionStatusActive, Limit: 10})
+	if err != nil {
+		t.Fatalf("list subscriptions after disable: %v", err)
+	}
+	if len(subs) != 1 || subs[0].AutoPayEnabled {
+		t.Fatalf("active subscription autopay should be disabled, got %+v", subs)
 	}
 }
 

@@ -35,6 +35,9 @@ func (h *Handler) handlePay(ctx context.Context, cb *models.CallbackQuery) {
 		h.send(ctx, cb.From.ID, "Платежный провайдер пока не настроен.")
 		return
 	}
+	if handled := h.sendExistingSubscriptionMessage(ctx, cb.From.ID, cb.From.ID, connectorID); handled {
+		return
+	}
 	autoPayEnabled, _, err := h.store.GetUserAutoPayEnabled(ctx, cb.From.ID)
 	if err != nil {
 		slog.Error("load user autopay preference failed", "error", err, "telegram_id", cb.From.ID)

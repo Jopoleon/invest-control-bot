@@ -65,7 +65,7 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg *models.Messag
 		if err := h.store.DeleteRegistrationState(ctx, msg.From.ID); err != nil {
 			slog.Error("delete registration state failed", "error", err, "telegram_id", msg.From.ID)
 		}
-		h.sendFinalRegistrationMessage(ctx, msg.Chat.ID, state.ConnectorID)
+		h.sendFinalRegistrationMessage(ctx, msg.Chat.ID, msg.From.ID, state.ConnectorID)
 		h.logAuditEvent(ctx, msg.From.ID, state.ConnectorID, domain.AuditActionRegistrationCompleted, "")
 		return
 	}
@@ -78,7 +78,10 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg *models.Messag
 }
 
 // sendFinalRegistrationMessage sends completion text and pay button.
-func (h *Handler) sendFinalRegistrationMessage(ctx context.Context, chatID, connectorID int64) {
+func (h *Handler) sendFinalRegistrationMessage(ctx context.Context, chatID, telegramID, connectorID int64) {
+	if handled := h.sendExistingSubscriptionMessage(ctx, chatID, telegramID, connectorID); handled {
+		return
+	}
 	text, payKeyboard := h.buildFinalPaymentStep(ctx, connectorID, false)
 	if err := h.tg.SendMessage(ctx, chatID, text, payKeyboard); err != nil {
 		slog.Error("send final message failed", "error", err, "chat_id", chatID, "connector_id", connectorID)

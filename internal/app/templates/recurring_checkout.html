@@ -290,6 +290,8 @@
             {{if .ConnectorDesc}}<p class="lead">{{.ConnectorDesc}}</p>{{else}}<p class="lead">Оформление регулярной подписки с ежемесячной оплатой и сохранением непрерывного доступа.</p>{{end}}
           </div>
 
+          {{if .HelperNote}}<div class="warning">{{.HelperNote}}</div>{{end}}
+
           <div class="metrics">
             <div class="metric">
               <small>Списание</small>

@@ -1162,6 +1162,45 @@ func (s *Store) UpdateSubscriptionStatus(_ context.Context, subscriptionID int64
 	return errors.New("subscription not found")
 }
 
+// DisableAutoPayForActiveSubscriptions clears recurring flag for all active subscriptions of one user.
+func (s *Store) DisableAutoPayForActiveSubscriptions(_ context.Context, telegramID int64, updatedAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if updatedAt.IsZero() {
+		updatedAt = time.Now().UTC()
+	}
+	for paymentID, sub := range s.subsByPayID {
+		if sub.TelegramID != telegramID || sub.Status != domain.SubscriptionStatusActive || !sub.AutoPayEnabled {
+			continue
+		}
+		sub.AutoPayEnabled = false
+		sub.UpdatedAt = updatedAt
+		s.subsByPayID[paymentID] = sub
+	}
+	return nil
+}
+
+// SetSubscriptionAutoPayEnabled updates recurring flag for a single subscription.
+func (s *Store) SetSubscriptionAutoPayEnabled(_ context.Context, subscriptionID int64, enabled bool, updatedAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if updatedAt.IsZero() {
+		updatedAt = time.Now().UTC()
+	}
+	for paymentID, sub := range s.subsByPayID {
+		if sub.ID != subscriptionID {
+			continue
+		}
+		sub.AutoPayEnabled = enabled
+		sub.UpdatedAt = updatedAt
+		s.subsByPayID[paymentID] = sub
+		return nil
+	}
+	return errors.New("subscription not found")
+}
+
 // consentKey builds deterministic compound key for consent map.
 func consentKey(telegramID, connectorID int64) string {
 	return int64ToString(connectorID) + ":" + int64ToString(telegramID)

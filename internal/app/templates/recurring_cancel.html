@@ -261,15 +261,20 @@
                     <p>Период: {{.PeriodDays}} дн.</p>
                     <p>Действует до: {{.EndsAtLabel}}</p>
                     {{if .ChannelURL}}<p>Канал: <a href="{{.ChannelURL}}" target="_blank" rel="noreferrer">{{.ChannelURL}}</a></p>{{end}}
+                    <form method="post" style="margin-top:10px;">
+                      <input type="hidden" name="subscription_id" value="{{.SubscriptionID}}">
+                      <button type="submit">Отключить автоплатеж</button>
+                    </form>
                   </article>
                 {{end}}
               {{else}}
                 <article class="sub">
-                  <h2>Активных подписок сейчас нет</h2>
-                  <p>Если автоплатеж был включен, он все равно будет отключен для будущих списаний.</p>
+                  <h2>Подписок с автоплатежом не найдено</h2>
+                  <p>Сейчас у вас нет активных подписок, для которых требуется отключение автоплатежа.</p>
                 </article>
               {{end}}
             </div>
+            {{if gt .OtherSubscriptions 0}}<p class="footnote">Другие активные подписки без автоплатежа не показаны на этой странице, потому что отключение на них не влияет.</p>{{end}}
           {{end}}
         </section>
 
@@ -282,10 +287,7 @@
           {{if not .ErrorMessage}}
             <div class="actions">
               {{if .AutoPayEnabled}}
-                <form method="post">
-                  <button type="submit">Отключить автоплатеж</button>
-                </form>
-                <p class="footnote">Это действие не удаляет текущую активную подписку немедленно. Оно только запрещает будущие автосписания.</p>
+                <p class="footnote">Для каждой подписки автоплатеж отключается отдельно. Уже оплаченный период по выбранному тарифу сохранится до даты окончания.</p>
               {{else}}
                 <div class="panel">
                   <h3>Автоплатеж уже выключен</h3>
