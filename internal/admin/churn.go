@@ -22,6 +22,7 @@ const (
 )
 
 type churnIssueRecord struct {
+	userID             int64
 	telegramID         int64
 	telegramUsername   string
 	fullName           string
@@ -59,6 +60,14 @@ func (h *Handler) churnPage(w http.ResponseWriter, r *http.Request) {
 		AutoPay:     strings.TrimSpace(r.URL.Query().Get("autopay")),
 		RetryState:  strings.TrimSpace(r.URL.Query().Get("retry_state")),
 		ExportURL:   buildExportURL("/admin/churn/export.csv", r.URL.Query(), lang),
+	}
+
+	if telegramID, err := h.resolveFilterTelegramID(r.Context(), r.URL.Query().Get("user_id"), data.TelegramID); err == nil && telegramID > 0 {
+		data.TelegramID = strconv.FormatInt(telegramID, 10)
+	} else if err != nil {
+		data.Notice = err.Error()
+		h.renderer.render(w, "churn.html", data)
+		return
 	}
 
 	issues, err := h.buildChurnIssues(r.Context(), lang, data.TelegramID, data.ConnectorID, data.Search, data.IssueType, data.AutoPay, data.RetryState)
@@ -191,6 +200,7 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang, telegramIDRaw, con
 		}
 
 		records = append(records, churnIssueRecord{
+			userID:             user.UserID,
 			telegramID:         k.telegramID,
 			telegramUsername:   user.TelegramUsername,
 			fullName:           user.FullName,
@@ -231,6 +241,7 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang, telegramIDRaw, con
 			lastRetryAt = item.recurringState.LastAttemptAt.In(time.Local).Format("2006-01-02 15:04:05")
 		}
 		result = append(result, churnIssueView{
+			UserID:             item.userID,
 			TelegramID:         item.telegramID,
 			TelegramUsername:   item.telegramUsername,
 			FullName:           item.fullName,
@@ -255,11 +266,11 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang, telegramIDRaw, con
 			SubscriptionClass:  subClass,
 			LastAmountRUB:      item.lastAmountRUB,
 			LastEventAt:        item.lastEventAt.In(time.Local).Format("2006-01-02 15:04:05"),
-			UserDetailURL:      buildUserDetailURL(lang, item.telegramID),
+			UserDetailURL:      buildUserDetailURL(lang, item.userID, item.telegramID),
 			CanSendPayLink:     buildAdminBotStartURL(h.botUsername, h.lookupStartPayload(ctx, item.connectorID)) != "",
 			PaymentLinkURL:     buildConnectorPaymentLinkURL(lang, item.telegramID, item.connectorID),
 			CanTriggerRebill:   h.retriggerRebill != nil && item.subscriptionID > 0 && item.autoPayEnabled && item.subscriptionStatus == domain.SubscriptionStatusActive,
-			RebillURL:          buildSubscriptionRebillURL(lang, item.telegramID, item.subscriptionID),
+			RebillURL:          buildSubscriptionRebillURL(lang, item.userID, item.telegramID, item.subscriptionID),
 		})
 	}
 

@@ -47,11 +47,11 @@ type recurringCancelPageData struct {
 
 type recurringCancelSubscriptionView struct {
 	SubscriptionID int64
-	Name        string
-	PriceRUB    int64
-	PeriodDays  int
-	EndsAtLabel string
-	ChannelURL  string
+	Name           string
+	PriceRUB       int64
+	PeriodDays     int
+	EndsAtLabel    string
+	ChannelURL     string
 }
 
 func (a *application) handleRecurringCheckout(w http.ResponseWriter, r *http.Request) {
@@ -210,7 +210,7 @@ func (a *application) buildRecurringCancelPageData(ctx context.Context, token st
 			data.SuccessMessage = "Автоплатеж для подписки \"" + done + "\" отключен. Уже оплаченный период сохранится до конца срока подписки."
 		}
 	}
-	user, found, err := a.store.GetUser(ctx, telegramID)
+	user, found, err := a.resolveTelegramUser(ctx, telegramID)
 	if err != nil {
 		logStoreError("load user for public cancel page failed", err, "telegram_id", telegramID)
 		data.ErrorMessage = "Не удалось загрузить данные подписки."
@@ -248,11 +248,11 @@ func (a *application) buildRecurringCancelPageData(ctx context.Context, token st
 		}
 		data.ActiveSubscriptions = append(data.ActiveSubscriptions, recurringCancelSubscriptionView{
 			SubscriptionID: sub.ID,
-			Name:        connector.Name,
-			PriceRUB:    connector.PriceRUB,
-			PeriodDays:  connector.PeriodDays,
-			EndsAtLabel: sub.EndsAt.In(time.Local).Format("02.01.2006 15:04"),
-			ChannelURL:  resolveConnectorChannelURL(connector.ChannelURL, connector.ChatID),
+			Name:           connector.Name,
+			PriceRUB:       connector.PriceRUB,
+			PeriodDays:     connector.PeriodDays,
+			EndsAtLabel:    sub.EndsAt.In(time.Local).Format("02.01.2006 15:04"),
+			ChannelURL:     resolveConnectorChannelURL(connector.ChannelURL, connector.ChatID),
 		})
 	}
 	data.AutoPayEnabled = len(data.ActiveSubscriptions) > 0

@@ -130,6 +130,61 @@ Messenger adapters должны только:
 
 На development-этапе можно поддержать Long Polling, но production ориентировать только на Webhook.
 
+## Локальная разработка и тестирование
+
+Для MAX локальный dev-flow отличается от Telegram:
+- в Telegram удобно жить через `ngrok` и webhook;
+- в MAX официальный dev-friendly путь проще: long polling через `GET /updates`, если бот не подписан на webhook.
+
+Практический вывод для нашего проекта:
+- для первого локального MAX теста нам не нужен `ngrok`;
+- нужен локальный polling-loop, который:
+  - ходит в MAX `GET /updates`;
+  - нормализует update в наш messenger-neutral inbound event;
+  - передает его в общий handler;
+  - отправляет ответы обратно через MAX API.
+
+Когда tunnel все-таки нужен:
+- если хотим тестировать production-like webhook delivery;
+- если хотим проверить валидацию `X-Max-Bot-Api-Secret`;
+- если хотим пройти полный deployment path с `POST /subscriptions`.
+
+Минимальный milestone, после которого MAX можно будет реально гонять локально:
+1. MAX client с `GET /updates`;
+2. mapper `MAX Update -> internal/messenger.Incoming*`;
+3. sender для текстовых сообщений и простых кнопок;
+4. локальный runner, который запускает polling-loop с access token.
+
+После этого уже можно:
+- поднять сервер локально;
+- запустить MAX poller рядом с ним;
+- писать в реального MAX-бота без webhook и без `ngrok`.
+
+Минимальный набор env для такого сценария:
+```env
+APP_RUNTIME=server
+APP_ENV=local
+LOG_LEVEL=debug
+
+MAX_BOT_TOKEN=...
+MAX_BOT_NAME=...
+MAX_POLLING_TYPES=bot_started,message_created,message_callback
+MAX_POLLING_TIMEOUT_SEC=30
+MAX_POLLING_LIMIT=100
+
+PAYMENT_PROVIDER=mock
+PAYMENT_MOCK_BASE_URL=https://your-ngrok-domain.ngrok-free.app
+
+APP_ENCRYPTION_KEY=replace-with-32-or-more-char-secret
+ADMIN_AUTH_TOKEN=replace-with-strong-admin-token
+```
+
+Запуск локально:
+```bash
+go run ./cmd/server
+go run ./cmd/max-poller
+```
+
 ### Шаг 5. Перенести сценарии по приоритету
 Приоритет переноса:
 1. `/start` и базовая навигация;

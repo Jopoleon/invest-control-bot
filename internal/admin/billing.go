@@ -38,11 +38,15 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 	paymentQuery := domain.PaymentListQuery{Limit: 1000}
 	subQuery := domain.SubscriptionListQuery{Limit: 1000}
 
-	if data.TelegramID != "" {
-		if id, err := strconv.ParseInt(data.TelegramID, 10, 64); err == nil && id > 0 {
-			paymentQuery.TelegramID = id
-			subQuery.TelegramID = id
-		}
+	telegramID, err := h.resolveFilterTelegramID(r.Context(), r.URL.Query().Get("user_id"), data.TelegramID)
+	if err != nil {
+		data.Notice = t(lang, "billing.load_error")
+		h.renderer.render(w, "billing.html", data)
+		return
+	}
+	if telegramID > 0 {
+		paymentQuery.TelegramID = telegramID
+		subQuery.TelegramID = telegramID
 	}
 	if data.ConnectorID != "" {
 		if id, err := strconv.ParseInt(data.ConnectorID, 10, 64); err == nil && id > 0 {

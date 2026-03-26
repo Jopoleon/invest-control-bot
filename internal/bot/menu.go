@@ -183,7 +183,7 @@ func (h *Handler) sendAutopayInfo(ctx context.Context, chatID, telegramID int64)
 }
 
 func (h *Handler) confirmAutopayDisable(ctx context.Context, cb messenger.IncomingAction) {
-	if cb.ChatID == 0 || cb.MessageID == 0 {
+	if cb.ChatID == 0 {
 		return
 	}
 	text := "🔁 Отключить автоплатеж?\n\nПосле отключения новые автоматические списания выполняться не будут. Текущий оплаченный период сохранится до даты окончания подписки."
@@ -193,15 +193,15 @@ func (h *Handler) confirmAutopayDisable(ctx context.Context, cb messenger.Incomi
 			buttonAction("Нет, оставить", menuCallbackAutopayOffNo),
 		},
 	}
-	if err := h.sender.Edit(ctx, messageRef(cb.ChatID, cb.MessageID), messenger.OutgoingMessage{Text: text, Buttons: keyboard}); err != nil {
-		slog.Error("edit autopay disable confirm failed", "error", err, "telegram_id", cb.User.ID)
+	if err := h.respondToAction(ctx, cb, messenger.OutgoingMessage{Text: text, Buttons: keyboard}); err != nil {
+		slog.Error("render autopay disable confirm failed", "error", err, "telegram_id", cb.User.ID)
 		return
 	}
 	h.logAuditEvent(ctx, cb.User.ID, 0, domain.AuditActionAutopayDisableRequested, "")
 }
 
 func (h *Handler) restoreAutopayInfo(ctx context.Context, cb messenger.IncomingAction) {
-	if cb.ChatID == 0 || cb.MessageID == 0 {
+	if cb.ChatID == 0 {
 		return
 	}
 	options := h.listAutopayOptions(ctx, cb.User.ID)
@@ -212,7 +212,7 @@ func (h *Handler) restoreAutopayInfo(ctx context.Context, cb messenger.IncomingA
 		}
 	}
 	text, keyboard := autopayInfoMessage(enabledCount, len(options), h.buildAutopayCancelURL(cb.User.ID))
-	if err := h.sender.Edit(ctx, messageRef(cb.ChatID, cb.MessageID), messenger.OutgoingMessage{Text: text, Buttons: keyboard}); err != nil {
+	if err := h.respondToAction(ctx, cb, messenger.OutgoingMessage{Text: text, Buttons: keyboard}); err != nil {
 		slog.Error("restore autopay info failed", "error", err, "telegram_id", cb.User.ID)
 	}
 }
@@ -236,7 +236,7 @@ func (h *Handler) setAutopayPreference(ctx context.Context, chatID, telegramID i
 }
 
 func (h *Handler) disableAutopayConfirmed(ctx context.Context, cb messenger.IncomingAction) {
-	if cb.ChatID == 0 || cb.MessageID == 0 {
+	if cb.ChatID == 0 {
 		return
 	}
 	if !h.recurringEnabled {
@@ -254,8 +254,8 @@ func (h *Handler) disableAutopayConfirmed(ctx context.Context, cb messenger.Inco
 		return
 	}
 	text := "🔁 Автоплатеж отключен.\n\nНовые автоматические списания больше не будут выполняться. Доступ сохранится до конца уже оплаченного периода."
-	if err := h.sender.Edit(ctx, messageRef(cb.ChatID, cb.MessageID), messenger.OutgoingMessage{Text: text}); err != nil {
-		slog.Error("edit autopay disabled message failed", "error", err, "telegram_id", cb.User.ID)
+	if err := h.respondToAction(ctx, cb, messenger.OutgoingMessage{Text: text}); err != nil {
+		slog.Error("render autopay disabled message failed", "error", err, "telegram_id", cb.User.ID)
 		return
 	}
 	h.logAuditEvent(ctx, cb.User.ID, 0, domain.AuditActionAutopayDisabled, "")
@@ -301,7 +301,7 @@ func (h *Handler) listAutopayOptions(ctx context.Context, telegramID int64) []au
 }
 
 func (h *Handler) showAutopaySubscriptionChooser(ctx context.Context, cb messenger.IncomingAction) {
-	if cb.ChatID == 0 || cb.MessageID == 0 {
+	if cb.ChatID == 0 {
 		return
 	}
 	options := h.listAutopayOptions(ctx, cb.User.ID)
@@ -339,13 +339,13 @@ func (h *Handler) showAutopaySubscriptionChooser(ctx context.Context, cb messeng
 		Action: menuCallbackAutopay,
 	}})
 	text := "🔁 Выберите подписку\n\nДля каждой подписки доступно свое действие: повторное включение без оплаты или оформление автоплатежа для будущих периодов."
-	if err := h.sender.Edit(ctx, messageRef(cb.ChatID, cb.MessageID), messenger.OutgoingMessage{Text: text, Buttons: rows}); err != nil {
+	if err := h.respondToAction(ctx, cb, messenger.OutgoingMessage{Text: text, Buttons: rows}); err != nil {
 		slog.Error("show autopay subscription chooser failed", "error", err, "telegram_id", cb.User.ID)
 	}
 }
 
 func (h *Handler) reactivateAutopayForSubscription(ctx context.Context, cb messenger.IncomingAction) {
-	if cb.ChatID == 0 || cb.MessageID == 0 {
+	if cb.ChatID == 0 {
 		return
 	}
 	subIDRaw := strings.TrimPrefix(cb.Data, menuCallbackAutopayOnSub)
@@ -395,13 +395,13 @@ func (h *Handler) reactivateAutopayForSubscription(ctx context.Context, cb messe
 	h.logAuditEvent(ctx, cb.User.ID, sub.ConnectorID, domain.AuditActionRecurringConsentGranted, "source=autopay_reactivate")
 	h.logAuditEvent(ctx, cb.User.ID, sub.ConnectorID, domain.AuditActionAutopayEnabled, "source=autopay_reactivate;subscription_id="+strconv.FormatInt(sub.ID, 10))
 	text := "🔁 Автоплатеж снова включен.\n\nДля этой активной подписки будущие списания снова будут выполняться автоматически. Повторная оплата не потребовалась."
-	if err := h.sender.Edit(ctx, messageRef(cb.ChatID, cb.MessageID), messenger.OutgoingMessage{Text: text}); err != nil {
-		slog.Error("edit autopay reactivated message failed", "error", err, "telegram_id", cb.User.ID)
+	if err := h.respondToAction(ctx, cb, messenger.OutgoingMessage{Text: text}); err != nil {
+		slog.Error("render autopay reactivated message failed", "error", err, "telegram_id", cb.User.ID)
 	}
 }
 
 func (h *Handler) disableAutopayForSubscription(ctx context.Context, cb messenger.IncomingAction) {
-	if cb.ChatID == 0 || cb.MessageID == 0 {
+	if cb.ChatID == 0 {
 		return
 	}
 	subIDRaw := strings.TrimPrefix(cb.Data, menuCallbackAutopayOffSub)
@@ -439,8 +439,8 @@ func (h *Handler) disableAutopayForSubscription(ctx context.Context, cb messenge
 		text = "🔁 Автоплатеж отключен для подписки «" + connectorName + "»."
 	}
 	text += "\n\nНовые автоматические списания для этого тарифа больше не будут выполняться. Доступ сохранится до конца уже оплаченного периода."
-	if err := h.sender.Edit(ctx, messageRef(cb.ChatID, cb.MessageID), messenger.OutgoingMessage{Text: text}); err != nil {
-		slog.Error("edit autopay disabled per subscription message failed", "error", err, "telegram_id", cb.User.ID)
+	if err := h.respondToAction(ctx, cb, messenger.OutgoingMessage{Text: text}); err != nil {
+		slog.Error("render autopay disabled per subscription message failed", "error", err, "telegram_id", cb.User.ID)
 	}
 }
 

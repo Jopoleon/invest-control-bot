@@ -1,6 +1,8 @@
 package bot
 
 import (
+	"context"
+
 	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 	"github.com/Jopoleon/invest-control-bot/internal/payment"
 	"github.com/Jopoleon/invest-control-bot/internal/store"
@@ -27,4 +29,16 @@ func NewHandler(st store.Store, sender messenger.Sender, paymentService payment.
 		publicBaseURL:    publicBaseURL,
 		encryptionKey:    encryptionKey,
 	}
+}
+
+// HandleIncomingMessage is the messenger-neutral entrypoint used by transport
+// adapters after they map raw update payloads into internal event objects.
+func (h *Handler) HandleIncomingMessage(ctx context.Context, msg messenger.IncomingMessage) {
+	h.handleMessage(ctx, msg)
+}
+
+// HandleIncomingAction is the messenger-neutral callback entrypoint used by
+// transport adapters for button interactions.
+func (h *Handler) HandleIncomingAction(ctx context.Context, action messenger.IncomingAction) {
+	h.handleCallback(ctx, action)
 }

@@ -6,33 +6,53 @@ import (
 	"strings"
 )
 
-func buildUserDetailURL(lang string, telegramID int64) string {
+func buildUserDetailURL(lang string, userID, telegramID int64) string {
 	params := url.Values{}
 	params.Set("lang", lang)
-	params.Set("telegram_id", strconv.FormatInt(telegramID, 10))
+	if userID > 0 {
+		params.Set("user_id", strconv.FormatInt(userID, 10))
+	}
+	if telegramID > 0 {
+		params.Set("telegram_id", strconv.FormatInt(telegramID, 10))
+	}
 	return "/admin/users/view?" + params.Encode()
 }
 
-func buildSubscriptionRevokeURL(lang string, telegramID, subscriptionID int64) string {
+func buildSubscriptionRevokeURL(lang string, userID, telegramID, subscriptionID int64) string {
 	params := url.Values{}
 	params.Set("lang", lang)
-	params.Set("telegram_id", strconv.FormatInt(telegramID, 10))
+	if userID > 0 {
+		params.Set("user_id", strconv.FormatInt(userID, 10))
+	}
+	if telegramID > 0 {
+		params.Set("telegram_id", strconv.FormatInt(telegramID, 10))
+	}
 	params.Set("subscription_id", strconv.FormatInt(subscriptionID, 10))
 	return "/admin/subscriptions/revoke?" + params.Encode()
 }
 
-func buildUserPaymentLinkURL(lang string, telegramID, subscriptionID int64) string {
+func buildUserPaymentLinkURL(lang string, userID, telegramID, subscriptionID int64) string {
 	params := url.Values{}
 	params.Set("lang", lang)
-	params.Set("telegram_id", strconv.FormatInt(telegramID, 10))
+	if userID > 0 {
+		params.Set("user_id", strconv.FormatInt(userID, 10))
+	}
+	if telegramID > 0 {
+		params.Set("telegram_id", strconv.FormatInt(telegramID, 10))
+	}
 	params.Set("subscription_id", strconv.FormatInt(subscriptionID, 10))
 	return "/admin/users/send-payment-link?" + params.Encode()
 }
 
-func buildSubscriptionRebillURL(lang string, telegramID, subscriptionID int64) string {
+func buildSubscriptionRebillURL(lang string, userID, telegramID, subscriptionID int64) string {
 	params := url.Values{}
 	params.Set("lang", lang)
-	params.Set("telegram_id", strconv.FormatInt(telegramID, 10))
+	if userID > 0 {
+		params.Set("user_id", strconv.FormatInt(userID, 10))
+	}
+	if telegramID > 0 {
+		params.Set("telegram_id", strconv.FormatInt(telegramID, 10))
+	}
 	params.Set("subscription_id", strconv.FormatInt(subscriptionID, 10))
 	return "/admin/subscriptions/rebill?" + params.Encode()
 }

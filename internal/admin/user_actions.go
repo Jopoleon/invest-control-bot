@@ -27,18 +27,25 @@ func (h *Handler) sendUserMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	if !h.verifyCSRF(r) {
 		w.WriteHeader(http.StatusForbidden)
-		h.renderUserDetailPage(r.Context(), w, r, lang, parseInt64Default(r.FormValue("telegram_id")), t(lang, "csrf.invalid"))
+		userID, telegramID := parseUserDetailParams(r.FormValue("user_id"), r.FormValue("telegram_id"))
+		h.renderUserDetailForIDs(r.Context(), w, r, lang, userID, telegramID, t(lang, "csrf.invalid"))
 		return
 	}
 
-	telegramID := parseInt64Default(r.FormValue("telegram_id"))
-	if telegramID <= 0 {
+	userID, telegramID := parseUserDetailParams(r.FormValue("user_id"), r.FormValue("telegram_id"))
+	user, found, err := h.resolveUser(r.Context(), userID, telegramID)
+	if err != nil {
+		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
+		return
+	}
+	if !found || user.TelegramID <= 0 {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.invalid_id"))
 		return
 	}
+	telegramID = user.TelegramID
 	text := strings.TrimSpace(r.FormValue("message"))
 	if text == "" {
-		h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, t(lang, "users.actions.message_empty"))
+		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.actions.message_empty"))
 		return
 	}
 
@@ -50,7 +57,7 @@ func (h *Handler) sendUserMessage(w http.ResponseWriter, r *http.Request) {
 			Details:    err.Error(),
 			CreatedAt:  now,
 		})
-		h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, err.Error())
+		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, err.Error())
 		return
 	}
 
@@ -60,7 +67,7 @@ func (h *Handler) sendUserMessage(w http.ResponseWriter, r *http.Request) {
 		Details:    trimAuditDetails(text, 500),
 		CreatedAt:  now,
 	})
-	h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, t(lang, "users.actions.message_sent"))
+	h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.actions.message_sent"))
 }
 
 func (h *Handler) sendUserPaymentLink(w http.ResponseWriter, r *http.Request) {
@@ -79,29 +86,35 @@ func (h *Handler) sendUserPaymentLink(w http.ResponseWriter, r *http.Request) {
 	}
 	if !h.verifyCSRF(r) {
 		w.WriteHeader(http.StatusForbidden)
-		h.renderUserDetailPage(r.Context(), w, r, lang, parseInt64Default(r.FormValue("telegram_id")), t(lang, "csrf.invalid"))
+		userID, telegramID := parseUserDetailParams(r.FormValue("user_id"), r.FormValue("telegram_id"))
+		h.renderUserDetailForIDs(r.Context(), w, r, lang, userID, telegramID, t(lang, "csrf.invalid"))
 		return
 	}
 
-	telegramID := parseInt64Default(r.FormValue("telegram_id"))
+	userID, telegramID := parseUserDetailParams(r.FormValue("user_id"), r.FormValue("telegram_id"))
 	subID := parseInt64Default(r.FormValue("subscription_id"))
 	connectorID := parseInt64Default(r.FormValue("connector_id"))
-	if telegramID <= 0 || (subID <= 0 && connectorID <= 0) {
+	user, foundUser, err := h.resolveUser(r.Context(), userID, telegramID)
+	if err != nil {
+		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
+		return
+	}
+	if !foundUser || user.TelegramID <= 0 || (subID <= 0 && connectorID <= 0) {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.invalid_id"))
 		return
 	}
+	telegramID = user.TelegramID
 
 	var (
 		sub       domain.Subscription
 		ok        bool
-		err       error
 		connector domain.Connector
 		found     bool
 	)
 	if subID > 0 {
 		sub, ok, err = h.store.GetSubscriptionByID(r.Context(), subID)
 		if err != nil || !ok || sub.TelegramID != telegramID {
-			h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, t(lang, "users.revoke.not_found"))
+			h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.revoke.not_found"))
 			return
 		}
 		connectorID = sub.ConnectorID
@@ -109,12 +122,12 @@ func (h *Handler) sendUserPaymentLink(w http.ResponseWriter, r *http.Request) {
 
 	connector, found, err = h.store.GetConnector(r.Context(), connectorID)
 	if err != nil || !found {
-		h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, t(lang, "users.actions.paylink_unavailable"))
+		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.actions.paylink_unavailable"))
 		return
 	}
 	renewURL := buildAdminBotStartURL(h.botUsername, connector.StartPayload)
 	if renewURL == "" {
-		h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, t(lang, "users.actions.paylink_unavailable"))
+		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.actions.paylink_unavailable"))
 		return
 	}
 
@@ -136,7 +149,7 @@ func (h *Handler) sendUserPaymentLink(w http.ResponseWriter, r *http.Request) {
 			Details:     err.Error(),
 			CreatedAt:   now,
 		})
-		h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, err.Error())
+		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, err.Error())
 		return
 	}
 
@@ -147,7 +160,7 @@ func (h *Handler) sendUserPaymentLink(w http.ResponseWriter, r *http.Request) {
 		Details:     "subscription_id=" + strconv.FormatInt(subID, 10) + ",connector_id=" + strconv.FormatInt(connectorID, 10),
 		CreatedAt:   now,
 	})
-	h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, t(lang, "users.actions.paylink_sent"))
+	h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.actions.paylink_sent"))
 }
 
 func (h *Handler) revokeSubscription(w http.ResponseWriter, r *http.Request) {
@@ -166,36 +179,43 @@ func (h *Handler) revokeSubscription(w http.ResponseWriter, r *http.Request) {
 	}
 	if !h.verifyCSRF(r) {
 		w.WriteHeader(http.StatusForbidden)
-		h.renderUserDetailPage(r.Context(), w, r, lang, parseInt64Default(r.FormValue("telegram_id")), t(lang, "csrf.invalid"))
+		userID, telegramID := parseUserDetailParams(r.FormValue("user_id"), r.FormValue("telegram_id"))
+		h.renderUserDetailForIDs(r.Context(), w, r, lang, userID, telegramID, t(lang, "csrf.invalid"))
 		return
 	}
 
-	telegramID := parseInt64Default(r.FormValue("telegram_id"))
+	userID, telegramID := parseUserDetailParams(r.FormValue("user_id"), r.FormValue("telegram_id"))
 	subID := parseInt64Default(r.FormValue("subscription_id"))
-	if telegramID <= 0 || subID <= 0 {
+	user, foundUser, err := h.resolveUser(r.Context(), userID, telegramID)
+	if err != nil {
+		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
+		return
+	}
+	if !foundUser || user.TelegramID <= 0 || subID <= 0 {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.invalid_id"))
 		return
 	}
+	telegramID = user.TelegramID
 
 	sub, ok, err := h.store.GetSubscriptionByID(r.Context(), subID)
 	if err != nil || !ok || sub.TelegramID != telegramID {
-		h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, t(lang, "users.revoke.not_found"))
+		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.revoke.not_found"))
 		return
 	}
 	if sub.Status != domain.SubscriptionStatusActive {
-		h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, t(lang, "users.revoke.only_active"))
+		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.revoke.only_active"))
 		return
 	}
 
 	now := time.Now().UTC()
 	if err := h.store.UpdateSubscriptionStatus(r.Context(), sub.ID, domain.SubscriptionStatusRevoked, now); err != nil {
-		h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, t(lang, "users.revoke.failed"))
+		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.revoke.failed"))
 		return
 	}
 
 	connector, connectorFound, err := h.store.GetConnector(r.Context(), sub.ConnectorID)
 	if err != nil {
-		h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, t(lang, "users.revoke.failed"))
+		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.revoke.failed"))
 		return
 	}
 
@@ -242,7 +262,7 @@ func (h *Handler) revokeSubscription(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:   now,
 	})
 
-	h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, t(lang, "users.revoke.success"))
+	h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.revoke.success"))
 }
 
 func (h *Handler) triggerSubscriptionRebill(w http.ResponseWriter, r *http.Request) {
@@ -261,30 +281,37 @@ func (h *Handler) triggerSubscriptionRebill(w http.ResponseWriter, r *http.Reque
 	}
 	if !h.verifyCSRF(r) {
 		w.WriteHeader(http.StatusForbidden)
-		h.renderUserDetailPage(r.Context(), w, r, lang, parseInt64Default(r.FormValue("telegram_id")), t(lang, "csrf.invalid"))
+		userID, telegramID := parseUserDetailParams(r.FormValue("user_id"), r.FormValue("telegram_id"))
+		h.renderUserDetailForIDs(r.Context(), w, r, lang, userID, telegramID, t(lang, "csrf.invalid"))
 		return
 	}
 
-	telegramID := parseInt64Default(r.FormValue("telegram_id"))
+	userID, telegramID := parseUserDetailParams(r.FormValue("user_id"), r.FormValue("telegram_id"))
 	subID := parseInt64Default(r.FormValue("subscription_id"))
-	if telegramID <= 0 || subID <= 0 {
+	user, foundUser, err := h.resolveUser(r.Context(), userID, telegramID)
+	if err != nil {
+		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
+		return
+	}
+	if !foundUser || user.TelegramID <= 0 || subID <= 0 {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.invalid_id"))
 		return
 	}
+	telegramID = user.TelegramID
 	if h.retriggerRebill == nil {
-		h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, t(lang, "users.actions.rebill_unavailable"))
+		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.actions.rebill_unavailable"))
 		return
 	}
 
 	sub, ok, err := h.store.GetSubscriptionByID(r.Context(), subID)
 	if err != nil || !ok || sub.TelegramID != telegramID {
-		h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, t(lang, "users.revoke.not_found"))
+		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.revoke.not_found"))
 		return
 	}
 
 	result, err := h.retriggerRebill(r.Context(), subID)
 	if err != nil {
-		h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, err.Error())
+		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, err.Error())
 		return
 	}
 
@@ -292,5 +319,5 @@ func (h *Handler) triggerSubscriptionRebill(w http.ResponseWriter, r *http.Reque
 	if result.Existing {
 		notice = t(lang, "users.actions.rebill_existing")
 	}
-	h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, notice)
+	h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, notice)
 }

@@ -1,6 +1,8 @@
 package postgres
 
 import (
+	"database/sql"
+
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
 	"github.com/jmoiron/sqlx"
 )
@@ -30,6 +32,7 @@ func scanPayment(scanner rowScanner) (domain.Payment, error) {
 		&payment.ProviderPaymentID,
 		&status,
 		&payment.Token,
+		&payment.UserID,
 		&payment.TelegramID,
 		&payment.ConnectorID,
 		&payment.SubscriptionID,
@@ -55,6 +58,7 @@ func scanSubscription(scanner rowScanner) (domain.Subscription, error) {
 	)
 	err := scanner.Scan(
 		&item.ID,
+		&item.UserID,
 		&item.TelegramID,
 		&item.ConnectorID,
 		&item.PaymentID,
@@ -115,4 +119,11 @@ func scanAdminSession(scanner rowScanner) (domain.AdminSession, error) {
 		return domain.AdminSession{}, err
 	}
 	return session, nil
+}
+
+func nullableInt64(value int64) sql.NullInt64 {
+	if value <= 0 {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: value, Valid: true}
 }

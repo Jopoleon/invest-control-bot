@@ -33,6 +33,7 @@ type Config struct {
 
 	Postgres PostgresConfig
 	Telegram TelegramConfig
+	MAX      MAXConfig
 	Yookassa YookassaConfig
 	Payment  PaymentConfig
 	Logging  LoggingConfig
@@ -67,6 +68,21 @@ type TelegramConfig struct {
 	BotToken    string
 	BotUsername string
 	Webhook     WebhookConfig
+}
+
+// MAXConfig stores MAX bot credentials, webhook metadata and local polling settings.
+type MAXConfig struct {
+	BotToken string
+	BotName  string
+	Webhook  WebhookConfig
+	Polling  MAXPollingConfig
+}
+
+// MAXPollingConfig controls local long-polling worker parameters.
+type MAXPollingConfig struct {
+	Limit      int
+	TimeoutSec int
+	Types      []string
 }
 
 // WebhookConfig stores Telegram webhook metadata.
@@ -154,6 +170,19 @@ func Load() (Config, error) {
 			Webhook: WebhookConfig{
 				SecretToken: os.Getenv("TELEGRAM_WEBHOOK_SECRET"),
 				PublicURL:   os.Getenv("TELEGRAM_WEBHOOK_PUBLIC_URL"),
+			},
+		},
+		MAX: MAXConfig{
+			BotToken: os.Getenv("MAX_BOT_TOKEN"),
+			BotName:  os.Getenv("MAX_BOT_NAME"),
+			Webhook: WebhookConfig{
+				SecretToken: os.Getenv("MAX_WEBHOOK_SECRET"),
+				PublicURL:   os.Getenv("MAX_WEBHOOK_PUBLIC_URL"),
+			},
+			Polling: MAXPollingConfig{
+				Limit:      getIntEnv("MAX_POLLING_LIMIT", 100),
+				TimeoutSec: getIntEnv("MAX_POLLING_TIMEOUT_SEC", 30),
+				Types:      getCSVEnv("MAX_POLLING_TYPES", []string{"bot_started", "message_created", "message_callback"}),
 			},
 		},
 		Yookassa: YookassaConfig{
@@ -327,6 +356,26 @@ func getBoolEnv(key string, fallback bool) bool {
 		return fallback
 	}
 	return b
+}
+
+func getCSVEnv(key string, fallback []string) []string {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return append([]string(nil), fallback...)
+	}
+	parts := strings.Split(raw, ",")
+	items := make([]string, 0, len(parts))
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if item == "" {
+			continue
+		}
+		items = append(items, item)
+	}
+	if len(items) == 0 {
+		return append([]string(nil), fallback...)
+	}
+	return items
 }
 
 func buildPostgresDSN(pg PostgresConfig) string {

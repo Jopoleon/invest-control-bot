@@ -2,7 +2,6 @@ package admin
 
 import (
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -29,10 +28,14 @@ func (h *Handler) usersPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := domain.UserListQuery{Limit: 300, Search: data.Search}
-	if data.TelegramID != "" {
-		if id, err := strconv.ParseInt(data.TelegramID, 10, 64); err == nil && id > 0 {
-			query.TelegramID = id
-		}
+	telegramID, err := h.resolveFilterTelegramID(r.Context(), r.URL.Query().Get("user_id"), data.TelegramID)
+	if err != nil {
+		data.Notice = t(lang, "users.load_error")
+		h.renderer.render(w, "users.html", data)
+		return
+	}
+	if telegramID > 0 {
+		query.TelegramID = telegramID
 	}
 
 	users, err := h.store.ListUsers(r.Context(), query)
@@ -46,6 +49,7 @@ func (h *Handler) usersPage(w http.ResponseWriter, r *http.Request) {
 	for _, user := range users {
 		autoPayLabel, autoPayClass := autoPayBadge(lang, user.AutoPayEnabled, user.HasAutoPaySettings)
 		data.Users = append(data.Users, userView{
+			UserID:           user.UserID,
 			TelegramID:       user.TelegramID,
 			TelegramUsername: user.TelegramUsername,
 			FullName:         user.FullName,
@@ -54,7 +58,7 @@ func (h *Handler) usersPage(w http.ResponseWriter, r *http.Request) {
 			AutoPay:          autoPayLabel,
 			AutoPayClass:     autoPayClass,
 			UpdatedAt:        user.UpdatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
-			DetailURL:        buildUserDetailURL(lang, user.TelegramID),
+			DetailURL:        buildUserDetailURL(lang, user.UserID, user.TelegramID),
 		})
 	}
 

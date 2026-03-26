@@ -389,6 +389,7 @@
         <h4>{{index .I18N "users.actions.message"}}</h4>
         <form method="POST" action="{{.MessageActionURL}}">
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <input type="hidden" name="user_id" value="{{.User.UserID}}">
           <input type="hidden" name="telegram_id" value="{{.User.TelegramID}}">
           <textarea name="message" placeholder="{{index .I18N "users.actions.message_ph"}}" required></textarea>
           <button type="submit">{{index .I18N "users.actions.message_send"}}</button>
@@ -544,6 +545,7 @@
               {{if .CanSendPayLink}}
               <form method="POST" action="{{.PaymentLinkURL}}">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="user_id" value="{{$.User.UserID}}">
                 <input type="hidden" name="telegram_id" value="{{$.User.TelegramID}}">
                 <input type="hidden" name="subscription_id" value="{{.ID}}">
                 <button type="submit" class="action-btn is-send">{{index $.I18N "users.actions.paylink_send"}}</button>
@@ -552,6 +554,7 @@
               {{if .CanTriggerRebill}}
               <form method="POST" action="{{.RebillURL}}">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="user_id" value="{{$.User.UserID}}">
                 <input type="hidden" name="telegram_id" value="{{$.User.TelegramID}}">
                 <input type="hidden" name="subscription_id" value="{{.ID}}">
                 <button type="submit" class="action-btn is-edit">{{index $.I18N "users.actions.rebill_send"}}</button>
@@ -560,6 +563,7 @@
               {{if .CanRevoke}}
               <form method="POST" action="{{.RevokeURL}}" onsubmit="return confirm('{{index $.I18N "users.revoke.confirm"}}');">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="user_id" value="{{$.User.UserID}}">
                 <input type="hidden" name="telegram_id" value="{{$.User.TelegramID}}">
                 <input type="hidden" name="subscription_id" value="{{.ID}}">
                 <button type="submit" class="action-btn is-delete">{{index $.I18N "users.revoke.button"}}</button>

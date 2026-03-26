@@ -60,6 +60,7 @@ func (a *application) triggerRebill(ctx context.Context, subscriptionID int64, s
 		ProviderPaymentID: "rebill_parent:" + parentPayment.Token,
 		Status:            domain.PaymentStatusPending,
 		Token:             invoiceID,
+		UserID:            subscription.UserID,
 		TelegramID:        subscription.TelegramID,
 		ConnectorID:       subscription.ConnectorID,
 		SubscriptionID:    subscription.ID,

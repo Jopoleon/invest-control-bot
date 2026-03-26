@@ -19,6 +19,23 @@
 - Реализован первый безопасный слой messenger-neutral outbound abstractions: добавлены `internal/messenger` и Telegram adapter на уровне отправки/редактирования сообщений и answer callbacks.
 - Реализован следующий безопасный слой inbound abstractions: внутри `internal/bot` входящие события переведены на transport-neutral `IncomingMessage` / `IncomingAction`, а Telegram DTO остались только в adapter-level маршрутизации update.
 - В persistence foundation подготовлен переход от единственного `telegram_id` к внутреннему `user_id` и отдельным messenger accounts, чтобы MAX можно было подключать без форка user model.
+- Read-only user resolution вынесен в messenger-identity слой: recurring public pages и admin user detail начали использовать lookup по messenger account, а не только прямой `GetUser(telegram_id)`.
+- Admin operational flows больше не опираются только на legacy detail route: user-facing admin actions и user-oriented CSV exports начали передавать и сохранять `user_id`, что уменьшает сцепление с Telegram-only identity.
+- Admin read paths тоже начали жить в mixed mode: filters и exports для `users`, `billing` и `churn` уже принимают `user_id`, но пока резолвят его в legacy `telegram_id` до полного перехода payment/subscription слоя на internal user model.
+- Payment/subscription persistence переведены на следующий additive шаг: `payments` и `subscriptions` уже умеют хранить `user_id` параллельно с legacy `telegram_id`, а write paths платежей и подписок начали реально его заполнять.
+- Для локального MAX development зафиксирован preferred-flow: long polling через `GET /updates` как первый transport adapter, без обязательного `ngrok` и webhook subscriptions.
+- Добавлен начальный пакет `internal/max`:
+  - HTTP client для `GET /updates`, `POST /subscriptions`, `POST /messages`;
+  - polling-loop для local dev;
+  - unit-тесты на transport boundary.
+- Первый живой local polling прогон подтвержден на реальном MAX-боте: токен валиден, webhook subscriptions отсутствуют, updates приходят в `cmd/max-poller`.
+- Mapper `message_created` выровнен под documented payload MAX:
+  - пользователь читается из `message.sender`;
+  - чат/диалог резолвится через `message.recipient.chat_id` или `message.recipient.user_id`;
+  - текст сообщения читается из `message.body.text`;
+  - идентификатор сообщения берется из `message.body.mid`.
+- На случай новых несовпадений shape update adapter теперь пишет raw JSON update в debug-лог при `failed to map`, чтобы следующие итерации дорабатывать по фактическому payload, а не по предположениям.
+- MAX private-dialog transport исправлен: outbound сообщения для текущего bot-DM flow теперь отправляются через `user_id`, а пустые callback-ack больше не отправляются в `/answers`, чтобы не получать `proto.payload` на harmless callbacks.
 
 ## Дорожная карта
 
@@ -42,7 +59,7 @@
   - внутренний `user_id` и foundation для multiple messenger identities в store/domain/migrations.
 
 ### Реализация MAX adapter
-Статус: pending
+Статус: in_progress
 - Подключить официальный Go SDK MAX либо тонкий HTTP client поверх platform-api.max.ru.
 - Реализовать webhook endpoint MAX с проверкой секрета `X-Max-Bot-Api-Secret`.
 - Реализовать приём update types, базовый dispatcher и отправку сообщений.

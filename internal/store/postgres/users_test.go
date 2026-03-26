@@ -41,6 +41,28 @@ func TestGetUserByID(t *testing.T) {
 	}
 }
 
+func TestGetUserByMessenger(t *testing.T) {
+	store, mock, cleanup := newMockStore(t)
+	defer cleanup()
+	rows := sqlmock.NewRows([]string{"id", "telegram_id", "telegram_username", "full_name", "phone", "email", "updated_at"}).
+		AddRow(int64(9), int64(555), "egor", "Egor", "", "", time.Unix(1710000000, 0).UTC())
+
+	mock.ExpectQuery(`SELECT u\.id, COALESCE\(u\.telegram_id, 0\), u\.telegram_username, u\.full_name, u\.phone, u\.email, u\.updated_at`).
+		WithArgs(string(domain.MessengerKindTelegram), "555").
+		WillReturnRows(rows)
+
+	user, found, err := store.GetUserByMessenger(context.Background(), domain.MessengerKindTelegram, "555")
+	if err != nil {
+		t.Fatalf("GetUserByMessenger: %v", err)
+	}
+	if !found || user.ID != 9 || user.TelegramID != 555 {
+		t.Fatalf("GetUserByMessenger returned %+v, found=%v", user, found)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("ExpectationsWereMet: %v", err)
+	}
+}
+
 func TestGetOrCreateUserByMessengerCreatesNewTelegramUser(t *testing.T) {
 	store, mock, cleanup := newMockStore(t)
 	defer cleanup()

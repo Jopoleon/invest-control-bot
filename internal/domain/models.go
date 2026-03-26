@@ -193,6 +193,7 @@ type Payment struct {
 	ProviderPaymentID string
 	Status            PaymentStatus
 	Token             string
+	UserID            int64
 	TelegramID        int64
 	ConnectorID       int64
 	SubscriptionID    int64
@@ -217,6 +218,7 @@ const (
 // Subscription stores purchased access period linked to successful payment.
 type Subscription struct {
 	ID                 int64
+	UserID             int64
 	TelegramID         int64
 	ConnectorID        int64
 	PaymentID          int64
@@ -232,6 +234,7 @@ type Subscription struct {
 
 // PaymentListQuery describes admin filters for payment list.
 type PaymentListQuery struct {
+	UserID     int64
 	TelegramID int64
 
 	ConnectorID int64
@@ -245,6 +248,7 @@ type PaymentListQuery struct {
 
 // SubscriptionListQuery describes admin filters for subscription list.
 type SubscriptionListQuery struct {
+	UserID     int64
 	TelegramID int64
 
 	ConnectorID int64

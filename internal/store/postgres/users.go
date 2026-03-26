@@ -109,6 +109,32 @@ func (s *Store) GetUser(ctx context.Context, telegramID int64) (domain.User, boo
 	return u, true, nil
 }
 
+// GetUserByMessenger resolves an existing user by external messenger identity without creating one.
+func (s *Store) GetUserByMessenger(ctx context.Context, kind domain.MessengerKind, externalUserID string) (domain.User, bool, error) {
+	var u domain.User
+	err := s.db.QueryRowContext(ctx, `
+		SELECT u.id, COALESCE(u.telegram_id, 0), u.telegram_username, u.full_name, u.phone, u.email, u.updated_at
+		FROM user_messenger_accounts a
+		JOIN users u ON u.id = a.user_id
+		WHERE a.messenger_kind = $1 AND a.external_user_id = $2
+	`, string(kind), externalUserID).Scan(&u.ID, &u.TelegramID, &u.TelegramUsername, &u.FullName, &u.Phone, &u.Email, &u.UpdatedAt)
+	if err == nil {
+		return u, true, nil
+	}
+	if err != sql.ErrNoRows {
+		return domain.User{}, false, err
+	}
+	if kind != domain.MessengerKindTelegram {
+		return domain.User{}, false, nil
+	}
+
+	telegramID, parseErr := strconv.ParseInt(externalUserID, 10, 64)
+	if parseErr != nil || telegramID <= 0 {
+		return domain.User{}, false, nil
+	}
+	return s.GetUser(ctx, telegramID)
+}
+
 // GetOrCreateUserByMessenger resolves a user by external messenger identity and creates one if absent.
 func (s *Store) GetOrCreateUserByMessenger(ctx context.Context, kind domain.MessengerKind, externalUserID, username string) (domain.User, bool, error) {
 	tx, err := s.db.BeginTxx(ctx, nil)
@@ -386,6 +412,34 @@ func nullableTelegramID(telegramID int64) sql.NullInt64 {
 		return sql.NullInt64{}
 	}
 	return sql.NullInt64{Int64: telegramID, Valid: true}
+}
+
+func (s *Store) resolveUserIdentity(ctx context.Context, userID, telegramID int64) (int64, int64, error) {
+	if userID > 0 {
+		user, found, err := s.GetUserByID(ctx, userID)
+		if err != nil {
+			return 0, 0, err
+		}
+		if found {
+			if telegramID <= 0 {
+				telegramID = user.TelegramID
+			}
+			return user.ID, telegramID, nil
+		}
+	}
+	if telegramID > 0 {
+		user, found, err := s.GetUser(ctx, telegramID)
+		if err != nil {
+			return 0, 0, err
+		}
+		if found {
+			if userID <= 0 {
+				userID = user.ID
+			}
+			return userID, telegramID, nil
+		}
+	}
+	return userID, telegramID, nil
 }
 
 func (s *Store) saveUserMessengerAccount(ctx context.Context, account domain.UserMessengerAccount) error {

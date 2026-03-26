@@ -38,6 +38,11 @@ func (h *Handler) handlePay(ctx context.Context, cb messenger.IncomingAction) {
 	if handled := h.sendExistingSubscriptionMessage(ctx, cb.ChatID, cb.User.ID, connectorID); handled {
 		return
 	}
+	user, resolved := h.resolveTelegramUser(ctx, cb.User.ID, cb.User.Username)
+	if !resolved {
+		h.send(ctx, cb.ChatID, "Не удалось подготовить профиль пользователя для оплаты. Попробуйте позже.")
+		return
+	}
 	autoPayEnabled, _, err := h.store.GetUserAutoPayEnabled(ctx, cb.User.ID)
 	if err != nil {
 		slog.Error("load user autopay preference failed", "error", err, "telegram_id", cb.User.ID)
@@ -85,6 +90,7 @@ func (h *Handler) handlePay(ctx context.Context, cb messenger.IncomingAction) {
 		Provider:       h.payment.ProviderName(),
 		Status:         domain.PaymentStatusPending,
 		Token:          token,
+		UserID:         user.ID,
 		TelegramID:     cb.User.ID,
 		ConnectorID:    connectorID,
 		AmountRUB:      connector.PriceRUB,

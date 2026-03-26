@@ -553,6 +553,30 @@ func (s *Store) GetUser(_ context.Context, telegramID int64) (domain.User, bool,
 	return u, ok, nil
 }
 
+// GetUserByMessenger resolves an existing user by external messenger identity without creating one.
+func (s *Store) GetUserByMessenger(_ context.Context, kind domain.MessengerKind, externalUserID string) (domain.User, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if account, ok := s.messengerAccounts[messengerAccountKey(kind, externalUserID)]; ok {
+		user, found := s.users[account.UserID]
+		return user, found, nil
+	}
+	if kind != domain.MessengerKindTelegram {
+		return domain.User{}, false, nil
+	}
+	telegramID, err := strconv.ParseInt(externalUserID, 10, 64)
+	if err != nil || telegramID <= 0 {
+		return domain.User{}, false, nil
+	}
+	userID, ok := s.userIDByTelegram[telegramID]
+	if !ok {
+		return domain.User{}, false, nil
+	}
+	user, found := s.users[userID]
+	return user, found, nil
+}
+
 // GetOrCreateUserByMessenger resolves a user by external messenger identity or creates one if absent.
 func (s *Store) GetOrCreateUserByMessenger(_ context.Context, kind domain.MessengerKind, externalUserID, username string) (domain.User, bool, error) {
 	s.mu.Lock()
@@ -848,6 +872,7 @@ func (s *Store) CreatePayment(_ context.Context, payment domain.Payment) error {
 	if payment.CreatedAt.IsZero() {
 		payment.CreatedAt = now
 	}
+	payment.UserID, payment.TelegramID = s.resolveUserIdentityLocked(payment.UserID, payment.TelegramID)
 	payment.ID = s.nextPaymentID
 	s.nextPaymentID++
 	payment.UpdatedAt = now
@@ -962,6 +987,7 @@ func (s *Store) UpsertSubscriptionByPayment(_ context.Context, sub domain.Subscr
 	if sub.CreatedAt.IsZero() {
 		sub.CreatedAt = now
 	}
+	sub.UserID, sub.TelegramID = s.resolveUserIdentityLocked(sub.UserID, sub.TelegramID)
 	// Re-activation means reminder should be sent again for the new period.
 	sub.ReminderSentAt = nil
 	sub.ExpiryNoticeSentAt = nil
@@ -1024,6 +1050,9 @@ func (s *Store) ListPayments(_ context.Context, query domain.PaymentListQuery) (
 
 	filtered := make([]domain.Payment, 0, len(s.payments))
 	for _, item := range s.payments {
+		if query.UserID > 0 && item.UserID != query.UserID {
+			continue
+		}
 		if query.TelegramID > 0 && item.TelegramID != query.TelegramID {
 			continue
 		}
@@ -1068,6 +1097,9 @@ func (s *Store) ListSubscriptions(_ context.Context, query domain.SubscriptionLi
 
 	filtered := make([]domain.Subscription, 0, len(s.subsByPayID))
 	for _, item := range s.subsByPayID {
+		if query.UserID > 0 && item.UserID != query.UserID {
+			continue
+		}
 		if query.TelegramID > 0 && item.TelegramID != query.TelegramID {
 			continue
 		}
@@ -1324,6 +1356,23 @@ func int64ToString(v int64) string {
 
 func messengerAccountKey(kind domain.MessengerKind, externalUserID string) string {
 	return string(kind) + ":" + strings.TrimSpace(externalUserID)
+}
+
+func (s *Store) resolveUserIdentityLocked(userID, telegramID int64) (int64, int64) {
+	if userID > 0 {
+		if user, ok := s.users[userID]; ok {
+			if telegramID <= 0 {
+				telegramID = user.TelegramID
+			}
+			return user.ID, telegramID
+		}
+	}
+	if telegramID > 0 {
+		if resolvedUserID, ok := s.userIDByTelegram[telegramID]; ok {
+			return resolvedUserID, telegramID
+		}
+	}
+	return userID, telegramID
 }
 
 func (s *Store) upsertMessengerAccountLocked(account domain.UserMessengerAccount) {

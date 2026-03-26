@@ -51,6 +51,14 @@ func TestGetOrCreateUserByMessengerCreatesTelegramUserAndAccount(t *testing.T) {
 	if accounts[0].MessengerKind != domain.MessengerKindTelegram || accounts[0].ExternalUserID != "264704572" {
 		t.Fatalf("unexpected account: %+v", accounts[0])
 	}
+
+	gotByMessenger, found, err := st.GetUserByMessenger(ctx, domain.MessengerKindTelegram, "264704572")
+	if err != nil {
+		t.Fatalf("GetUserByMessenger: %v", err)
+	}
+	if !found || gotByMessenger.ID != user.ID {
+		t.Fatalf("GetUserByMessenger returned %+v, found=%v", gotByMessenger, found)
+	}
 }
 
 func TestGetOrCreateUserByMessengerReturnsExistingAndRefreshesUsername(t *testing.T) {

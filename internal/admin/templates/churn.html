@@ -143,6 +143,7 @@
               {{if .CanSendPayLink}}
               <form method="POST" action="{{.PaymentLinkURL}}">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="user_id" value="{{.UserID}}">
                 <input type="hidden" name="telegram_id" value="{{.TelegramID}}">
                 <input type="hidden" name="connector_id" value="{{.ConnectorID}}">
                 <button type="submit" class="action-btn is-send">{{index $.I18N "users.actions.paylink_send"}}</button>
@@ -151,6 +152,7 @@
               {{if .CanTriggerRebill}}
               <form method="POST" action="{{.RebillURL}}">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="user_id" value="{{.UserID}}">
                 <input type="hidden" name="telegram_id" value="{{.TelegramID}}">
                 <input type="hidden" name="subscription_id" value="{{.SubscriptionID}}">
                 <button type="submit" class="action-btn is-edit">{{index $.I18N "users.actions.rebill_send"}}</button>

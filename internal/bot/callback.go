@@ -114,7 +114,7 @@ func (h *Handler) handleCallback(ctx context.Context, cb messenger.IncomingActio
 // handlePayConsentToggle re-renders the final checkout step with the currently
 // selected recurring opt-in state, but does not create a payment yet.
 func (h *Handler) handlePayConsentToggle(ctx context.Context, cb messenger.IncomingAction) {
-	if cb.ChatID == 0 || cb.MessageID == 0 {
+	if cb.ChatID == 0 {
 		return
 	}
 
@@ -134,11 +134,11 @@ func (h *Handler) handlePayConsentToggle(ctx context.Context, cb messenger.Incom
 	}
 
 	text, keyboard := h.buildFinalPaymentStep(ctx, connectorID, enabled)
-	if err := h.sender.Edit(ctx, messageRef(cb.ChatID, cb.MessageID), messenger.OutgoingMessage{
+	if err := h.respondToAction(ctx, cb, messenger.OutgoingMessage{
 		Text:    text,
 		Buttons: keyboard,
 	}); err != nil {
-		slog.Error("edit pay consent message failed", "error", err, "chat_id", cb.ChatID, "message_id", cb.MessageID)
+		slog.Error("render pay consent message failed", "error", err, "chat_id", cb.ChatID, "message_id", cb.MessageID)
 		return
 	}
 }

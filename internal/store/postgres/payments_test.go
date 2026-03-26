@@ -2,12 +2,74 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"regexp"
 	"testing"
 	"time"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
+	"github.com/Jopoleon/invest-control-bot/internal/domain"
 )
+
+func TestCreatePaymentResolvesAndStoresUserID(t *testing.T) {
+	store, mock, cleanup := newMockStore(t)
+	defer cleanup()
+
+	now := time.Date(2026, 3, 26, 14, 0, 0, 0, time.UTC)
+	mock.ExpectQuery(regexp.QuoteMeta(`
+		SELECT id, COALESCE(telegram_id, 0), telegram_username, full_name, phone, email, updated_at
+		FROM users
+		WHERE telegram_id = $1
+	`)).
+		WithArgs(int64(264704572)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "telegram_id", "telegram_username", "full_name", "phone", "email", "updated_at",
+		}).AddRow(17, 264704572, "emiloserdov", "Egor", "", "", now))
+
+	mock.ExpectExec(regexp.QuoteMeta(`
+		INSERT INTO payments (
+			provider, provider_payment_id, status, token, user_id, telegram_id, connector_id, subscription_id, parent_payment_id,
+			auto_pay_enabled, amount_rub, checkout_url, created_at, paid_at, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+	`)).
+		WithArgs(
+			"robokassa",
+			"",
+			"pending",
+			"inv-1",
+			sql.NullInt64{Int64: 17, Valid: true},
+			int64(264704572),
+			int64(11),
+			int64(0),
+			int64(0),
+			true,
+			int64(2300),
+			"https://example.com/pay",
+			now,
+			nil,
+			now,
+		).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	err := store.CreatePayment(context.Background(), domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPending,
+		Token:          "inv-1",
+		TelegramID:     264704572,
+		ConnectorID:    11,
+		AmountRUB:      2300,
+		AutoPayEnabled: true,
+		CheckoutURL:    "https://example.com/pay",
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	})
+	if err != nil {
+		t.Fatalf("CreatePayment: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
 
 func TestUpdatePaymentPaidMarksRow(t *testing.T) {
 	store, mock, cleanup := newMockStore(t)

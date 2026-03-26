@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 	"github.com/Jopoleon/invest-control-bot/internal/store/memory"
 	"github.com/go-telegram/bot/models"
 )
@@ -64,6 +65,42 @@ func TestHandlePayConsentToggle_RendersRecurringEnabledState(t *testing.T) {
 	}
 	if msg.Buttons[1][0].Action != "pay:"+int64ToString(connectorID)+":1" {
 		t.Fatalf("pay action = %q", msg.Buttons[1][0].Action)
+	}
+}
+
+func TestHandlePayConsentToggle_MAXFallbackSendsNewMessageWhenEditIsUnavailable(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	sender := &fakeSender{}
+	h := NewHandler(st, sender, nil, true, "https://investcontrol.example", "test-encryption-key-123456789012345")
+
+	connectorID := seedBotConnector(t, ctx, st, "in-consent-toggle-max")
+	seedRecurringLegalDocs(t, ctx, st)
+
+	h.handlePayConsentToggle(ctx, messenger.IncomingAction{
+		Ref: messenger.ActionRef{Kind: messenger.KindMAX, ID: "cb-max-toggle"},
+		User: messenger.UserIdentity{
+			Kind:     messenger.KindMAX,
+			ID:       9105,
+			Username: "egor",
+		},
+		ChatID:    9105,
+		MessageID: 0,
+		Data:      payConsentCallbackPrefix + int64ToString(connectorID) + ":on",
+	})
+
+	if len(sender.edited) != 0 {
+		t.Fatalf("edited messages = %d, want 0", len(sender.edited))
+	}
+	if len(sender.sent) != 1 {
+		t.Fatalf("sent messages = %d, want 1", len(sender.sent))
+	}
+	msg := sender.sent[0].msg
+	if !strings.Contains(msg.Text, "Автоплатеж будет включен") {
+		t.Fatalf("text = %q", msg.Text)
+	}
+	if len(msg.Buttons) != 2 {
+		t.Fatalf("rows = %d, want 2", len(msg.Buttons))
 	}
 }
 

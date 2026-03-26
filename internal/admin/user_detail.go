@@ -15,13 +15,21 @@ func (h *Handler) userDetailPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	lang := h.resolveLang(w, r)
-	rawTelegramID := strings.TrimSpace(r.URL.Query().Get("telegram_id"))
-	telegramID, err := strconv.ParseInt(rawTelegramID, 10, 64)
-	if err != nil || telegramID <= 0 {
+	userID, telegramID := parseUserDetailParams(r.URL.Query().Get("user_id"), r.URL.Query().Get("telegram_id"))
+	if userID <= 0 && telegramID <= 0 {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.invalid_id"))
 		return
 	}
-	h.renderUserDetailPage(r.Context(), w, r, lang, telegramID, strings.TrimSpace(r.URL.Query().Get("notice")))
+	user, found, err := h.resolveUser(r.Context(), userID, telegramID)
+	if err != nil {
+		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
+		return
+	}
+	if !found {
+		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.not_found"))
+		return
+	}
+	h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, strings.TrimSpace(r.URL.Query().Get("notice")))
 }
 
 func renderUserDetailError(h *Handler, w http.ResponseWriter, r *http.Request, lang, notice string) {
@@ -40,7 +48,7 @@ func renderUserDetailError(h *Handler, w http.ResponseWriter, r *http.Request, l
 }
 
 func (h *Handler) renderUserDetailPage(ctx context.Context, w http.ResponseWriter, r *http.Request, lang string, telegramID int64, notice string) {
-	item, found, err := h.store.GetUser(ctx, telegramID)
+	item, found, err := h.resolveUser(ctx, 0, telegramID)
 	if err != nil {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
 		return
@@ -49,7 +57,11 @@ func (h *Handler) renderUserDetailPage(ctx context.Context, w http.ResponseWrite
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.not_found"))
 		return
 	}
+	h.renderResolvedUserDetailPage(ctx, w, r, lang, item, notice)
+}
 
+func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.ResponseWriter, r *http.Request, lang string, item domain.User, notice string) {
+	telegramID := item.TelegramID
 	autoPayEnabled, hasAutoPaySettings, err := h.store.GetUserAutoPayEnabled(ctx, telegramID)
 	if err != nil {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
@@ -102,6 +114,7 @@ func (h *Handler) renderUserDetailPage(ctx context.Context, w http.ResponseWrite
 		MessageActionURL: "/admin/users/message?lang=" + lang,
 		AutopayCancelURL: h.buildAutopayCancelURL(item.TelegramID),
 		User: userView{
+			UserID:           item.ID,
 			TelegramID:       item.TelegramID,
 			TelegramUsername: item.TelegramUsername,
 			FullName:         item.FullName,
@@ -189,11 +202,11 @@ func (h *Handler) renderUserDetailPage(ctx context.Context, w http.ResponseWrite
 			EndsAt:           s.EndsAt.In(time.Local).Format("2006-01-02 15:04:05"),
 			CreatedAt:        s.CreatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
 			CanRevoke:        s.Status == domain.SubscriptionStatusActive,
-			RevokeURL:        buildSubscriptionRevokeURL(lang, telegramID, s.ID),
+			RevokeURL:        buildSubscriptionRevokeURL(lang, item.ID, telegramID, s.ID),
 			CanSendPayLink:   canSendPayLink,
-			PaymentLinkURL:   buildUserPaymentLinkURL(lang, telegramID, s.ID),
+			PaymentLinkURL:   buildUserPaymentLinkURL(lang, item.ID, telegramID, s.ID),
 			CanTriggerRebill: h.retriggerRebill != nil && s.Status == domain.SubscriptionStatusActive && s.AutoPayEnabled,
-			RebillURL:        buildSubscriptionRebillURL(lang, telegramID, s.ID),
+			RebillURL:        buildSubscriptionRebillURL(lang, item.ID, telegramID, s.ID),
 		})
 	}
 

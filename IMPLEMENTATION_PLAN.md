@@ -340,13 +340,24 @@
 - Собрать и зафиксировать официальные ограничения и возможности MAX Bot API.
 - Подготовить messenger-neutral декомпозицию текущего Telegram-слоя.
 - Выделить transport adapters и общий use-case слой для подписок, платежей и recurring.
+- Уже подготовлено:
+  - messenger-neutral inbound/outbound слой внутри `internal/bot`;
+  - внутренний `user_id` и `user_messenger_accounts`;
+  - mixed-mode resolution в `bot`, `app` и `admin`;
+  - additive `user_id` слой в `payments` и `subscriptions` без отказа от legacy `telegram_id`.
+- Стартовый MAX transport foundation добавлен:
+  - `internal/max` client;
+  - long polling через `GET /updates`;
+  - базовый outbound `POST /messages`;
+  - unit-тесты на polling и отправку сообщений.
 - Определить минимальный MAX MVP:
   - старт;
   - меню;
   - просмотр подписок;
   - запуск оплаты;
   - recurring status / cancel / re-enable через общие web entrypoints.
-- После декомпозиции реализовать proof-of-concept MAX webhook adapter.
+- Для локальной разработки MAX первым этапом идем через long polling (`GET /updates`), а не через webhook tunnel.
+- После этого реализовать proof-of-concept MAX webhook adapter для production-контура.
 Примечание: детали вынесены в `docs/MAX_BOT_RESEARCH.md`, `docs/MAX_DECOMPOSITION_PLAN.md` и `docs/MAX_IMPLEMENTATION_PLAN.md`.
 
 ## 8) Нефункциональные требования
@@ -453,6 +464,11 @@
 - `2026-03-26` Параллельно с multi-messenger рефакторингом усилено unit-покрытие bot/use-case слоя: добавлен `fake sender` и сценарные тесты на `/menu`, повторное включение автоплатежа без новой оплаты и отключение автоплатежа только для одной подписки с корректной агрегацией user autopay state.
 - `2026-03-26` В persistence foundation введен внутренний `user_id` и подготовлена поддержка внешних messenger identities: добавлены доменные типы `MessengerKind` / `UserMessengerAccount`, миграция `0013_user_messenger_accounts.sql`, новые store-методы lookup/create user by messenger, а также unit-тесты для memory/postgres реализаций.
 - `2026-03-26` Новый identity foundation начал использоваться в рабочем bot flow: `accept_terms` и шаги регистрации теперь разрешают/создают пользователя через `GetOrCreateUserByMessenger`, а unit-тесты дополнительно проверяют создание внутреннего пользователя и Telegram account link.
+- `2026-03-26` Продолжен identity-refactor за пределами bot-layer: добавлен read-only lookup `GetUserByMessenger`, public recurring cancel page переведена на messenger-identity resolution, а admin user detail теперь открывается как по новому `user_id`, так и по legacy `telegram_id`; добавлены unit-тесты на новый lookup и admin detail route.
+- `2026-03-26` Admin action/export layer подтянут к dual-identity модели: user detail forms и action URLs теперь прокидывают `user_id`, POST handlers (`message`, `paylink`, `revoke`, `rebill`) сначала резолвят пользователя по `user_id/telegram_id`, а CSV-экспорт пользователей и churn-выгрузка получили колонку `user_id`; добавлен action-level тест на отправку сообщения через `user_id`.
+- `2026-03-26` Read-only admin filters начали принимать `user_id` без переписывания query-моделей store: `users`, `billing`, `churn` и связанные CSV exports резолвят `user_id` в текущий `telegram_id` через unified identity helper; добавлены unit-тесты на filter-resolution и users-page filtering по `user_id`.
+- `2026-03-26` Payment/subscription слой переведен на следующий additive шаг multi-messenger migration: добавлена миграция `0014_payments_subscriptions_user_id.sql`, `payments` и `subscriptions` теперь сохраняют `user_id` параллельно с legacy `telegram_id`, а write/read paths и store-фильтры начали реально использовать обе модели.
+- `2026-03-26` Для MAX добавлен первый рабочий local-dev transport: `cmd/max-poller` поднимает long polling через `GET /updates`, пакет `internal/max` покрыт client/poller/adapter unit-тестами, а mapper `message_created` выровнен под documented payload (`message.sender`, `message.recipient`, `message.body.mid`) и теперь логирует raw update при очередном несовпадении формы события.
 
 ## 13) Референсный flow текущего бота (для воспроизведения)
 Источник: `telegram-bot-flow.md`.

@@ -26,10 +26,12 @@
 
 ## Структура
 - `cmd/server` - точка входа backend сервиса.
+- `cmd/max-poller` - локальный MAX long-polling worker для dev/test.
 - `internal/config` - загрузка и валидация конфигурации.
 - `internal/app` - HTTP-сервер, маршрутизация, lifecycle jobs, payment callbacks.
 - `internal/admin` - server-rendered админка, auth/session middleware, экраны операторов.
 - `internal/bot` - Telegram flow, FSM регистрации, кабинет пользователя, checkout flow.
+- `internal/max` - MAX transport client, sender, adapter и polling loop.
 - `internal/payment` - интеграции платежных провайдеров.
 - `internal/telegram` - клиент Telegram API.
 - `internal/domain` - доменные модели и audit action constants.
@@ -54,6 +56,39 @@
 ```bash
 go run ./cmd/server
 ```
+
+### Локальный MAX development
+Для MAX локальный dev-flow рекомендуем запускать через long polling, а не через webhook tunnel.
+
+Минимальные env:
+```env
+APP_RUNTIME=server
+APP_ENV=local
+LOG_LEVEL=debug
+
+MAX_BOT_TOKEN=...
+MAX_BOT_NAME=...
+MAX_POLLING_TYPES=bot_started,message_created,message_callback
+MAX_POLLING_TIMEOUT_SEC=30
+MAX_POLLING_LIMIT=100
+
+PAYMENT_PROVIDER=mock
+PAYMENT_MOCK_BASE_URL=https://your-ngrok-domain.ngrok-free.app
+
+APP_ENCRYPTION_KEY=replace-with-32-or-more-char-secret
+ADMIN_AUTH_TOKEN=replace-with-strong-admin-token
+```
+
+Запуск:
+```bash
+go run ./cmd/server
+go run ./cmd/max-poller
+```
+
+Важно:
+- для long polling у MAX не нужен `ngrok`;
+- `ngrok` нужен только для web/payment ссылок, если ты открываешь их с телефона;
+- перед polling у MAX-бота не должно быть активной webhook subscription.
 
 ## Тесты
 ```bash

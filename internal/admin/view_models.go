@@ -174,6 +174,7 @@ type billingGroupView struct {
 }
 
 type userView struct {
+	UserID           int64
 	TelegramID       int64
 	TelegramUsername string
 	FullName         string
@@ -240,6 +241,7 @@ type recurringSummaryView struct {
 }
 
 type churnIssueView struct {
+	UserID             int64
 	TelegramID         int64
 	TelegramUsername   string
 	FullName           string

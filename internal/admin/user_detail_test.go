@@ -1,10 +1,16 @@
 package admin
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/store/memory"
 )
 
 func TestBuildRecurringSummary_EnabledWithoutConsent(t *testing.T) {
@@ -44,5 +50,48 @@ func TestBuildRecurringSummary_UsesRebillState(t *testing.T) {
 	}
 	if got.FailedAttempts != 1 {
 		t.Fatalf("FailedAttempts = %d", got.FailedAttempts)
+	}
+}
+
+func TestBuildUserDetailURL_IncludesUserIDAndTelegramID(t *testing.T) {
+	got := buildUserDetailURL("ru", 17, 264704572)
+	if !strings.Contains(got, "user_id=17") {
+		t.Fatalf("user_id missing from url: %q", got)
+	}
+	if !strings.Contains(got, "telegram_id=264704572") {
+		t.Fatalf("telegram_id missing from url: %q", got)
+	}
+}
+
+func TestUserDetailPage_AllowsUserIDLookup(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	h := NewHandler(st, "test-admin-token", "test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil)
+
+	if err := st.SaveUser(ctx, domain.User{
+		TelegramID:       264704572,
+		TelegramUsername: "emiloserdov",
+		FullName:         "Egor Miloserdov",
+		UpdatedAt:        time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("SaveUser: %v", err)
+	}
+	user, found, err := st.GetUser(ctx, 264704572)
+	if err != nil {
+		t.Fatalf("GetUser: %v", err)
+	}
+	if !found {
+		t.Fatal("expected saved user")
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/users/view?lang=ru&user_id="+strconv.FormatInt(user.ID, 10), nil)
+	rec := httptest.NewRecorder()
+	h.userDetailPage(rec, withAdminAuthorized(req, &authorizedSession{session: domain.AdminSession{ID: 1}}))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), user.FullName) {
+		t.Fatalf("response does not contain user full name: %q", rec.Body.String())
 	}
 }

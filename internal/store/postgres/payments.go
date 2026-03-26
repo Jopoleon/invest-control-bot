@@ -17,16 +17,23 @@ func (s *Store) CreatePayment(ctx context.Context, payment domain.Payment) error
 	if payment.UpdatedAt.IsZero() {
 		payment.UpdatedAt = now
 	}
-	_, err := s.db.ExecContext(ctx, `
+	resolvedUserID, resolvedTelegramID, err := s.resolveUserIdentity(ctx, payment.UserID, payment.TelegramID)
+	if err != nil {
+		return err
+	}
+	payment.UserID = resolvedUserID
+	payment.TelegramID = resolvedTelegramID
+	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO payments (
-			provider, provider_payment_id, status, token, telegram_id, connector_id, subscription_id, parent_payment_id,
+			provider, provider_payment_id, status, token, user_id, telegram_id, connector_id, subscription_id, parent_payment_id,
 			auto_pay_enabled, amount_rub, checkout_url, created_at, paid_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 	`,
 		payment.Provider,
 		payment.ProviderPaymentID,
 		string(payment.Status),
 		payment.Token,
+		nullableInt64(payment.UserID),
 		payment.TelegramID,
 		payment.ConnectorID,
 		payment.SubscriptionID,
@@ -44,7 +51,7 @@ func (s *Store) CreatePayment(ctx context.Context, payment domain.Payment) error
 // GetPaymentByToken returns payment by externally visible checkout token.
 func (s *Store) GetPaymentByToken(ctx context.Context, token string) (domain.Payment, bool, error) {
 	payment, err := scanPayment(s.db.QueryRowContext(ctx, `
-		SELECT id, provider, provider_payment_id, status, token, telegram_id, connector_id, subscription_id, parent_payment_id,
+		SELECT id, provider, provider_payment_id, status, token, COALESCE(user_id, 0), telegram_id, connector_id, subscription_id, parent_payment_id,
 		       auto_pay_enabled, amount_rub, checkout_url, created_at, paid_at, updated_at
 		FROM payments
 		WHERE token = $1
@@ -61,7 +68,7 @@ func (s *Store) GetPaymentByToken(ctx context.Context, token string) (domain.Pay
 // GetPaymentByID returns payment by internal identifier.
 func (s *Store) GetPaymentByID(ctx context.Context, paymentID int64) (domain.Payment, bool, error) {
 	payment, err := scanPayment(s.db.QueryRowContext(ctx, `
-		SELECT id, provider, provider_payment_id, status, token, telegram_id, connector_id, subscription_id, parent_payment_id,
+		SELECT id, provider, provider_payment_id, status, token, COALESCE(user_id, 0), telegram_id, connector_id, subscription_id, parent_payment_id,
 		       auto_pay_enabled, amount_rub, checkout_url, created_at, paid_at, updated_at
 		FROM payments
 		WHERE id = $1
@@ -81,7 +88,7 @@ func (s *Store) GetPendingRebillPaymentBySubscription(ctx context.Context, subsc
 		return domain.Payment{}, false, nil
 	}
 	payment, err := scanPayment(s.db.QueryRowContext(ctx, `
-		SELECT id, provider, provider_payment_id, status, token, telegram_id, connector_id, subscription_id, parent_payment_id,
+		SELECT id, provider, provider_payment_id, status, token, COALESCE(user_id, 0), telegram_id, connector_id, subscription_id, parent_payment_id,
 		       auto_pay_enabled, amount_rub, checkout_url, created_at, paid_at, updated_at
 		FROM payments
 		WHERE subscription_id = $1

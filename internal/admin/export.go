@@ -81,6 +81,12 @@ func (h *Handler) exportUsersCSV(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	query := parseUsersQuery(r.URL.Query())
+	if telegramID, err := h.resolveFilterTelegramID(r.Context(), r.URL.Query().Get("user_id"), r.URL.Query().Get("telegram_id")); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	} else if telegramID > 0 {
+		query.TelegramID = telegramID
+	}
 	rows, err := h.store.ListUsers(r.Context(), query)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -89,11 +95,12 @@ func (h *Handler) exportUsersCSV(w http.ResponseWriter, r *http.Request) {
 
 	records := make([][]string, 0, len(rows)+1)
 	records = append(records, []string{
-		"telegram_id", "telegram_username", "full_name", "phone", "email",
+		"user_id", "telegram_id", "telegram_username", "full_name", "phone", "email",
 		"auto_pay_enabled", "has_auto_pay_settings", "updated_at",
 	})
 	for _, user := range rows {
 		records = append(records, []string{
+			strconv.FormatInt(user.UserID, 10),
 			strconv.FormatInt(user.TelegramID, 10),
 			user.TelegramUsername,
 			user.FullName,
@@ -142,6 +149,12 @@ func (h *Handler) exportPaymentsCSV(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	paymentQuery, _ := parseBillingQueries(r.URL.Query())
+	if telegramID, err := h.resolveFilterTelegramID(r.Context(), r.URL.Query().Get("user_id"), r.URL.Query().Get("telegram_id")); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	} else if telegramID > 0 {
+		paymentQuery.TelegramID = telegramID
+	}
 	rows, err := h.store.ListPayments(r.Context(), paymentQuery)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -187,6 +200,12 @@ func (h *Handler) exportSubscriptionsCSV(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	_, subQuery := parseBillingQueries(r.URL.Query())
+	if telegramID, err := h.resolveFilterTelegramID(r.Context(), r.URL.Query().Get("user_id"), r.URL.Query().Get("telegram_id")); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	} else if telegramID > 0 {
+		subQuery.TelegramID = telegramID
+	}
 	rows, err := h.store.ListSubscriptions(r.Context(), subQuery)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -225,10 +244,17 @@ func (h *Handler) exportChurnCSV(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	lang := h.resolveLang(w, r)
+	telegramIDRaw := strings.TrimSpace(r.URL.Query().Get("telegram_id"))
+	if telegramID, err := h.resolveFilterTelegramID(r.Context(), r.URL.Query().Get("user_id"), telegramIDRaw); err == nil && telegramID > 0 {
+		telegramIDRaw = strconv.FormatInt(telegramID, 10)
+	} else if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	rows, err := h.buildChurnIssues(
 		r.Context(),
 		lang,
-		strings.TrimSpace(r.URL.Query().Get("telegram_id")),
+		telegramIDRaw,
 		strings.TrimSpace(r.URL.Query().Get("connector_id")),
 		strings.TrimSpace(r.URL.Query().Get("search")),
 		strings.TrimSpace(r.URL.Query().Get("issue_type")),
@@ -242,12 +268,13 @@ func (h *Handler) exportChurnCSV(w http.ResponseWriter, r *http.Request) {
 
 	records := make([][]string, 0, len(rows)+1)
 	records = append(records, []string{
-		"telegram_id", "telegram_username", "full_name", "email", "phone",
+		"user_id", "telegram_id", "telegram_username", "full_name", "email", "phone",
 		"connector_id", "connector", "issue_type", "autopay", "retry_state", "last_retry_at", "payment_status",
 		"subscription_id", "subscription_status", "last_amount_rub", "last_event_at",
 	})
 	for _, row := range rows {
 		records = append(records, []string{
+			strconv.FormatInt(row.UserID, 10),
 			strconv.FormatInt(row.TelegramID, 10),
 			row.TelegramUsername,
 			row.FullName,

@@ -61,6 +61,7 @@ type UserStore interface {
 	SaveUser(ctx context.Context, user domain.User) error
 	GetUserByID(ctx context.Context, userID int64) (domain.User, bool, error)
 	GetUser(ctx context.Context, telegramID int64) (domain.User, bool, error)
+	GetUserByMessenger(ctx context.Context, kind domain.MessengerKind, externalUserID string) (domain.User, bool, error)
 	GetOrCreateUserByMessenger(ctx context.Context, kind domain.MessengerKind, externalUserID, username string) (domain.User, bool, error)
 	ListUserMessengerAccounts(ctx context.Context, userID int64) ([]domain.UserMessengerAccount, error)
 	ListUsers(ctx context.Context, query domain.UserListQuery) ([]domain.UserListItem, error)

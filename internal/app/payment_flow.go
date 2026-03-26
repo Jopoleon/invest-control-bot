@@ -53,6 +53,7 @@ func (a *application) activateSuccessfulPayment(ctx context.Context, paymentRow 
 	}
 	endsAt := startAt.AddDate(0, 0, periodDays)
 	if err := a.store.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         paymentRow.UserID,
 		TelegramID:     paymentRow.TelegramID,
 		ConnectorID:    paymentRow.ConnectorID,
 		PaymentID:      paymentRow.ID,
