@@ -1,6 +1,6 @@
-# telega-bot-fedor
+# invest-control-bot
 
-Сервис управления подпиской и доступом в Telegram-чаты.
+Сервис управления подпиской и доступом в Telegram-чаты с админкой, платежами и recurring-логикой.
 
 ## Текущий статус
 - Telegram-бот работает через `github.com/go-telegram/bot` и webhook на нашем Go-сервере.
@@ -10,7 +10,8 @@
   - регистрация пользователя и повторное использование уже сохраненного профиля
   - платежный flow с `mock` и `robokassa`
   - хранение платежей, подписок, согласий и audit events
-  - recurring groundwork для Robokassa, включая opt-in/cancel flow и retry automation
+  - recurring flow для Robokassa: explicit opt-in, cancel/re-enable flow, retry automation, operator tools
+  - публичные compliance-страницы оформления и отключения автоплатежа
 - В админке уже есть экраны:
   - `connectors`
   - `users` и карточка пользователя
@@ -21,7 +22,7 @@
   - `sessions`
   - `help`
 - Browser-admin переведен на server-side sessions c `HttpOnly` cookie и валидацией на каждый запрос.
-- Recurring для Robokassa в продукте остается gated, пока Robokassa не включит услугу для магазина.
+- Начато исследование и проектирование второго мессенджерного канала через MAX.
 
 ## Структура
 - `cmd/server` - точка входа backend сервиса.
@@ -80,6 +81,8 @@ GOCACHE=/tmp/go-build go test ./...
 - `POST /payment/success`
 - `POST /payment/fail`
 - `POST /payment/rebill` - internal/admin trigger повторного списания
+- `GET /subscribe/{start_payload}` - публичная страница оформления recurring-подписки
+- `GET /unsubscribe/{token}` - публичная страница отключения автоплатежа
 - `GET /oferta/{id}`
 - `GET /policy/{id}`
 - `GET /agreement/{id}`
@@ -155,24 +158,25 @@ GOCACHE=/tmp/go-build go test ./...
   - `ROBOKASSA_PASS1`
   - `ROBOKASSA_PASS2`
   - `ROBOKASSA_IS_TEST_MODE=true` для тестов
-  - `ROBOKASSA_RECURRING_ENABLED=false` пока услуга recurring не активирована Robokassa для магазина
+  - `ROBOKASSA_RECURRING_ENABLED=true` для recurring flow в средах, где он разрешен
   - `ROBOKASSA_REBILL_URL` по умолчанию `https://auth.robokassa.ru/Merchant/Recurring`
 - Callback endpoints:
   - `POST /payment/result` - источник истины по успешной оплате
   - `POST /payment/success`
   - `POST /payment/fail`
-- Ручной и автоматический recurring trigger в коде уже есть, но production-включение зависит от активации услуги у Robokassa.
+- Ручной и автоматический recurring trigger уже реализованы.
 
 ## Recurring / автоплатежи
 - В продукте уже есть:
-  - opt-in consent flow
-  - cancel flow в боте
+  - explicit opt-in consent flow
+  - cancel flow в боте и через публичную страницу
+  - re-enable flow по подписке
   - recurring consent history
   - scheduler для retry-окон `T-3 / T-2 / T-1`
   - уведомления о failed recurring payment с fallback на ручную оплату
   - operator tools в админке: recurring health, retry state, ручной `rebill`
-- Пока `ROBOKASSA_RECURRING_ENABLED=false`, пользовательский recurring flow скрыт.
-- Перед боевым включением recurring нужно пройти checklist из `docs/robokassa-recurring-checklist.md`.
+- Для production readiness нужно держать в актуальном состоянии юридические тексты и checkout/cancel UX.
+- Практический checklist находится в `docs/robokassa-recurring-checklist.md`.
 
 ## Логирование
 - Используется `log/slog` со structured logs.
@@ -183,8 +187,12 @@ GOCACHE=/tmp/go-build go test ./...
 - Гайд по админке: `docs/ADMIN_GUIDE.md`
 - Выжимка по регуляторике ПДн (РФ): `docs/DATA_COMPLIANCE_RU.md`
 - Миграции БД: `docs/MIGRATIONS.md`
+- Подробный flow оплат и автоплатежей: `docs/PAYMENTS_FLOW_RU.md`
 - Чеклист по recurring для Robokassa: `docs/robokassa-recurring-checklist.md`
-- Текущий roadmap и статус итераций: `IMPLEMENTATION_PLAN.md`
+- MAX: исследование интеграции `docs/MAX_BOT_RESEARCH.md`
+- MAX: архитектурная декомпозиция `docs/MAX_DECOMPOSITION_PLAN.md`
+- MAX: рабочий план внедрения `docs/MAX_IMPLEMENTATION_PLAN.md`
+- Основной roadmap продукта и статус итераций: `IMPLEMENTATION_PLAN.md`
 
 ## Структура bot-пакета
 - `internal/bot/handler.go` - базовый `Handler` и зависимости.

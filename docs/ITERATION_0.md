@@ -1,5 +1,13 @@
 # Итерация 0: подготовка
 
+Важно: это исторический документ по раннему этапу проекта.  
+Он не является актуальной инструкцией по текущему состоянию системы.  
+За текущим состоянием смотреть:
+
+- [README.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/README.md)
+- [IMPLEMENTATION_PLAN.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/IMPLEMENTATION_PLAN.md)
+- [ADMIN_GUIDE.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/ADMIN_GUIDE.md)
+
 Дата: 2026-03-07
 
 ## Что зафиксировано
@@ -15,18 +23,12 @@
 - Для `stage/prod` секреты задаются через менеджер окружения VPS (systemd unit env, docker secrets или аналог).
 
 ## Обязательные секреты для stage/prod
-- `TELEGRAM_BOT_TOKEN`
-- `YOOKASSA_SHOP_ID`
-- `YOOKASSA_SECRET_KEY`
-- `YOOKASSA_WEBHOOK_SECRET`
-- `APP_ENCRYPTION_KEY` (минимум 32 символа)
-- `ADMIN_AUTH_TOKEN`
-- `DB_HOST`
-- `DB_PORT`
-- `DB_USERNAME`
-- `DB_PASSWORD`
-- `DB_DATABASE`
-- `DB_SSL`
+
+Исторически в этом списке фигурировала YooKassa.  
+На текущем этапе проект использует `mock` и `robokassa`, поэтому живой список секретов нужно смотреть в:
+
+- `.env.example`
+- `README.md`
 
 ## Критерии завершения итерации 0
 - [x] Подготовлен конфиг-каркас и валидация окружения.

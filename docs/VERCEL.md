@@ -69,6 +69,12 @@ Preview deployment не должен переписывать production webhook
 
 При желании можно добавить `VERCEL_CRON_SECRET` и использовать query token в URL, но базово уже есть проверка `User-Agent: vercel-cron/1.0`.
 
+Важно:
+
+- endpoint не публично открыт "для всех";
+- сейчас он разрешает запрос либо с `token=<VERCEL_CRON_SECRET>`, либо с `User-Agent: vercel-cron/1.0`;
+- если lifecycle будет дергаться не самим Vercel, а внешним scheduler, лучше задать `VERCEL_CRON_SECRET` и использовать именно token.
+
 ## CLI
 Установить CLI:
 ```bash
