@@ -15,9 +15,33 @@ import (
 
 	"github.com/Jopoleon/invest-control-bot/internal/config"
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 	"github.com/Jopoleon/invest-control-bot/internal/store"
 	"github.com/Jopoleon/invest-control-bot/internal/store/memory"
+	"github.com/Jopoleon/invest-control-bot/internal/telegram"
 )
+
+type spySender struct {
+	sent []spySentMessage
+}
+
+type spySentMessage struct {
+	user messenger.UserRef
+	msg  messenger.OutgoingMessage
+}
+
+func (s *spySender) Send(_ context.Context, user messenger.UserRef, msg messenger.OutgoingMessage) error {
+	s.sent = append(s.sent, spySentMessage{user: user, msg: msg})
+	return nil
+}
+
+func (s *spySender) Edit(context.Context, messenger.MessageRef, messenger.OutgoingMessage) error {
+	return nil
+}
+
+func (s *spySender) AnswerAction(context.Context, messenger.ActionRef, string) error {
+	return nil
+}
 
 func TestPaymentResult_SuccessAndIdempotency(t *testing.T) {
 	t.Helper()
@@ -95,6 +119,133 @@ func TestPaymentResult_SuccessAndIdempotency(t *testing.T) {
 	}
 	if got := countAuditEvents(events, domain.AuditActionRobokassaResultReceived); got != 2 {
 		t.Fatalf("robokassa_result_received count = %d, want 2", got)
+	}
+}
+
+func TestActivateSuccessfulPayment_SendsSuccessMessageViaMAXAccount(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	tg, err := telegram.NewClient("", "")
+	if err != nil {
+		t.Fatalf("create telegram client: %v", err)
+	}
+	maxSpy := &spySender{}
+
+	connectorID := seedConnector(t, ctx, st, "in-max-success")
+	maxUser, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465776", "Федор Николаевич")
+	if err != nil {
+		t.Fatalf("create max user: %v", err)
+	}
+
+	now := time.Now().UTC()
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPending,
+		Token:          "max-success-1",
+		UserID:         maxUser.ID,
+		TelegramID:     193465776,
+		ConnectorID:    connectorID,
+		AmountRUB:      2322,
+		AutoPayEnabled: true,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	})
+
+	paymentRow, found, err := st.GetPaymentByToken(ctx, "max-success-1")
+	if err != nil || !found {
+		t.Fatalf("get payment by token: found=%v err=%v", found, err)
+	}
+
+	appCtx := &application{
+		store:          st,
+		telegramClient: tg,
+		maxSender:      maxSpy,
+	}
+	appCtx.activateSuccessfulPayment(ctx, paymentRow, "robokassa:max-success-1", now)
+
+	if len(maxSpy.sent) != 1 {
+		t.Fatalf("max sent messages = %d, want 1", len(maxSpy.sent))
+	}
+	if maxSpy.sent[0].user.Kind != messenger.KindMAX {
+		t.Fatalf("sent kind = %s, want %s", maxSpy.sent[0].user.Kind, messenger.KindMAX)
+	}
+	if maxSpy.sent[0].user.ChatID != 193465776 {
+		t.Fatalf("sent chat id = %d, want 193465776", maxSpy.sent[0].user.ChatID)
+	}
+	if got := maxSpy.sent[0].msg.Text; !strings.Contains(got, "Оплата прошла успешно") {
+		t.Fatalf("success text = %q, want payment success notification", got)
+	}
+	if got := len(maxSpy.sent[0].msg.Buttons); got != 2 {
+		t.Fatalf("button rows = %d, want 2", got)
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if got := countAuditEvents(events, domain.AuditActionPaymentSuccessNotified); got != 1 {
+		t.Fatalf("payment_success_notified count = %d, want 1", got)
+	}
+}
+
+func TestPaymentSuccessPage_MAXActionsUseMAXLinks(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	maxUser, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465776", "Федор Николаевич")
+	if err != nil {
+		t.Fatalf("create max user: %v", err)
+	}
+
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload: "in-max-page-success",
+		Name:         "max-page-connector",
+		ChannelURL:   "https://web.max.ru/-72598909498032",
+		PriceRUB:     2322,
+		PeriodDays:   30,
+		IsActive:     true,
+		CreatedAt:    time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create connector: %v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-max-page-success")
+	if err != nil || !found {
+		t.Fatalf("get connector by payload: found=%v err=%v", found, err)
+	}
+
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:    "robokassa",
+		Status:      domain.PaymentStatusPaid,
+		Token:       "max-page-success-1",
+		UserID:      maxUser.ID,
+		TelegramID:  193465776,
+		ConnectorID: connector.ID,
+		AmountRUB:   2322,
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	})
+
+	handler := testServerHandler(t, st, "test-pass2")
+	req := httptest.NewRequest(http.MethodGet, "/payment/success?InvId=max-page-success-1", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		body, _ := io.ReadAll(rr.Body)
+		t.Fatalf("status=%d body=%q", rr.Code, string(body))
+	}
+	body, _ := io.ReadAll(rr.Body)
+	text := string(body)
+	if !strings.Contains(text, "https://web.max.ru/-72598909498032") {
+		t.Fatalf("response does not contain MAX channel URL: %q", text)
+	}
+	if !strings.Contains(text, "https://web.max.ru/") {
+		t.Fatalf("response does not contain MAX web URL: %q", text)
+	}
+	if strings.Contains(text, "https://t.me") {
+		t.Fatalf("response should not contain Telegram URLs for MAX payment page: %q", text)
 	}
 }
 

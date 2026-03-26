@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Jopoleon/invest-control-bot/internal/channelurl"
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
 	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 )
@@ -485,43 +486,5 @@ func autopayInfoMessage(enabledCount, totalCount int, cancelURL string) (string,
 }
 
 func resolveChannelForBot(channelURL, chatID string) string {
-	explicit := strings.TrimSpace(channelURL)
-	if explicit != "" {
-		if normalized := normalizeTelegramPublicLink(explicit); normalized != "" {
-			return normalized
-		}
-	}
-	raw := strings.TrimSpace(chatID)
-	if raw == "" {
-		return ""
-	}
-	if strings.HasPrefix(raw, "@") {
-		return "https://t.me/" + strings.TrimPrefix(raw, "@")
-	}
-	normalized := strings.TrimPrefix(raw, "-")
-	normalized = strings.TrimPrefix(normalized, "100")
-	if normalized == "" {
-		return ""
-	}
-	if _, err := strconv.ParseInt(normalized, 10, 64); err != nil {
-		return ""
-	}
-	return "https://t.me/c/" + normalized
-}
-
-func normalizeTelegramPublicLink(raw string) string {
-	v := strings.TrimSpace(raw)
-	if v == "" {
-		return ""
-	}
-	v = strings.TrimPrefix(v, "https://")
-	v = strings.TrimPrefix(v, "http://")
-	v = strings.TrimPrefix(v, "t.me/")
-	v = strings.TrimPrefix(v, "telegram.me/")
-	v = strings.TrimPrefix(v, "@")
-	v = strings.TrimPrefix(v, "/")
-	if v == "" || strings.Contains(v, " ") {
-		return ""
-	}
-	return "https://t.me/" + v
+	return channelurl.Resolve(channelURL, chatID)
 }

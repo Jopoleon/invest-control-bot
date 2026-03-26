@@ -36,6 +36,10 @@
   - идентификатор сообщения берется из `message.body.mid`.
 - На случай новых несовпадений shape update adapter теперь пишет raw JSON update в debug-лог при `failed to map`, чтобы следующие итерации дорабатывать по фактическому payload, а не по предположениям.
 - MAX private-dialog transport исправлен: outbound сообщения для текущего bot-DM flow теперь отправляются через `user_id`, а пустые callback-ack больше не отправляются в `/answers`, чтобы не получать `proto.payload` на harmless callbacks.
+- На живом local E2E прогоне подтверждены `/menu`, `/start <payload>`, регистрация, `accept_terms`, `payconsent` и генерация checkout-ссылки через Robokassa.
+- App-level post-payment notification path больше не Telegram-only: success/failure уведомления по платежам переведены на messenger-aware notifier с выбором linked messenger account и fallback-роутингом для mixed-mode записей.
+- После стабилизации MAX/Telegram mixed-mode отдельно запланирован clean-schema этап: финальная чистка таблиц и миграций под fresh bootstrap без исторического legacy-порядка полей.
+- Основной backend теперь поддерживает MAX webhook mode: `cmd/server` синхронизирует webhook subscription, удаляет stale subscriptions и принимает update delivery на `POST /max/webhook`. Long polling остается инструментом локальной отладки, а не production transport.
 
 ## Дорожная карта
 

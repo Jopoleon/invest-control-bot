@@ -17,6 +17,20 @@ type CreateWebhookSubscriptionRequest struct {
 	Secret      string   `json:"secret,omitempty"`
 }
 
+type SubscriptionListResponse struct {
+	Subscriptions []WebhookSubscription `json:"subscriptions"`
+}
+
+type WebhookSubscription struct {
+	URL         string   `json:"url"`
+	UpdateTypes []string `json:"update_types,omitempty"`
+}
+
+type DeleteWebhookSubscriptionResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+}
+
 // UpdatesPage is one page returned by GET /updates.
 type UpdatesPage struct {
 	Updates []Update `json:"updates"`

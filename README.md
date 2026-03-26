@@ -90,6 +90,22 @@ go run ./cmd/max-poller
 - `ngrok` нужен только для web/payment ссылок, если ты открываешь их с телефона;
 - перед polling у MAX-бота не должно быть активной webhook subscription.
 
+### MAX webhook mode
+Для production MAX теперь поддерживается и webhook flow внутри основного HTTP-сервера.
+
+Минимальные env:
+```env
+MAX_BOT_TOKEN=...
+MAX_WEBHOOK_PUBLIC_URL=https://your-domain.example/max/webhook
+MAX_WEBHOOK_SECRET=your-max-webhook-secret
+MAX_POLLING_TYPES=bot_started,message_created,message_callback
+```
+
+При старте `cmd/server` backend:
+- синхронизирует MAX webhook subscription через API;
+- удаляет устаревшие webhook subscriptions;
+- принимает события на `POST /max/webhook`.
+
 ## Тесты
 ```bash
 go test ./...
@@ -110,6 +126,7 @@ GOCACHE=/tmp/go-build go test ./...
 ## Основные маршруты
 - `GET /healthz`
 - `POST /telegram/webhook`
+- `POST /max/webhook`
 - `GET /mock/pay`
 - `GET /mock/pay/success`
 - `POST /payment/result`

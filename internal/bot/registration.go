@@ -18,7 +18,7 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg messenger.Inco
 		return
 	}
 
-	user, ok := h.resolveTelegramUser(ctx, msg.User.ID, msg.User.Username)
+	user, ok := h.resolveMessengerUser(ctx, msg.User)
 	if !ok {
 		return
 	}

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
-	"github.com/go-telegram/bot/models"
+	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 )
 
 func (a *application) activateSuccessfulPayment(ctx context.Context, paymentRow domain.Payment, providerPaymentID string, now time.Time) {
@@ -87,24 +87,27 @@ func (a *application) activateSuccessfulPayment(ctx context.Context, paymentRow 
 		channelURL = resolveConnectorChannelURL(connector.ChannelURL, connector.ChatID)
 	}
 	successText := fmt.Sprintf("✅ Оплата прошла успешно. Подписка активирована до %s.", endsAt.In(time.Local).Format("02.01.2006 15:04"))
-	var keyboard *models.InlineKeyboardMarkup
+	message := messenger.OutgoingMessage{
+		Text: successText,
+	}
 	if channelURL != "" {
-		successText += "\n\nНажмите кнопку ниже, чтобы перейти в канал и открыть кабинет."
-		keyboard = &models.InlineKeyboardMarkup{
-			InlineKeyboard: [][]models.InlineKeyboardButton{
-				{{Text: "Перейти в канал", URL: channelURL}},
-				{{Text: "Моя подписка", CallbackData: "menu:subscription"}},
-			},
+		message.Text += "\n\nНажмите кнопку ниже, чтобы перейти в канал и открыть кабинет."
+		message.Buttons = [][]messenger.ActionButton{
+			{{Text: "Перейти в канал", URL: channelURL}},
+			{{Text: "Моя подписка", Action: "menu:subscription"}},
 		}
 	} else {
-		keyboard = &models.InlineKeyboardMarkup{
-			InlineKeyboard: [][]models.InlineKeyboardButton{
-				{{Text: "Моя подписка", CallbackData: "menu:subscription"}},
-			},
+		message.Buttons = [][]messenger.ActionButton{
+			{{Text: "Моя подписка", Action: "menu:subscription"}},
 		}
 	}
-	if err := a.telegramClient.SendMessage(ctx, paymentRow.TelegramID, successText, keyboard); err != nil {
-		slog.Error("send payment success message failed", "error", err, "telegram_id", paymentRow.TelegramID, "payment_id", paymentRow.ID)
+	if err := a.sendUserNotification(ctx, paymentRow.UserID, paymentRow.TelegramID, message); err != nil {
+		slog.Error("send payment success message failed",
+			"error", err,
+			"user_id", paymentRow.UserID,
+			"legacy_external_id", paymentRow.TelegramID,
+			"payment_id", paymentRow.ID,
+		)
 		return
 	}
 	if err := a.store.SaveAuditEvent(ctx, domain.AuditEvent{

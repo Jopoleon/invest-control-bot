@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/Jopoleon/invest-control-bot/internal/config"
 	"github.com/Jopoleon/invest-control-bot/internal/store"
 	"github.com/go-co-op/gocron/v2"
+	"github.com/oklog/run"
 )
 
 // Server owns HTTP server with admin endpoints, Telegram webhook and payment routes.
@@ -21,7 +23,7 @@ type Server struct {
 
 // New builds fully wired HTTP server with current dependencies.
 func New(cfg config.Config, st store.Store) (*Server, error) {
-	appCtx, err := newApplication(cfg, st, appInitOptions{ensureTelegramSetup: true})
+	appCtx, err := newApplication(cfg, st, appInitOptions{ensureTelegramSetup: true, ensureMAXSetup: true})
 	if err != nil {
 		return nil, err
 	}
@@ -49,34 +51,43 @@ func New(cfg config.Config, st store.Store) (*Server, error) {
 
 // Run starts HTTP server and blocks until it stops.
 func (s *Server) Run(ctx context.Context) error {
+	var group run.Group
+
 	if s.lifecycleScheduler != nil {
-		s.lifecycleRunOnStart()
-		s.lifecycleScheduler.Start()
+		schedulerStop := make(chan struct{})
+		group.Add(func() error {
+			s.lifecycleRunOnStart()
+			s.lifecycleScheduler.Start()
+			<-schedulerStop
+			return nil
+		}, func(error) {
+			close(schedulerStop)
+			if err := s.lifecycleScheduler.Shutdown(); err != nil {
+				slog.Error("subscription lifecycle scheduler shutdown failed", "error", err)
+			}
+		})
 	}
 
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- s.httpServer.ListenAndServe()
-	}()
-
-	select {
-	case err := <-errCh:
+	group.Add(func() error {
+		err := s.httpServer.ListenAndServe()
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
 		}
 		return err
-	case <-ctx.Done():
+	}, func(error) {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if err := s.Shutdown(shutdownCtx); err != nil {
-			return err
+		if err := s.httpServer.Shutdown(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
+			slog.Error("http server shutdown failed", "error", err)
 		}
-		err := <-errCh
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-		return err
-	}
+	})
+
+	group.Add(func() error {
+		<-ctx.Done()
+		return nil
+	}, func(error) {})
+
+	return group.Run()
 }
 
 // Shutdown stops HTTP handling and background schedulers.

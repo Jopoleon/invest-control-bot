@@ -138,6 +138,11 @@ When logic changes, comments must be updated in the same change.
 - do not introduce schema changes without a migration
 - for risky schema transitions, prefer additive migrations first
 - keep backward-compatible read/write paths during migration windows whenever possible
+- after the multi-messenger transition stabilizes, plan one explicit clean-schema pass:
+  - rebuild tables with the final column layout/order
+  - collapse legacy compatibility fields where no longer needed
+  - rewrite migrations so a fresh bootstrap creates the clean final schema directly
+  - treat this as a separate operation after behavior is proven, not during active feature debugging
 
 Recent important migration:
 - `0013_user_messenger_accounts.sql`

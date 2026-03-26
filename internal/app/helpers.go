@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Jopoleon/invest-control-bot/internal/channelurl"
 )
 
 func loggingMiddleware(next http.Handler) http.Handler {
@@ -19,32 +21,7 @@ func loggingMiddleware(next http.Handler) http.Handler {
 }
 
 func resolveConnectorChannelURL(channelURL, chatID string) string {
-	explicit := strings.TrimSpace(channelURL)
-	if explicit != "" {
-		if normalized := normalizeTelegramPublicLink(explicit); normalized != "" {
-			return normalized
-		}
-	}
-	return buildTelegramChatURL(chatID)
-}
-
-func buildTelegramChatURL(chatID string) string {
-	raw := strings.TrimSpace(chatID)
-	if raw == "" {
-		return ""
-	}
-	if strings.HasPrefix(raw, "@") && len(raw) > 1 {
-		return "https://t.me/" + strings.TrimPrefix(raw, "@")
-	}
-	if _, err := strconv.ParseInt(raw, 10, 64); err != nil {
-		return "https://t.me/" + strings.TrimPrefix(raw, "@")
-	}
-	normalized := strings.TrimPrefix(raw, "-")
-	normalized = strings.TrimPrefix(normalized, "100")
-	if normalized == "" {
-		return ""
-	}
-	return "https://t.me/c/" + normalized
+	return channelurl.Resolve(channelURL, chatID)
 }
 
 func buildBotChatURL(botUsername string) string {
@@ -53,23 +30,6 @@ func buildBotChatURL(botUsername string) string {
 		return ""
 	}
 	return "https://t.me/" + raw
-}
-
-func normalizeTelegramPublicLink(raw string) string {
-	v := strings.TrimSpace(raw)
-	if v == "" {
-		return ""
-	}
-	v = strings.TrimPrefix(v, "https://")
-	v = strings.TrimPrefix(v, "http://")
-	v = strings.TrimPrefix(v, "t.me/")
-	v = strings.TrimPrefix(v, "telegram.me/")
-	v = strings.TrimPrefix(v, "@")
-	v = strings.TrimPrefix(v, "/")
-	if v == "" || strings.Contains(v, " ") {
-		return ""
-	}
-	return "https://t.me/" + v
 }
 
 func firstNonEmpty(values ...string) string {

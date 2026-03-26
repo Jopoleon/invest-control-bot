@@ -74,7 +74,7 @@ func (h *Handler) handleCallback(ctx context.Context, cb messenger.IncomingActio
 	}
 	h.logAuditEvent(ctx, cb.User.ID, connectorID, domain.AuditActionConsentAccepted, "")
 
-	user, ok := h.resolveTelegramUser(ctx, cb.User.ID, cb.User.Username)
+	user, ok := h.resolveMessengerUser(ctx, cb.User)
 	if !ok {
 		return
 	}

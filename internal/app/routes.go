@@ -22,6 +22,7 @@ func (a *application) newMux() *http.ServeMux {
 	mux.HandleFunc("/payment/fail", a.handlePaymentFail)
 	mux.HandleFunc("/payment/rebill", a.handlePaymentRebill)
 	mux.HandleFunc("/telegram/webhook", a.handleTelegramWebhook)
+	mux.HandleFunc("/max/webhook", a.handleMAXWebhook)
 
 	return mux
 }

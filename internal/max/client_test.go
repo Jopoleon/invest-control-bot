@@ -121,3 +121,50 @@ func TestClientSendMessageBuildsInlineKeyboardRequest(t *testing.T) {
 		t.Fatalf("legacy message_id = %d, want 0", message.MessageID)
 	}
 }
+
+func TestClientEnsureWebhookDeletesStaleAndCreatesDesired(t *testing.T) {
+	t.Helper()
+
+	var deletedURL string
+	var createdBody CreateWebhookSubscriptionRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/subscriptions":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"subscriptions":[{"url":"https://old.example/max/webhook"}]}`))
+		case r.Method == http.MethodDelete && r.URL.Path == "/subscriptions":
+			deletedURL = r.URL.Query().Get("url")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"success":true}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/subscriptions":
+			if err := json.NewDecoder(r.Body).Decode(&createdBody); err != nil {
+				t.Fatalf("decode create body: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{}`))
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient("test-token", server.Client())
+	client.SetBaseURL(server.URL)
+
+	err := client.EnsureWebhook(context.Background(), "https://new.example/max/webhook", "test-secret", []string{"message_created", "message_callback"})
+	if err != nil {
+		t.Fatalf("EnsureWebhook: %v", err)
+	}
+	if deletedURL != "https://old.example/max/webhook" {
+		t.Fatalf("deleted url = %q", deletedURL)
+	}
+	if createdBody.URL != "https://new.example/max/webhook" {
+		t.Fatalf("created url = %q", createdBody.URL)
+	}
+	if createdBody.Secret != "test-secret" {
+		t.Fatalf("created secret = %q", createdBody.Secret)
+	}
+	if got := strings.Join(createdBody.UpdateTypes, ","); got != "message_created,message_callback" {
+		t.Fatalf("created update types = %q", got)
+	}
+}

@@ -68,6 +68,75 @@ func (c *Client) CreateWebhookSubscription(ctx context.Context, req CreateWebhoo
 	return c.doJSON(ctx, http.MethodPost, "/subscriptions", nil, req, nil)
 }
 
+// GetWebhookSubscriptions returns currently configured webhook subscriptions.
+func (c *Client) GetWebhookSubscriptions(ctx context.Context) (SubscriptionListResponse, error) {
+	var resp SubscriptionListResponse
+	if err := c.doJSON(ctx, http.MethodGet, "/subscriptions", nil, nil, &resp); err != nil {
+		return SubscriptionListResponse{}, err
+	}
+	return resp, nil
+}
+
+// DeleteWebhookSubscription removes one webhook subscription by URL.
+func (c *Client) DeleteWebhookSubscription(ctx context.Context, webhookURL string) error {
+	values := url.Values{}
+	values.Set("url", strings.TrimSpace(webhookURL))
+
+	var resp DeleteWebhookSubscriptionResponse
+	if err := c.doJSON(ctx, http.MethodDelete, "/subscriptions", values, nil, &resp); err != nil {
+		return err
+	}
+	if !resp.Success {
+		if strings.TrimSpace(resp.Message) == "" {
+			return fmt.Errorf("delete webhook subscription returned success=false")
+		}
+		return fmt.Errorf("delete webhook subscription returned success=false: %s", strings.TrimSpace(resp.Message))
+	}
+	return nil
+}
+
+// EnsureWebhook keeps MAX delivery in webhook mode for the requested URL and
+// removes stale subscriptions that would otherwise steal updates from the app.
+func (c *Client) EnsureWebhook(ctx context.Context, desiredURL, secret string, updateTypes []string) error {
+	desiredURL = strings.TrimSpace(desiredURL)
+	if desiredURL == "" {
+		return nil
+	}
+
+	list, err := c.GetWebhookSubscriptions(ctx)
+	if err != nil {
+		return fmt.Errorf("get webhook subscriptions: %w", err)
+	}
+
+	hasDesired := false
+	for _, sub := range list.Subscriptions {
+		currentURL := strings.TrimSpace(sub.URL)
+		if currentURL == "" {
+			continue
+		}
+		if currentURL == desiredURL {
+			hasDesired = true
+			continue
+		}
+		if err := c.DeleteWebhookSubscription(ctx, currentURL); err != nil {
+			return fmt.Errorf("delete stale webhook subscription %q: %w", currentURL, err)
+		}
+	}
+
+	if hasDesired {
+		return nil
+	}
+
+	if err := c.CreateWebhookSubscription(ctx, CreateWebhookSubscriptionRequest{
+		URL:         desiredURL,
+		UpdateTypes: updateTypes,
+		Secret:      strings.TrimSpace(secret),
+	}); err != nil {
+		return fmt.Errorf("create webhook subscription: %w", err)
+	}
+	return nil
+}
+
 // SendMessage sends one text message to MAX user or group chat.
 func (c *Client) SendMessage(ctx context.Context, req SendMessageRequest) (Message, error) {
 	values := url.Values{}

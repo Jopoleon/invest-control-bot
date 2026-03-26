@@ -50,6 +50,6 @@ func (a *application) handleTelegramWebhook(w http.ResponseWriter, r *http.Reque
 		logDebug("telegram update.raw", "payload", string(raw))
 	}
 
-	a.botHandler.HandleUpdate(r.Context(), &update)
+	a.telegramBotHandler.HandleUpdate(r.Context(), &update)
 	w.WriteHeader(http.StatusOK)
 }
