@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
-	"github.com/go-telegram/bot/models"
+	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 )
 
 func (h *Handler) sendExistingSubscriptionMessage(ctx context.Context, chatID, telegramID, connectorID int64) bool {
@@ -27,29 +27,29 @@ func (h *Handler) sendExistingSubscriptionMessage(ctx context.Context, chatID, t
 	}
 
 	text := fmt.Sprintf("У вас уже есть активная подписка «%s» до %s.", connector.Name, sub.EndsAt.In(time.Local).Format("02.01.2006 15:04"))
-	var keyboard *models.InlineKeyboardMarkup
+	var buttons [][]messenger.ActionButton
 
 	if sub.AutoPayEnabled {
 		text += "\n\nАвтоплатеж для этого тарифа уже включен."
 		cancelURL := h.buildAutopayCancelURL(telegramID)
 		if cancelURL != "" {
-			keyboard = &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{
-				{Text: "Страница отключения", URL: cancelURL},
-			}}}
+			buttons = [][]messenger.ActionButton{{
+				buttonURL("Страница отключения", cancelURL),
+			}}
 		}
 	} else {
 		paymentRow, found, err := h.store.GetPaymentByID(ctx, sub.PaymentID)
 		if err == nil && found && paymentRow.AutoPayEnabled {
 			text += "\n\nАвтоплатеж для этого тарифа сейчас выключен, но его можно включить обратно без повторной оплаты."
-			keyboard = &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{
-				{Text: "Включить автоплатеж обратно", CallbackData: menuCallbackAutopayOnSub + strconv.FormatInt(sub.ID, 10)},
-			}}}
+			buttons = [][]messenger.ActionButton{{
+				buttonAction("Включить автоплатеж обратно", menuCallbackAutopayOnSub+strconv.FormatInt(sub.ID, 10)),
+			}}
 		} else {
 			return false
 		}
 	}
 
-	if err := h.tg.SendMessage(ctx, chatID, text, keyboard); err != nil {
+	if err := h.sender.Send(ctx, chatRef(chatID), messenger.OutgoingMessage{Text: text, Buttons: buttons}); err != nil {
 		slog.Error("send existing subscription message failed", "error", err, "telegram_id", telegramID, "connector_id", connectorID)
 		return false
 	}

@@ -7,46 +7,42 @@ import (
 	"strings"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
-	"github.com/go-telegram/bot/models"
+	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 )
 
 // handleRegistrationStep advances onboarding FSM and persists user fields step-by-step.
-func (h *Handler) handleRegistrationStep(ctx context.Context, msg *models.Message, state domain.RegistrationState) {
+func (h *Handler) handleRegistrationStep(ctx context.Context, msg messenger.IncomingMessage, state domain.RegistrationState) {
 	text := strings.TrimSpace(msg.Text)
 	if text == "" {
-		h.send(ctx, msg.Chat.ID, "Пустое значение. Попробуйте еще раз.")
+		h.send(ctx, msg.ChatID, "Пустое значение. Попробуйте еще раз.")
 		return
 	}
 
-	user, exists, err := h.store.GetUser(ctx, msg.From.ID)
-	if err != nil {
-		slog.Error("load user failed", "error", err, "telegram_id", msg.From.ID)
+	user, ok := h.resolveTelegramUser(ctx, msg.User.ID, msg.User.Username)
+	if !ok {
 		return
 	}
-	if !exists {
-		user = domain.User{TelegramID: msg.From.ID}
-	}
-	applyCurrentTelegramUsername(&user, msg.From.Username)
+	applyCurrentTelegramUsername(&user, msg.User.Username)
 
 	switch state.Step {
 	case domain.StepFullName:
 		user.FullName = text
-		h.logAuditEvent(ctx, msg.From.ID, state.ConnectorID, domain.AuditActionRegistrationFullNameSaved, "")
+		h.logAuditEvent(ctx, msg.User.ID, state.ConnectorID, domain.AuditActionRegistrationFullNameSaved, "")
 	case domain.StepPhone:
 		phone := normalizePhone(text)
 		if !isValidE164(phone) {
-			h.send(ctx, msg.Chat.ID, "⚠️ Не правильный телефон. Введите номер в международном формате.")
+			h.send(ctx, msg.ChatID, "⚠️ Не правильный телефон. Введите номер в международном формате.")
 			return
 		}
 		user.Phone = phone
-		h.logAuditEvent(ctx, msg.From.ID, state.ConnectorID, domain.AuditActionRegistrationPhoneSaved, "")
+		h.logAuditEvent(ctx, msg.User.ID, state.ConnectorID, domain.AuditActionRegistrationPhoneSaved, "")
 	case domain.StepEmail:
 		if _, err := mail.ParseAddress(text); err != nil {
-			h.send(ctx, msg.Chat.ID, "⚠️ Неправильный e-mail")
+			h.send(ctx, msg.ChatID, "⚠️ Неправильный e-mail")
 			return
 		}
 		user.Email = text
-		h.logAuditEvent(ctx, msg.From.ID, state.ConnectorID, domain.AuditActionRegistrationEmailSaved, "")
+		h.logAuditEvent(ctx, msg.User.ID, state.ConnectorID, domain.AuditActionRegistrationEmailSaved, "")
 	case domain.StepUsername:
 		if text != "-" {
 			user.TelegramUsername = normalizeTelegramUsername(text)
@@ -56,25 +52,25 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg *models.Messag
 	}
 
 	if err := h.store.SaveUser(ctx, user); err != nil {
-		slog.Error("save user failed", "error", err, "telegram_id", msg.From.ID)
+		slog.Error("save user failed", "error", err, "telegram_id", msg.User.ID)
 		return
 	}
 
 	state.Step = nextRegistrationStep(user)
 	if state.Step == domain.StepDone {
-		if err := h.store.DeleteRegistrationState(ctx, msg.From.ID); err != nil {
-			slog.Error("delete registration state failed", "error", err, "telegram_id", msg.From.ID)
+		if err := h.store.DeleteRegistrationState(ctx, msg.User.ID); err != nil {
+			slog.Error("delete registration state failed", "error", err, "telegram_id", msg.User.ID)
 		}
-		h.sendFinalRegistrationMessage(ctx, msg.Chat.ID, msg.From.ID, state.ConnectorID)
-		h.logAuditEvent(ctx, msg.From.ID, state.ConnectorID, domain.AuditActionRegistrationCompleted, "")
+		h.sendFinalRegistrationMessage(ctx, msg.ChatID, msg.User.ID, state.ConnectorID)
+		h.logAuditEvent(ctx, msg.User.ID, state.ConnectorID, domain.AuditActionRegistrationCompleted, "")
 		return
 	}
 
 	if err := h.store.SaveRegistrationState(ctx, state); err != nil {
-		slog.Error("save registration step failed", "error", err, "telegram_id", msg.From.ID, "step", state.Step)
+		slog.Error("save registration step failed", "error", err, "telegram_id", msg.User.ID, "step", state.Step)
 		return
 	}
-	h.send(ctx, msg.Chat.ID, registrationPrompt(state.Step))
+	h.send(ctx, msg.ChatID, registrationPrompt(state.Step))
 }
 
 // sendFinalRegistrationMessage sends completion text and pay button.
@@ -83,7 +79,7 @@ func (h *Handler) sendFinalRegistrationMessage(ctx context.Context, chatID, tele
 		return
 	}
 	text, payKeyboard := h.buildFinalPaymentStep(ctx, connectorID, false)
-	if err := h.tg.SendMessage(ctx, chatID, text, payKeyboard); err != nil {
+	if err := h.sender.Send(ctx, chatRef(chatID), messenger.OutgoingMessage{Text: text, Buttons: payKeyboard}); err != nil {
 		slog.Error("send final message failed", "error", err, "chat_id", chatID, "connector_id", connectorID)
 	}
 }

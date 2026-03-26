@@ -16,6 +16,9 @@
 - Подтверждено, что Webhook MAX должен быть доступен по HTTPS на порту `443`.
 - Подготовлен предварительный технический план адаптации продукта под MAX.
 - Описана целевая архитектурная декомпозиция для messenger-neutral core и отдельных transport adapters.
+- Реализован первый безопасный слой messenger-neutral outbound abstractions: добавлены `internal/messenger` и Telegram adapter на уровне отправки/редактирования сообщений и answer callbacks.
+- Реализован следующий безопасный слой inbound abstractions: внутри `internal/bot` входящие события переведены на transport-neutral `IncomingMessage` / `IncomingAction`, а Telegram DTO остались только в adapter-level маршрутизации update.
+- В persistence foundation подготовлен переход от единственного `telegram_id` к внутреннему `user_id` и отдельным messenger accounts, чтобы MAX можно было подключать без форка user model.
 
 ## Дорожная карта
 
@@ -30,6 +33,13 @@
 - Выделить messenger-agnostic core для сценариев регистрации, подписок, платежей и автоплатежей.
 - Ввести абстракции transport/update sender, callback handling, identity mapping.
 - Отвязать предметную логику от Telegram-специфичных DTO и callback payloads.
+- Уже сделано:
+  - transport-neutral outbound message model;
+  - Telegram sender adapter поверх этой модели;
+  - перевод `internal/bot` с прямого `InlineKeyboardMarkup` на внутренние action buttons.
+  - transport-neutral inbound events;
+  - локализация Telegram update mapping в одном месте (`update_router`).
+  - внутренний `user_id` и foundation для multiple messenger identities в store/domain/migrations.
 
 ### Реализация MAX adapter
 Статус: pending

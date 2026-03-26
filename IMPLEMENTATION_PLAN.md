@@ -448,6 +448,11 @@
 - `2026-03-20` Auth/session слой дополнен cleanup механикой: при создании новой admin session backend best-effort удаляет revoked и absolute-expired записи из `admin_sessions`, чтобы таблица сессий не разрасталась бесконтрольно.
 - `2026-03-20` Для админки добавлен operational экран активных browser-сессий: список `admin_sessions`, индикация текущей сессии, ручной revoke и аудит ручного завершения сессии.
 - `2026-03-26` Для второго мессенджерного канала начато исследование MAX: собраны официальные документы, подготовлен отдельный research-doc, архитектурная декомпозиция и рабочий MAX-план внедрения.
+- `2026-03-26` Начат безопасный кодовый рефакторинг под multi-messenger: добавлен пакет `internal/messenger` с transport-neutral outbound model (`OutgoingMessage`, `ActionButton`, `Sender`), Telegram client завернут в этот контракт, а `internal/bot` переведен с прямого построения `InlineKeyboardMarkup` на внутреннюю модель сообщений без изменения поведения.
+- `2026-03-26` Продолжен безопасный multi-messenger рефакторинг inbound path: внутри `internal/bot` убраны прямые зависимости от Telegram `models.Message` / `models.CallbackQuery`, добавлены transport-neutral `IncomingMessage` и `IncomingAction`, а mapping из Telegram update локализован в `update_router`.
+- `2026-03-26` Параллельно с multi-messenger рефакторингом усилено unit-покрытие bot/use-case слоя: добавлен `fake sender` и сценарные тесты на `/menu`, повторное включение автоплатежа без новой оплаты и отключение автоплатежа только для одной подписки с корректной агрегацией user autopay state.
+- `2026-03-26` В persistence foundation введен внутренний `user_id` и подготовлена поддержка внешних messenger identities: добавлены доменные типы `MessengerKind` / `UserMessengerAccount`, миграция `0013_user_messenger_accounts.sql`, новые store-методы lookup/create user by messenger, а также unit-тесты для memory/postgres реализаций.
+- `2026-03-26` Новый identity foundation начал использоваться в рабочем bot flow: `accept_terms` и шаги регистрации теперь разрешают/создают пользователя через `GetOrCreateUserByMessenger`, а unit-тесты дополнительно проверяют создание внутреннего пользователя и Telegram account link.
 
 ## 13) Референсный flow текущего бота (для воспроизведения)
 Источник: `telegram-bot-flow.md`.

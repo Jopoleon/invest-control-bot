@@ -8,12 +8,15 @@ import (
 	"time"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
-	"github.com/go-telegram/bot/models"
+	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 )
 
 const payConsentCallbackPrefix = "payconsent:"
 
-func (h *Handler) buildFinalPaymentStep(ctx context.Context, connectorID int64, recurringOptIn bool) (string, *models.InlineKeyboardMarkup) {
+// buildFinalPaymentStep returns the last onboarding message before checkout.
+// It decides whether recurring opt-in can be offered for the selected connector
+// based on current product settings and available legal documents.
+func (h *Handler) buildFinalPaymentStep(ctx context.Context, connectorID int64, recurringOptIn bool) (string, [][]messenger.ActionButton) {
 	baseText := "✅ Спасибо! Ваша заявка оформлена успешно.\n💳 Осталось оплатить\nЧтобы произвести оплату, нажмите на кнопку «Оплатить» ниже, для переадресации на платежную страницу"
 
 	if !h.recurringEnabled {
@@ -42,8 +45,10 @@ func (h *Handler) buildFinalPaymentStep(ctx context.Context, connectorID int64, 
 	return baseText, paymentKeyboard(connectorID, false, true)
 }
 
-func paymentKeyboard(connectorID int64, recurringOptIn, canOfferRecurring bool) *models.InlineKeyboardMarkup {
-	rows := make([][]models.InlineKeyboardButton, 0, 2)
+// paymentKeyboard keeps callback payload generation in one place so both bot
+// rendering and tests use the same button contract.
+func paymentKeyboard(connectorID int64, recurringOptIn, canOfferRecurring bool) [][]messenger.ActionButton {
+	rows := make([][]messenger.ActionButton, 0, 2)
 	if canOfferRecurring {
 		toggleText := "☐ Я согласен на автоматические списания"
 		toggleState := "on"
@@ -51,8 +56,8 @@ func paymentKeyboard(connectorID int64, recurringOptIn, canOfferRecurring bool) 
 			toggleText = "☑ Я согласен на автоматические списания"
 			toggleState = "off"
 		}
-		rows = append(rows, []models.InlineKeyboardButton{
-			{Text: toggleText, CallbackData: payConsentCallbackPrefix + strconv.FormatInt(connectorID, 10) + ":" + toggleState},
+		rows = append(rows, []messenger.ActionButton{
+			buttonAction(toggleText, payConsentCallbackPrefix+strconv.FormatInt(connectorID, 10)+":"+toggleState),
 		})
 	}
 
@@ -62,12 +67,12 @@ func paymentKeyboard(connectorID int64, recurringOptIn, canOfferRecurring bool) 
 		payText = "Оплатить и включить автоплатеж"
 		payMode = "1"
 	}
-	rows = append(rows, []models.InlineKeyboardButton{{
-		Text:         payText,
-		CallbackData: "pay:" + strconv.FormatInt(connectorID, 10) + ":" + payMode,
+	rows = append(rows, []messenger.ActionButton{{
+		Text:   payText,
+		Action: "pay:" + strconv.FormatInt(connectorID, 10) + ":" + payMode,
 	}})
 
-	return &models.InlineKeyboardMarkup{InlineKeyboard: rows}
+	return rows
 }
 
 func (h *Handler) resolveLegalDocumentURL(ctx context.Context, docType domain.LegalDocumentType) (string, domain.LegalDocument, bool) {
@@ -121,6 +126,7 @@ func (h *Handler) buildRecurringConsent(ctx context.Context, telegramID int64, c
 	return consent, nil
 }
 
+// parsePayCallbackData decodes checkout callback payloads built by paymentKeyboard.
 func parsePayCallbackData(raw string) (connectorID int64, explicitRecurring bool, hasExplicitRecurring bool, ok bool) {
 	parts := strings.Split(strings.TrimSpace(raw), ":")
 	if len(parts) < 2 || parts[0] != "pay" {
@@ -141,6 +147,7 @@ func parsePayCallbackData(raw string) (connectorID int64, explicitRecurring bool
 	return connectorID, false, false, true
 }
 
+// parsePayConsentCallbackData decodes recurring opt-in toggle actions.
 func parsePayConsentCallbackData(raw string) (connectorID int64, enable bool, ok bool) {
 	parts := strings.Split(strings.TrimSpace(strings.TrimPrefix(raw, payConsentCallbackPrefix)), ":")
 	if len(parts) != 2 {

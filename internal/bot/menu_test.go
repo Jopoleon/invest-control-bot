@@ -10,12 +10,12 @@ func TestAutopayInfoMessage_Enabled(t *testing.T) {
 	if text == "" {
 		t.Fatalf("text is empty")
 	}
-	if len(keyboard.InlineKeyboard) != 1 || len(keyboard.InlineKeyboard[0]) != 1 {
-		t.Fatalf("unexpected keyboard layout: %+v", keyboard.InlineKeyboard)
+	if len(keyboard) != 1 || len(keyboard[0]) != 1 {
+		t.Fatalf("unexpected keyboard layout: %+v", keyboard)
 	}
-	button := keyboard.InlineKeyboard[0][0]
-	if button.CallbackData != menuCallbackAutopayPick {
-		t.Fatalf("callback = %q, want %q", button.CallbackData, menuCallbackAutopayPick)
+	button := keyboard[0][0]
+	if button.Action != menuCallbackAutopayPick {
+		t.Fatalf("callback = %q, want %q", button.Action, menuCallbackAutopayPick)
 	}
 }
 
@@ -34,11 +34,11 @@ func TestAutopayInfoMessage_EnabledWithCancelURL(t *testing.T) {
 	if keyboard == nil {
 		t.Fatalf("keyboard is nil, want actions")
 	}
-	if len(keyboard.InlineKeyboard) != 2 {
-		t.Fatalf("rows = %d, want 2", len(keyboard.InlineKeyboard))
+	if len(keyboard) != 2 {
+		t.Fatalf("rows = %d, want 2", len(keyboard))
 	}
-	if keyboard.InlineKeyboard[0][0].URL != "https://example.com/unsubscribe/token" {
-		t.Fatalf("cancel url = %q", keyboard.InlineKeyboard[0][0].URL)
+	if keyboard[0][0].URL != "https://example.com/unsubscribe/token" {
+		t.Fatalf("cancel url = %q", keyboard[0][0].URL)
 	}
 	if text == "" {
 		t.Fatalf("text is empty")
@@ -50,11 +50,11 @@ func TestAutopayInfoMessage_EnabledWithCheckoutURL(t *testing.T) {
 	if keyboard == nil {
 		t.Fatalf("keyboard is nil, want actions")
 	}
-	if len(keyboard.InlineKeyboard) != 2 {
-		t.Fatalf("rows = %d, want 2", len(keyboard.InlineKeyboard))
+	if len(keyboard) != 2 {
+		t.Fatalf("rows = %d, want 2", len(keyboard))
 	}
-	if keyboard.InlineKeyboard[1][0].Text != "Управлять подписками" {
-		t.Fatalf("button text = %q", keyboard.InlineKeyboard[1][0].Text)
+	if keyboard[1][0].Text != "Управлять подписками" {
+		t.Fatalf("button text = %q", keyboard[1][0].Text)
 	}
 	if text == "" {
 		t.Fatalf("text is empty")
@@ -66,11 +66,11 @@ func TestAutopayInfoMessage_DisabledWithCheckoutURL(t *testing.T) {
 	if keyboard == nil {
 		t.Fatalf("keyboard is nil, want checkout action")
 	}
-	if len(keyboard.InlineKeyboard) != 1 {
-		t.Fatalf("rows = %d, want 1", len(keyboard.InlineKeyboard))
+	if len(keyboard) != 1 {
+		t.Fatalf("rows = %d, want 1", len(keyboard))
 	}
-	if keyboard.InlineKeyboard[0][0].CallbackData != menuCallbackAutopayPick {
-		t.Fatalf("callback = %q", keyboard.InlineKeyboard[0][0].CallbackData)
+	if keyboard[0][0].Action != menuCallbackAutopayPick {
+		t.Fatalf("callback = %q", keyboard[0][0].Action)
 	}
 	if text == "" {
 		t.Fatalf("text is empty")

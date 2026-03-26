@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 	"github.com/Jopoleon/invest-control-bot/internal/payment"
 	"github.com/Jopoleon/invest-control-bot/internal/store/memory"
 	"github.com/Jopoleon/invest-control-bot/internal/telegram"
-	"github.com/go-telegram/bot/models"
 )
 
 func TestHandleCallback_ReusesExistingCompletedProfile(t *testing.T) {
@@ -37,11 +37,7 @@ func TestHandleCallback_ReusesExistingCompletedProfile(t *testing.T) {
 		t.Fatalf("save user: %v", err)
 	}
 
-	h.handleCallback(ctx, &models.CallbackQuery{
-		ID:   "cb-1",
-		From: models.User{ID: 1001, Username: "existing_user"},
-		Data: "accept_terms:" + int64ToString(connectorID),
-	})
+	h.handleCallback(ctx, testAction("cb-1", 1001, "existing_user", "accept_terms:"+int64ToString(connectorID)))
 
 	if state, found, err := st.GetRegistrationState(ctx, 1001); err != nil {
 		t.Fatalf("get registration state: %v", err)
@@ -72,11 +68,7 @@ func TestHandleCallback_RequestsOnlyMissingField(t *testing.T) {
 		t.Fatalf("save user: %v", err)
 	}
 
-	h.handleCallback(ctx, &models.CallbackQuery{
-		ID:   "cb-2",
-		From: models.User{ID: 1002, Username: "partial_user"},
-		Data: "accept_terms:" + int64ToString(connectorID),
-	})
+	h.handleCallback(ctx, testAction("cb-2", 1002, "partial_user", "accept_terms:"+int64ToString(connectorID)))
 
 	state, found, err := st.GetRegistrationState(ctx, 1002)
 	if err != nil {
@@ -123,11 +115,7 @@ func TestHandleCallback_SavesLegalDocumentVersionsForFallbackDocs(t *testing.T) 
 		t.Fatalf("create privacy doc: %v", err)
 	}
 
-	h.handleCallback(ctx, &models.CallbackQuery{
-		ID:   "cb-consent-versioned",
-		From: models.User{ID: 1101, Username: "versioned_user"},
-		Data: "accept_terms:" + int64ToString(connectorID),
-	})
+	h.handleCallback(ctx, testAction("cb-consent-versioned", 1101, "versioned_user", "accept_terms:"+int64ToString(connectorID)))
 
 	consent, found, err := st.GetConsent(ctx, 1101, connectorID)
 	if err != nil {
@@ -187,11 +175,7 @@ func TestHandleCallback_LeavesConsentVersionsEmptyForConnectorCustomURLs(t *test
 		t.Fatalf("create offer doc: %v", err)
 	}
 
-	h.handleCallback(ctx, &models.CallbackQuery{
-		ID:   "cb-consent-custom",
-		From: models.User{ID: 1102, Username: "custom_user"},
-		Data: "accept_terms:" + int64ToString(connector.ID),
-	})
+	h.handleCallback(ctx, testAction("cb-consent-custom", 1102, "custom_user", "accept_terms:"+int64ToString(connector.ID)))
 
 	consent, found, err := st.GetConsent(ctx, 1102, connector.ID)
 	if err != nil {
@@ -202,6 +186,47 @@ func TestHandleCallback_LeavesConsentVersionsEmptyForConnectorCustomURLs(t *test
 	}
 	if consent.OfferDocumentID != 0 || consent.OfferDocumentVersion != 0 || consent.PrivacyDocumentID != 0 || consent.PrivacyDocumentVersion != 0 {
 		t.Fatalf("expected empty consent versions for connector custom URLs, got %+v", consent)
+	}
+}
+
+func TestHandleCallback_CreatesInternalUserAndTelegramAccount(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	tg, err := telegram.NewClient("", "")
+	if err != nil {
+		t.Fatalf("create telegram client: %v", err)
+	}
+	h := NewHandler(st, tg, payment.NewMockService("http://localhost:8080"), false, "http://localhost:8080", "test-encryption-key-123456789012345")
+
+	connectorID := seedBotConnector(t, ctx, st, "in-user-account")
+
+	h.handleCallback(ctx, testAction("cb-user-account", 1201, "linked_user", "accept_terms:"+int64ToString(connectorID)))
+
+	user, found, err := st.GetUser(ctx, 1201)
+	if err != nil {
+		t.Fatalf("get user: %v", err)
+	}
+	if !found {
+		t.Fatalf("user not found")
+	}
+	if user.ID == 0 {
+		t.Fatalf("user id = 0")
+	}
+	if user.TelegramUsername != "linked_user" {
+		t.Fatalf("telegram username = %q", user.TelegramUsername)
+	}
+
+	accounts, err := st.ListUserMessengerAccounts(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("list messenger accounts: %v", err)
+	}
+	if len(accounts) != 1 {
+		t.Fatalf("accounts len = %d, want 1", len(accounts))
+	}
+	if accounts[0].MessengerKind != domain.MessengerKindTelegram || accounts[0].ExternalUserID != "1201" {
+		t.Fatalf("unexpected messenger account: %+v", accounts[0])
 	}
 }
 
@@ -228,11 +253,7 @@ func TestHandlePay_DisablesRecurringWhenCapabilityOff(t *testing.T) {
 		t.Fatalf("set user autopay: %v", err)
 	}
 
-	h.handlePay(ctx, &models.CallbackQuery{
-		ID:   "cb-3",
-		From: models.User{ID: 1003},
-		Data: "pay:" + int64ToString(connectorID),
-	})
+	h.handlePay(ctx, testAction("cb-3", 1003, "", "pay:"+int64ToString(connectorID)))
 
 	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{TelegramID: 1003, Limit: 10})
 	if err != nil {
@@ -270,11 +291,7 @@ func TestHandlePay_WithExplicitRecurringOptInCreatesRecurringConsent(t *testing.
 	connectorID := seedBotConnector(t, ctx, st, "in-pay-recurring")
 	seedRecurringLegalDocs(t, ctx, st)
 
-	h.handlePay(ctx, &models.CallbackQuery{
-		ID:   "cb-4",
-		From: models.User{ID: 1004},
-		Data: "pay:" + int64ToString(connectorID) + ":1",
-	})
+	h.handlePay(ctx, testAction("cb-4", 1004, "", "pay:"+int64ToString(connectorID)+":1"))
 
 	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{TelegramID: 1004, Limit: 10})
 	if err != nil {
@@ -334,11 +351,7 @@ func TestHandlePay_WithExplicitManualModeOverridesStoredAutopay(t *testing.T) {
 		t.Fatalf("set user autopay: %v", err)
 	}
 
-	h.handlePay(ctx, &models.CallbackQuery{
-		ID:   "cb-5",
-		From: models.User{ID: 1005},
-		Data: "pay:" + int64ToString(connectorID) + ":0",
-	})
+	h.handlePay(ctx, testAction("cb-5", 1005, "", "pay:"+int64ToString(connectorID)+":0"))
 
 	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{TelegramID: 1005, Limit: 10})
 	if err != nil {
@@ -389,6 +402,16 @@ func seedBotConnector(t *testing.T, ctx context.Context, st *memory.Store, paylo
 
 func int64ToString(v int64) string {
 	return strconv.FormatInt(v, 10)
+}
+
+func testAction(id string, userID int64, username, data string) messenger.IncomingAction {
+	return messenger.IncomingAction{
+		Ref:       actionRef(id),
+		User:      userIdentity(userID, username),
+		ChatID:    userID,
+		MessageID: 1,
+		Data:      data,
+	}
 }
 
 func seedRecurringLegalDocs(t *testing.T, ctx context.Context, st *memory.Store) {

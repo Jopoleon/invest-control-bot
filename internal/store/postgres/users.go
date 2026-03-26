@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,6 +13,39 @@ import (
 
 func (s *Store) SaveUser(ctx context.Context, user domain.User) error {
 	now := time.Now().UTC()
+	if user.ID > 0 {
+		_, err := s.db.ExecContext(ctx, `
+			INSERT INTO users (
+				id, telegram_id, telegram_username, full_name, phone, email, updated_at
+			) VALUES ($1,$2,$3,$4,$5,$6,$7)
+			ON CONFLICT (id)
+			DO UPDATE SET
+				telegram_id = EXCLUDED.telegram_id,
+				telegram_username = EXCLUDED.telegram_username,
+				full_name = EXCLUDED.full_name,
+				phone = EXCLUDED.phone,
+				email = EXCLUDED.email,
+				updated_at = EXCLUDED.updated_at
+		`, user.ID, nullableTelegramID(user.TelegramID), user.TelegramUsername, user.FullName, user.Phone, user.Email, now)
+		if err != nil {
+			return err
+		}
+		if user.TelegramID > 0 {
+			return s.saveUserMessengerAccount(ctx, domain.UserMessengerAccount{
+				UserID:         user.ID,
+				MessengerKind:  domain.MessengerKindTelegram,
+				ExternalUserID: strconv.FormatInt(user.TelegramID, 10),
+				Username:       user.TelegramUsername,
+				LinkedAt:       now,
+				UpdatedAt:      now,
+			})
+		}
+		return nil
+	}
+
+	if user.TelegramID <= 0 {
+		return fmt.Errorf("save user requires internal id or telegram_id")
+	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO users (
 			telegram_id, telegram_username, full_name, phone, email, updated_at
@@ -24,17 +58,31 @@ func (s *Store) SaveUser(ctx context.Context, user domain.User) error {
 			email = EXCLUDED.email,
 			updated_at = EXCLUDED.updated_at
 	`, user.TelegramID, user.TelegramUsername, user.FullName, user.Phone, user.Email, now)
-	return err
+	if err != nil {
+		return err
+	}
+	createdUser, found, err := s.GetUser(ctx, user.TelegramID)
+	if err != nil || !found {
+		return err
+	}
+	return s.saveUserMessengerAccount(ctx, domain.UserMessengerAccount{
+		UserID:         createdUser.ID,
+		MessengerKind:  domain.MessengerKindTelegram,
+		ExternalUserID: strconv.FormatInt(user.TelegramID, 10),
+		Username:       user.TelegramUsername,
+		LinkedAt:       now,
+		UpdatedAt:      now,
+	})
 }
 
-// GetUser fetches user by Telegram ID.
-func (s *Store) GetUser(ctx context.Context, telegramID int64) (domain.User, bool, error) {
+// GetUserByID fetches user by internal user ID.
+func (s *Store) GetUserByID(ctx context.Context, userID int64) (domain.User, bool, error) {
 	var u domain.User
 	err := s.db.QueryRowContext(ctx, `
-		SELECT telegram_id, telegram_username, full_name, phone, email, updated_at
+		SELECT id, COALESCE(telegram_id, 0), telegram_username, full_name, phone, email, updated_at
 		FROM users
-		WHERE telegram_id = $1
-	`, telegramID).Scan(&u.TelegramID, &u.TelegramUsername, &u.FullName, &u.Phone, &u.Email, &u.UpdatedAt)
+		WHERE id = $1
+	`, userID).Scan(&u.ID, &u.TelegramID, &u.TelegramUsername, &u.FullName, &u.Phone, &u.Email, &u.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return domain.User{}, false, nil
 	}
@@ -42,6 +90,190 @@ func (s *Store) GetUser(ctx context.Context, telegramID int64) (domain.User, boo
 		return domain.User{}, false, err
 	}
 	return u, true, nil
+}
+
+// GetUser fetches user by Telegram ID.
+func (s *Store) GetUser(ctx context.Context, telegramID int64) (domain.User, bool, error) {
+	var u domain.User
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, COALESCE(telegram_id, 0), telegram_username, full_name, phone, email, updated_at
+		FROM users
+		WHERE telegram_id = $1
+	`, telegramID).Scan(&u.ID, &u.TelegramID, &u.TelegramUsername, &u.FullName, &u.Phone, &u.Email, &u.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return domain.User{}, false, nil
+	}
+	if err != nil {
+		return domain.User{}, false, err
+	}
+	return u, true, nil
+}
+
+// GetOrCreateUserByMessenger resolves a user by external messenger identity and creates one if absent.
+func (s *Store) GetOrCreateUserByMessenger(ctx context.Context, kind domain.MessengerKind, externalUserID, username string) (domain.User, bool, error) {
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return domain.User{}, false, err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	var existing domain.User
+	err = tx.QueryRowContext(ctx, `
+		SELECT u.id, COALESCE(u.telegram_id, 0), u.telegram_username, u.full_name, u.phone, u.email, u.updated_at
+		FROM user_messenger_accounts a
+		JOIN users u ON u.id = a.user_id
+		WHERE a.messenger_kind = $1 AND a.external_user_id = $2
+	`, string(kind), externalUserID).Scan(
+		&existing.ID,
+		&existing.TelegramID,
+		&existing.TelegramUsername,
+		&existing.FullName,
+		&existing.Phone,
+		&existing.Email,
+		&existing.UpdatedAt,
+	)
+	if err == nil {
+		if strings.TrimSpace(username) != "" {
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE user_messenger_accounts
+				SET username = $3, updated_at = $4
+				WHERE messenger_kind = $1 AND external_user_id = $2
+			`, string(kind), externalUserID, username, time.Now().UTC()); err != nil {
+				return domain.User{}, false, err
+			}
+			if kind == domain.MessengerKindTelegram && existing.TelegramUsername != username {
+				if _, err := tx.ExecContext(ctx, `
+					UPDATE users
+					SET telegram_username = $2, updated_at = $3
+					WHERE id = $1
+				`, existing.ID, username, time.Now().UTC()); err != nil {
+					return domain.User{}, false, err
+				}
+				existing.TelegramUsername = username
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return domain.User{}, false, err
+		}
+		return existing, false, nil
+	}
+	if err != sql.ErrNoRows {
+		return domain.User{}, false, err
+	}
+
+	var telegramID sql.NullInt64
+	var telegramUsername string
+	if kind == domain.MessengerKindTelegram {
+		parsedID, parseErr := strconv.ParseInt(externalUserID, 10, 64)
+		if parseErr != nil || parsedID <= 0 {
+			return domain.User{}, false, fmt.Errorf("invalid telegram external user id")
+		}
+		telegramID = sql.NullInt64{Int64: parsedID, Valid: true}
+		telegramUsername = username
+
+		err = tx.QueryRowContext(ctx, `
+			SELECT id, COALESCE(telegram_id, 0), telegram_username, full_name, phone, email, updated_at
+			FROM users
+			WHERE telegram_id = $1
+		`, parsedID).Scan(
+			&existing.ID,
+			&existing.TelegramID,
+			&existing.TelegramUsername,
+			&existing.FullName,
+			&existing.Phone,
+			&existing.Email,
+			&existing.UpdatedAt,
+		)
+		if err == nil {
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO user_messenger_accounts (
+					user_id, messenger_kind, external_user_id, username, linked_at, updated_at
+				) VALUES ($1,$2,$3,$4,$5,$6)
+				ON CONFLICT (messenger_kind, external_user_id)
+				DO UPDATE SET
+					user_id = EXCLUDED.user_id,
+					username = EXCLUDED.username,
+					updated_at = EXCLUDED.updated_at
+			`, existing.ID, string(kind), externalUserID, username, time.Now().UTC(), time.Now().UTC()); err != nil {
+				return domain.User{}, false, err
+			}
+			if err := tx.Commit(); err != nil {
+				return domain.User{}, false, err
+			}
+			return existing, false, nil
+		}
+		if err != sql.ErrNoRows {
+			return domain.User{}, false, err
+		}
+	}
+
+	var created domain.User
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO users (telegram_id, telegram_username, full_name, phone, email, updated_at)
+		VALUES ($1,$2,'','','',$3)
+		RETURNING id, COALESCE(telegram_id, 0), telegram_username, full_name, phone, email, updated_at
+	`, telegramID, telegramUsername, time.Now().UTC()).Scan(
+		&created.ID,
+		&created.TelegramID,
+		&created.TelegramUsername,
+		&created.FullName,
+		&created.Phone,
+		&created.Email,
+		&created.UpdatedAt,
+	)
+	if err != nil {
+		return domain.User{}, false, err
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO user_messenger_accounts (
+			user_id, messenger_kind, external_user_id, username, linked_at, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6)
+	`, created.ID, string(kind), externalUserID, username, time.Now().UTC(), time.Now().UTC()); err != nil {
+		return domain.User{}, false, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return domain.User{}, false, err
+	}
+	return created, true, nil
+}
+
+// ListUserMessengerAccounts returns linked external messenger identities for a user.
+func (s *Store) ListUserMessengerAccounts(ctx context.Context, userID int64) ([]domain.UserMessengerAccount, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT user_id, messenger_kind, external_user_id, username, linked_at, updated_at
+		FROM user_messenger_accounts
+		WHERE user_id = $1
+		ORDER BY messenger_kind ASC, external_user_id ASC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]domain.UserMessengerAccount, 0)
+	for rows.Next() {
+		var (
+			item domain.UserMessengerAccount
+			kind string
+		)
+		if err := rows.Scan(
+			&item.UserID,
+			&kind,
+			&item.ExternalUserID,
+			&item.Username,
+			&item.LinkedAt,
+			&item.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		item.MessengerKind = domain.MessengerKind(kind)
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 // ListUsers returns admin-oriented user list with recurring preference metadata.
@@ -71,7 +303,8 @@ func (s *Store) ListUsers(ctx context.Context, query domain.UserListQuery) ([]do
 
 	stmt := `
 		SELECT
-			u.telegram_id,
+			u.id,
+			COALESCE(u.telegram_id, 0) AS telegram_id,
 			u.telegram_username,
 			u.full_name,
 			u.phone,
@@ -98,6 +331,7 @@ func (s *Store) ListUsers(ctx context.Context, query domain.UserListQuery) ([]do
 	for rows.Next() {
 		var item domain.UserListItem
 		if err := rows.Scan(
+			&item.UserID,
 			&item.TelegramID,
 			&item.TelegramUsername,
 			&item.FullName,
@@ -145,4 +379,25 @@ func (s *Store) GetUserAutoPayEnabled(ctx context.Context, telegramID int64) (bo
 		return false, false, err
 	}
 	return enabled, true, nil
+}
+
+func nullableTelegramID(telegramID int64) sql.NullInt64 {
+	if telegramID <= 0 {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: telegramID, Valid: true}
+}
+
+func (s *Store) saveUserMessengerAccount(ctx context.Context, account domain.UserMessengerAccount) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO user_messenger_accounts (
+			user_id, messenger_kind, external_user_id, username, linked_at, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6)
+		ON CONFLICT (messenger_kind, external_user_id)
+		DO UPDATE SET
+			user_id = EXCLUDED.user_id,
+			username = EXCLUDED.username,
+			updated_at = EXCLUDED.updated_at
+	`, account.UserID, string(account.MessengerKind), account.ExternalUserID, account.Username, account.LinkedAt, account.UpdatedAt)
+	return err
 }

@@ -1,26 +1,27 @@
 package bot
 
 import (
+	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 	"github.com/Jopoleon/invest-control-bot/internal/payment"
 	"github.com/Jopoleon/invest-control-bot/internal/store"
-	"github.com/Jopoleon/invest-control-bot/internal/telegram"
 )
 
-// Handler orchestrates Telegram bot user flows (onboarding, consents, mock payment).
+// Handler orchestrates messenger-agnostic user flows while transport-specific
+// delivery/parsing is pushed to adapters and the sender contract.
 type Handler struct {
 	store            store.Store
-	tg               *telegram.Client
+	sender           messenger.Sender
 	payment          payment.Service
 	recurringEnabled bool
 	publicBaseURL    string
 	encryptionKey    string
 }
 
-// NewHandler wires bot handler dependencies.
-func NewHandler(st store.Store, tg *telegram.Client, paymentService payment.Service, recurringEnabled bool, publicBaseURL, encryptionKey string) *Handler {
+// NewHandler wires use-case dependencies independently from a concrete messenger.
+func NewHandler(st store.Store, sender messenger.Sender, paymentService payment.Service, recurringEnabled bool, publicBaseURL, encryptionKey string) *Handler {
 	return &Handler{
 		store:            st,
-		tg:               tg,
+		sender:           sender,
 		payment:          paymentService,
 		recurringEnabled: recurringEnabled,
 		publicBaseURL:    publicBaseURL,

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 	tgbot "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
@@ -54,6 +55,11 @@ func (c *Client) SendMessage(ctx context.Context, chatID int64, text string, key
 	return err
 }
 
+// SendMessage implements messenger.Sender for Telegram transport.
+func (c *Client) Send(ctx context.Context, user messenger.UserRef, msg messenger.OutgoingMessage) error {
+	return c.SendMessage(ctx, user.ChatID, msg.Text, toTelegramKeyboard(msg.Buttons))
+}
+
 // EditMessageText updates previously sent bot message and optionally replaces inline keyboard.
 func (c *Client) EditMessageText(ctx context.Context, chatID int64, messageID int, text string, keyboard *models.InlineKeyboardMarkup) error {
 	if !c.enabled {
@@ -74,6 +80,11 @@ func (c *Client) EditMessageText(ctx context.Context, chatID int64, messageID in
 	return err
 }
 
+// EditMessage implements messenger.Sender for Telegram transport.
+func (c *Client) Edit(ctx context.Context, ref messenger.MessageRef, msg messenger.OutgoingMessage) error {
+	return c.EditMessageText(ctx, ref.ChatID, ref.MessageID, msg.Text, toTelegramKeyboard(msg.Buttons))
+}
+
 // AnswerCallbackQuery acknowledges button click to stop Telegram client-side spinner.
 func (c *Client) AnswerCallbackQuery(ctx context.Context, callbackQueryID string) error {
 	if !c.enabled {
@@ -82,6 +93,21 @@ func (c *Client) AnswerCallbackQuery(ctx context.Context, callbackQueryID string
 	}
 
 	_, err := c.bot.AnswerCallbackQuery(ctx, &tgbot.AnswerCallbackQueryParams{CallbackQueryID: callbackQueryID})
+	return err
+}
+
+// AnswerAction implements messenger.Sender for Telegram transport.
+func (c *Client) AnswerAction(ctx context.Context, ref messenger.ActionRef, text string) error {
+	if !c.enabled {
+		slog.Debug("telegram client disabled, skip answerAction", "callback_id", ref.ID)
+		return nil
+	}
+
+	params := &tgbot.AnswerCallbackQueryParams{CallbackQueryID: ref.ID}
+	if strings.TrimSpace(text) != "" {
+		params.Text = text
+	}
+	_, err := c.bot.AnswerCallbackQuery(ctx, params)
 	return err
 }
 
@@ -181,4 +207,30 @@ func (c *Client) RemoveChatMember(ctx context.Context, chatID, userID int64) err
 		OnlyIfBanned: true,
 	})
 	return err
+}
+
+func toTelegramKeyboard(rows [][]messenger.ActionButton) *models.InlineKeyboardMarkup {
+	if len(rows) == 0 {
+		return nil
+	}
+
+	keyboard := make([][]models.InlineKeyboardButton, 0, len(rows))
+	for _, row := range rows {
+		if len(row) == 0 {
+			continue
+		}
+		outRow := make([]models.InlineKeyboardButton, 0, len(row))
+		for _, button := range row {
+			outRow = append(outRow, models.InlineKeyboardButton{
+				Text:         button.Text,
+				URL:          button.URL,
+				CallbackData: button.Action,
+			})
+		}
+		keyboard = append(keyboard, outRow)
+	}
+	if len(keyboard) == 0 {
+		return nil
+	}
+	return &models.InlineKeyboardMarkup{InlineKeyboard: keyboard}
 }

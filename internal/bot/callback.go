@@ -8,17 +8,19 @@ import (
 	"time"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
-	"github.com/go-telegram/bot/models"
+	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 )
 
-// handleCallback handles consent acceptance and pay-button callbacks.
-func (h *Handler) handleCallback(ctx context.Context, cb *models.CallbackQuery) {
-	if cb == nil {
+// handleCallback routes normalized button actions to the corresponding use-case
+// branch. By the time we get here, transport-specific callback parsing is
+// already done by the adapter layer.
+func (h *Handler) handleCallback(ctx context.Context, cb messenger.IncomingAction) {
+	if cb.User.ID == 0 {
 		return
 	}
 
-	if err := h.tg.AnswerCallbackQuery(ctx, cb.ID); err != nil {
-		slog.Error("answer callback failed", "error", err, "callback_id", cb.ID)
+	if err := h.sender.AnswerAction(ctx, cb.Ref, ""); err != nil {
+		slog.Error("answer callback failed", "error", err, "callback_id", cb.Ref.ID)
 	}
 
 	if !strings.HasPrefix(cb.Data, "accept_terms:") {
@@ -35,7 +37,7 @@ func (h *Handler) handleCallback(ctx context.Context, cb *models.CallbackQuery) 
 	connectorIDRaw := strings.TrimPrefix(cb.Data, "accept_terms:")
 	connectorID, err := strconv.ParseInt(connectorIDRaw, 10, 64)
 	if err != nil || connectorID <= 0 {
-		h.send(ctx, cb.From.ID, "Коннектор не найден или отключен.")
+		h.send(ctx, cb.ChatID, "Коннектор не найден или отключен.")
 		return
 	}
 	connector, ok, err := h.store.GetConnector(ctx, connectorID)
@@ -44,12 +46,12 @@ func (h *Handler) handleCallback(ctx context.Context, cb *models.CallbackQuery) 
 		return
 	}
 	if !ok || !connector.IsActive {
-		h.send(ctx, cb.From.ID, "Коннектор не найден или отключен.")
+		h.send(ctx, cb.ChatID, "Коннектор не найден или отключен.")
 		return
 	}
 
 	consent := domain.Consent{
-		TelegramID:        cb.From.ID,
+		TelegramID:        cb.User.ID,
 		ConnectorID:       connectorID,
 		OfferAcceptedAt:   time.Now().UTC(),
 		PrivacyAcceptedAt: time.Now().UTC(),
@@ -67,60 +69,58 @@ func (h *Handler) handleCallback(ctx context.Context, cb *models.CallbackQuery) 
 		}
 	}
 	if err := h.store.SaveConsent(ctx, consent); err != nil {
-		slog.Error("save consent failed", "error", err, "telegram_id", cb.From.ID, "connector_id", connectorID)
+		slog.Error("save consent failed", "error", err, "telegram_id", cb.User.ID, "connector_id", connectorID)
 		return
 	}
-	h.logAuditEvent(ctx, cb.From.ID, connectorID, domain.AuditActionConsentAccepted, "")
+	h.logAuditEvent(ctx, cb.User.ID, connectorID, domain.AuditActionConsentAccepted, "")
 
-	user, exists, err := h.store.GetUser(ctx, cb.From.ID)
-	if err != nil {
-		slog.Error("load user before registration flow failed", "error", err, "telegram_id", cb.From.ID, "connector_id", connectorID)
+	user, ok := h.resolveTelegramUser(ctx, cb.User.ID, cb.User.Username)
+	if !ok {
 		return
 	}
-	if !exists {
-		user = domain.User{TelegramID: cb.From.ID}
-	}
-	updatedUsername := applyCurrentTelegramUsername(&user, cb.From.Username)
-	if updatedUsername || !exists {
+	updatedUsername := applyCurrentTelegramUsername(&user, cb.User.Username)
+	if updatedUsername {
 		if err := h.store.SaveUser(ctx, user); err != nil {
-			slog.Error("save user before registration flow failed", "error", err, "telegram_id", cb.From.ID, "connector_id", connectorID)
+			slog.Error("save user before registration flow failed", "error", err, "telegram_id", cb.User.ID, "connector_id", connectorID)
 			return
 		}
 	}
 
 	nextStep := nextRegistrationStep(user)
 	if nextStep == domain.StepDone {
-		if err := h.store.DeleteRegistrationState(ctx, cb.From.ID); err != nil {
-			slog.Error("delete registration state failed", "error", err, "telegram_id", cb.From.ID)
+		if err := h.store.DeleteRegistrationState(ctx, cb.User.ID); err != nil {
+			slog.Error("delete registration state failed", "error", err, "telegram_id", cb.User.ID)
 		}
-		h.logAuditEvent(ctx, cb.From.ID, connectorID, domain.AuditActionRegistrationReusedProfile, "")
-		h.sendFinalRegistrationMessage(ctx, cb.From.ID, cb.From.ID, connectorID)
+		h.logAuditEvent(ctx, cb.User.ID, connectorID, domain.AuditActionRegistrationReusedProfile, "")
+		h.sendFinalRegistrationMessage(ctx, cb.ChatID, cb.User.ID, connectorID)
 		return
 	}
 
 	state := domain.RegistrationState{
-		TelegramID:       cb.From.ID,
+		TelegramID:       cb.User.ID,
 		ConnectorID:      connectorID,
 		Step:             nextStep,
 		TelegramUsername: user.TelegramUsername,
 	}
 	if err := h.store.SaveRegistrationState(ctx, state); err != nil {
-		slog.Error("save registration state failed", "error", err, "telegram_id", cb.From.ID, "connector_id", connectorID)
+		slog.Error("save registration state failed", "error", err, "telegram_id", cb.User.ID, "connector_id", connectorID)
 		return
 	}
-	h.logAuditEvent(ctx, cb.From.ID, connectorID, domain.AuditActionRegistrationStepRequested, string(nextStep))
+	h.logAuditEvent(ctx, cb.User.ID, connectorID, domain.AuditActionRegistrationStepRequested, string(nextStep))
 
-	h.send(ctx, cb.From.ID, registrationPrompt(nextStep))
+	h.send(ctx, cb.ChatID, registrationPrompt(nextStep))
 }
 
-func (h *Handler) handlePayConsentToggle(ctx context.Context, cb *models.CallbackQuery) {
-	if cb == nil || cb.Message.Message == nil {
+// handlePayConsentToggle re-renders the final checkout step with the currently
+// selected recurring opt-in state, but does not create a payment yet.
+func (h *Handler) handlePayConsentToggle(ctx context.Context, cb messenger.IncomingAction) {
+	if cb.ChatID == 0 || cb.MessageID == 0 {
 		return
 	}
 
 	connectorID, enabled, ok := parsePayConsentCallbackData(cb.Data)
 	if !ok {
-		h.send(ctx, cb.From.ID, "Не удалось обновить настройку автоплатежа.")
+		h.send(ctx, cb.ChatID, "Не удалось обновить настройку автоплатежа.")
 		return
 	}
 	connector, found, err := h.store.GetConnector(ctx, connectorID)
@@ -129,13 +129,16 @@ func (h *Handler) handlePayConsentToggle(ctx context.Context, cb *models.Callbac
 		return
 	}
 	if !found || !connector.IsActive {
-		h.send(ctx, cb.From.ID, "Коннектор не найден или отключен.")
+		h.send(ctx, cb.ChatID, "Коннектор не найден или отключен.")
 		return
 	}
 
 	text, keyboard := h.buildFinalPaymentStep(ctx, connectorID, enabled)
-	if err := h.tg.EditMessageText(ctx, cb.Message.Message.Chat.ID, cb.Message.Message.ID, text, keyboard); err != nil {
-		slog.Error("edit pay consent message failed", "error", err, "chat_id", cb.Message.Message.Chat.ID, "message_id", cb.Message.Message.ID)
+	if err := h.sender.Edit(ctx, messageRef(cb.ChatID, cb.MessageID), messenger.OutgoingMessage{
+		Text:    text,
+		Buttons: keyboard,
+	}); err != nil {
+		slog.Error("edit pay consent message failed", "error", err, "chat_id", cb.ChatID, "message_id", cb.MessageID)
 		return
 	}
 }

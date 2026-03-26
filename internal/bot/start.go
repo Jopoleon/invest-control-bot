@@ -8,14 +8,14 @@ import (
 	"strings"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
-	"github.com/go-telegram/bot/models"
+	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 )
 
 // handleStart resolves connector by payload and shows tariff card with consent button.
-func (h *Handler) handleStart(ctx context.Context, msg *models.Message) {
+func (h *Handler) handleStart(ctx context.Context, msg messenger.IncomingMessage) {
 	parts := strings.Fields(strings.TrimSpace(msg.Text))
 	if len(parts) < 2 {
-		h.send(ctx, msg.Chat.ID, "Нужна ссылка вида /start <connector_payload>.")
+		h.send(ctx, msg.ChatID, "Нужна ссылка вида /start <connector_payload>.")
 		return
 	}
 
@@ -35,10 +35,10 @@ func (h *Handler) handleStart(ctx context.Context, msg *models.Message) {
 		}
 	}
 	if !ok || !connector.IsActive {
-		h.send(ctx, msg.Chat.ID, "Коннектор не найден или отключен.")
+		h.send(ctx, msg.ChatID, "Коннектор не найден или отключен.")
 		return
 	}
-	h.logAuditEvent(ctx, msg.From.ID, connector.ID, domain.AuditActionStartOpened, "payload="+payload)
+	h.logAuditEvent(ctx, msg.User.ID, connector.ID, domain.AuditActionStartOpened, "payload="+payload)
 
 	offerURL := connector.OfferURL
 	if offerURL == "" {
@@ -58,12 +58,15 @@ func (h *Handler) handleStart(ctx context.Context, msg *models.Message) {
 		privacyURL,
 	)
 
-	keyboard := &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{
-		{Text: "Принимаю условия", CallbackData: "accept_terms:" + strconv.FormatInt(connector.ID, 10)},
-	}}}
+	out := messenger.OutgoingMessage{
+		Text: text,
+		Buttons: [][]messenger.ActionButton{{
+			buttonAction("Принимаю условия", "accept_terms:"+strconv.FormatInt(connector.ID, 10)),
+		}},
+	}
 
-	if err := h.tg.SendMessage(ctx, msg.Chat.ID, text, keyboard); err != nil {
-		slog.Error("send start message failed", "error", err, "chat_id", msg.Chat.ID, "connector_id", connector.ID)
+	if err := h.sender.Send(ctx, chatRef(msg.ChatID), out); err != nil {
+		slog.Error("send start message failed", "error", err, "chat_id", msg.ChatID, "connector_id", connector.ID)
 	}
 }
 

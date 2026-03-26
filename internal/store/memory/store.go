@@ -26,6 +26,9 @@ type Store struct {
 	adminByHash            map[string]int64
 	nextAdminSessID        int64
 	users                  map[int64]domain.User
+	userIDByTelegram       map[int64]int64
+	messengerAccounts      map[string]domain.UserMessengerAccount
+	nextUserID             int64
 	userAutoPay            map[int64]bool
 	consents               map[string]domain.Consent
 	recurringConsents      []domain.RecurringConsent
@@ -52,6 +55,9 @@ func New() *Store {
 		adminByHash:            make(map[string]int64),
 		nextAdminSessID:        1,
 		users:                  make(map[int64]domain.User),
+		userIDByTelegram:       make(map[int64]int64),
+		messengerAccounts:      make(map[string]domain.UserMessengerAccount),
+		nextUserID:             1,
 		userAutoPay:            make(map[int64]bool),
 		consents:               make(map[string]domain.Consent),
 		recurringConsents:      make([]domain.RecurringConsent, 0),
@@ -496,8 +502,42 @@ func (s *Store) SaveUser(_ context.Context, user domain.User) error {
 	defer s.mu.Unlock()
 
 	user.UpdatedAt = time.Now().UTC()
-	s.users[user.TelegramID] = user
+	if user.ID > 0 {
+		if existing, ok := s.users[user.ID]; ok && existing.TelegramID > 0 && existing.TelegramID != user.TelegramID {
+			delete(s.userIDByTelegram, existing.TelegramID)
+		}
+	} else if user.TelegramID > 0 {
+		if existingID, ok := s.userIDByTelegram[user.TelegramID]; ok {
+			user.ID = existingID
+		}
+	}
+	if user.ID <= 0 {
+		user.ID = s.nextUserID
+		s.nextUserID++
+	}
+
+	s.users[user.ID] = user
+	if user.TelegramID > 0 {
+		s.userIDByTelegram[user.TelegramID] = user.ID
+		s.upsertMessengerAccountLocked(domain.UserMessengerAccount{
+			UserID:         user.ID,
+			MessengerKind:  domain.MessengerKindTelegram,
+			ExternalUserID: strconv.FormatInt(user.TelegramID, 10),
+			Username:       user.TelegramUsername,
+			LinkedAt:       user.UpdatedAt,
+			UpdatedAt:      user.UpdatedAt,
+		})
+	}
 	return nil
+}
+
+// GetUserByID fetches user profile by internal user ID.
+func (s *Store) GetUserByID(_ context.Context, userID int64) (domain.User, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	u, ok := s.users[userID]
+	return u, ok, nil
 }
 
 // GetUser fetches user profile by Telegram ID.
@@ -505,8 +545,78 @@ func (s *Store) GetUser(_ context.Context, telegramID int64) (domain.User, bool,
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	u, ok := s.users[telegramID]
+	userID, ok := s.userIDByTelegram[telegramID]
+	if !ok {
+		return domain.User{}, false, nil
+	}
+	u, ok := s.users[userID]
 	return u, ok, nil
+}
+
+// GetOrCreateUserByMessenger resolves a user by external messenger identity or creates one if absent.
+func (s *Store) GetOrCreateUserByMessenger(_ context.Context, kind domain.MessengerKind, externalUserID, username string) (domain.User, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := messengerAccountKey(kind, externalUserID)
+	if account, ok := s.messengerAccounts[key]; ok {
+		user := s.users[account.UserID]
+		if strings.TrimSpace(username) != "" && account.Username != username {
+			account.Username = username
+			account.UpdatedAt = time.Now().UTC()
+			s.messengerAccounts[key] = account
+			if kind == domain.MessengerKindTelegram && user.TelegramUsername != username {
+				user.TelegramUsername = username
+				user.UpdatedAt = account.UpdatedAt
+				s.users[user.ID] = user
+			}
+		}
+		return user, false, nil
+	}
+
+	user := domain.User{
+		ID:        s.nextUserID,
+		UpdatedAt: time.Now().UTC(),
+	}
+	s.nextUserID++
+	if kind == domain.MessengerKindTelegram {
+		if telegramID, err := strconv.ParseInt(externalUserID, 10, 64); err == nil && telegramID > 0 {
+			user.TelegramID = telegramID
+			user.TelegramUsername = username
+			s.userIDByTelegram[telegramID] = user.ID
+		}
+	}
+	s.users[user.ID] = user
+	s.upsertMessengerAccountLocked(domain.UserMessengerAccount{
+		UserID:         user.ID,
+		MessengerKind:  kind,
+		ExternalUserID: externalUserID,
+		Username:       username,
+		LinkedAt:       user.UpdatedAt,
+		UpdatedAt:      user.UpdatedAt,
+	})
+	return user, true, nil
+}
+
+// ListUserMessengerAccounts returns linked messenger identities for one internal user.
+func (s *Store) ListUserMessengerAccounts(_ context.Context, userID int64) ([]domain.UserMessengerAccount, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	items := make([]domain.UserMessengerAccount, 0)
+	for _, account := range s.messengerAccounts {
+		if account.UserID != userID {
+			continue
+		}
+		items = append(items, account)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].MessengerKind != items[j].MessengerKind {
+			return items[i].MessengerKind < items[j].MessengerKind
+		}
+		return items[i].ExternalUserID < items[j].ExternalUserID
+	})
+	return items, nil
 }
 
 // ListUsers returns filtered users for admin screens.
@@ -538,6 +648,7 @@ func (s *Store) ListUsers(_ context.Context, query domain.UserListQuery) ([]doma
 		}
 		autoPay, hasAutoPay := s.userAutoPay[user.TelegramID]
 		items = append(items, domain.UserListItem{
+			UserID:             user.ID,
 			TelegramID:         user.TelegramID,
 			TelegramUsername:   user.TelegramUsername,
 			FullName:           user.FullName,
@@ -551,7 +662,7 @@ func (s *Store) ListUsers(_ context.Context, query domain.UserListQuery) ([]doma
 
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].UpdatedAt.Equal(items[j].UpdatedAt) {
-			return items[i].TelegramID > items[j].TelegramID
+			return items[i].UserID > items[j].UserID
 		}
 		return items[i].UpdatedAt.After(items[j].UpdatedAt)
 	})
@@ -1209,4 +1320,25 @@ func consentKey(telegramID, connectorID int64) string {
 // int64ToString converts int64 values for map key composition.
 func int64ToString(v int64) string {
 	return strconv.FormatInt(v, 10)
+}
+
+func messengerAccountKey(kind domain.MessengerKind, externalUserID string) string {
+	return string(kind) + ":" + strings.TrimSpace(externalUserID)
+}
+
+func (s *Store) upsertMessengerAccountLocked(account domain.UserMessengerAccount) {
+	key := messengerAccountKey(account.MessengerKind, account.ExternalUserID)
+	existing, ok := s.messengerAccounts[key]
+	if ok {
+		account.LinkedAt = existing.LinkedAt
+		if account.UpdatedAt.IsZero() {
+			account.UpdatedAt = time.Now().UTC()
+		}
+	} else if account.LinkedAt.IsZero() {
+		account.LinkedAt = time.Now().UTC()
+	}
+	if account.UpdatedAt.IsZero() {
+		account.UpdatedAt = account.LinkedAt
+	}
+	s.messengerAccounts[key] = account
 }

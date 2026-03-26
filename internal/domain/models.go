@@ -2,6 +2,14 @@ package domain
 
 import "time"
 
+// MessengerKind identifies an external messenger platform linked to a user.
+type MessengerKind string
+
+const (
+	MessengerKindTelegram MessengerKind = "telegram"
+	MessengerKindMAX      MessengerKind = "max"
+)
+
 // Connector describes a tariff and start payload used to enter the bot flow.
 type Connector struct {
 	ID           int64
@@ -20,6 +28,7 @@ type Connector struct {
 
 // User stores user profile fields collected during onboarding.
 type User struct {
+	ID               int64
 	TelegramID       int64
 	TelegramUsername string
 	FullName         string
@@ -28,8 +37,19 @@ type User struct {
 	UpdatedAt        time.Time
 }
 
+// UserMessengerAccount links one internal user to one external messenger identity.
+type UserMessengerAccount struct {
+	UserID         int64
+	MessengerKind  MessengerKind
+	ExternalUserID string
+	Username       string
+	LinkedAt       time.Time
+	UpdatedAt      time.Time
+}
+
 // UserListItem is an admin-facing projection for user list screens.
 type UserListItem struct {
+	UserID             int64
 	TelegramID         int64
 	TelegramUsername   string
 	FullName           string

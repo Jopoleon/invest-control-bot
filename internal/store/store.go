@@ -59,7 +59,10 @@ type ConsentStore interface {
 // UserStore manages user profile and recurring preference persistence.
 type UserStore interface {
 	SaveUser(ctx context.Context, user domain.User) error
+	GetUserByID(ctx context.Context, userID int64) (domain.User, bool, error)
 	GetUser(ctx context.Context, telegramID int64) (domain.User, bool, error)
+	GetOrCreateUserByMessenger(ctx context.Context, kind domain.MessengerKind, externalUserID, username string) (domain.User, bool, error)
+	ListUserMessengerAccounts(ctx context.Context, userID int64) ([]domain.UserMessengerAccount, error)
 	ListUsers(ctx context.Context, query domain.UserListQuery) ([]domain.UserListItem, error)
 	SetUserAutoPayEnabled(ctx context.Context, telegramID int64, enabled bool, updatedAt time.Time) error
 	GetUserAutoPayEnabled(ctx context.Context, telegramID int64) (bool, bool, error)
