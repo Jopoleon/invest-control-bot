@@ -2,7 +2,6 @@ package bot
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -30,18 +29,18 @@ const (
 func (h *Handler) sendMenu(ctx context.Context, chatID int64) {
 	rows := [][]messenger.ActionButton{
 		{
-			buttonAction("📄 Моя подписка", menuCallbackSubscription),
+			buttonAction(botMenuButtonSubscription, menuCallbackSubscription),
 		},
 		{
-			buttonAction("💳 Платежи", menuCallbackPayments),
+			buttonAction(botMenuButtonPayments, menuCallbackPayments),
 		},
 	}
 	if h.recurringEnabled {
 		rows = append(rows, []messenger.ActionButton{
-			buttonAction("🔁 Автоплатеж", menuCallbackAutopay),
+			buttonAction(botMenuButtonAutopay, menuCallbackAutopay),
 		})
 	}
-	if err := h.sender.Send(ctx, chatRef(chatID), messenger.OutgoingMessage{Text: "Личный кабинет:", Buttons: rows}); err != nil {
+	if err := h.sender.Send(ctx, chatRef(chatID), messenger.OutgoingMessage{Text: botMenuTitle, Buttons: rows}); err != nil {
 		slog.Error("send menu failed", "error", err, "chat_id", chatID)
 	}
 }
@@ -78,7 +77,7 @@ func (h *Handler) handleMenuCallback(ctx context.Context, cb messenger.IncomingA
 	case menuCallbackAutopayOffNo:
 		h.restoreAutopayInfo(ctx, cb)
 	default:
-		h.send(ctx, chatID, "Неизвестная команда меню.")
+		h.send(ctx, chatID, botMsgUnknownMenuCommand)
 	}
 }
 
@@ -90,16 +89,16 @@ func (h *Handler) sendSubscriptionOverview(ctx context.Context, chatID, telegram
 	})
 	if err != nil {
 		slog.Error("list active subscriptions failed", "error", err, "telegram_id", telegramID)
-		h.send(ctx, chatID, "Не удалось загрузить подписку. Попробуйте позже.")
+		h.send(ctx, chatID, botMsgSubscriptionLoadFailed)
 		return
 	}
 
 	if len(subs) == 0 {
-		h.send(ctx, chatID, "У вас нет активных подписок.")
+		h.send(ctx, chatID, botMsgNoActiveSubscriptions)
 		return
 	}
 
-	lines := []string{"📄 Моя подписка", ""}
+	lines := []string{botMenuSubscriptionHeader, ""}
 	for _, sub := range subs {
 		connector, ok, err := h.store.GetConnector(ctx, sub.ConnectorID)
 		if err != nil {
@@ -111,22 +110,10 @@ func (h *Handler) sendSubscriptionOverview(ctx context.Context, chatID, telegram
 		}
 
 		channel := resolveChannelForBot(connector.ChannelURL, connector.ChatID)
-		lines = append(lines, fmt.Sprintf("• %s", connector.Name))
-		lines = append(lines, fmt.Sprintf("  Сумма: %d ₽", connector.PriceRUB))
-		lines = append(lines, fmt.Sprintf("  Период: %d дн.", connector.PeriodDays))
-		lines = append(lines, fmt.Sprintf("  Действует до: %s", sub.EndsAt.In(time.Local).Format("02.01.2006 15:04")))
-		if sub.AutoPayEnabled {
-			lines = append(lines, "  Автоплатеж: включен")
-		} else {
-			lines = append(lines, "  Автоплатеж: выключен")
-		}
-		if channel != "" {
-			lines = append(lines, fmt.Sprintf("  Канал: %s", channel))
-		}
-		lines = append(lines, "")
+		lines = append(lines, botSubscriptionOverviewLines(sub, connector, channel)...)
 	}
 	if len(lines) <= 2 {
-		h.send(ctx, chatID, "У вас нет активных подписок.")
+		h.send(ctx, chatID, botMsgNoActiveSubscriptions)
 		return
 	}
 
@@ -141,23 +128,17 @@ func (h *Handler) sendPaymentHistory(ctx context.Context, chatID, telegramID int
 	})
 	if err != nil {
 		slog.Error("list payments for menu failed", "error", err, "telegram_id", telegramID)
-		h.send(ctx, chatID, "Не удалось загрузить платежи. Попробуйте позже.")
+		h.send(ctx, chatID, botMsgPaymentsLoadFailed)
 		return
 	}
 	if len(payments) == 0 {
-		h.send(ctx, chatID, "У вас пока нет платежей.")
+		h.send(ctx, chatID, botMsgNoPayments)
 		return
 	}
 
-	lines := []string{"💳 Последние платежи", ""}
+	lines := []string{botMenuPaymentsHeader, ""}
 	for _, p := range payments {
-		paid := "-"
-		if p.PaidAt != nil {
-			paid = p.PaidAt.In(time.Local).Format("02.01.2006 15:04")
-		}
-		lines = append(lines, fmt.Sprintf("• #%d — %d ₽ — %s", p.ID, p.AmountRUB, strings.ToUpper(string(p.Status))))
-		lines = append(lines, fmt.Sprintf("  Создан: %s", p.CreatedAt.In(time.Local).Format("02.01.2006 15:04")))
-		lines = append(lines, fmt.Sprintf("  Оплачен: %s", paid))
+		lines = append(lines, botPaymentHistoryLines(p)...)
 	}
 	h.send(ctx, chatID, strings.Join(lines, "\n"))
 	h.logAuditEvent(ctx, telegramID, 0, domain.AuditActionMenuPaymentsOpened, "")
@@ -165,7 +146,7 @@ func (h *Handler) sendPaymentHistory(ctx context.Context, chatID, telegramID int
 
 func (h *Handler) sendAutopayInfo(ctx context.Context, chatID, telegramID int64) {
 	if !h.recurringEnabled {
-		h.send(ctx, chatID, "Автоплатеж временно недоступен. Подключим его после активации recurring в Robokassa.")
+		h.send(ctx, chatID, botMsgAutopayUnavailable)
 		return
 	}
 	options := h.listAutopayOptions(ctx, telegramID)
@@ -175,7 +156,7 @@ func (h *Handler) sendAutopayInfo(ctx context.Context, chatID, telegramID int64)
 			enabledCount++
 		}
 	}
-	text, keyboard := autopayInfoMessage(enabledCount, len(options), h.buildAutopayCancelURL(telegramID))
+	text, keyboard := botAutopayInfoMessage(enabledCount, len(options), h.buildAutopayCancelURL(telegramID))
 	if err := h.sender.Send(ctx, chatRef(chatID), messenger.OutgoingMessage{Text: text, Buttons: keyboard}); err != nil {
 		slog.Error("send autopay info failed", "error", err, "telegram_id", telegramID)
 		return
@@ -187,11 +168,11 @@ func (h *Handler) confirmAutopayDisable(ctx context.Context, cb messenger.Incomi
 	if cb.ChatID == 0 {
 		return
 	}
-	text := "🔁 Отключить автоплатеж?\n\nПосле отключения новые автоматические списания выполняться не будут. Текущий оплаченный период сохранится до даты окончания подписки."
+	text := botMsgAutopayDisableConfirm
 	keyboard := [][]messenger.ActionButton{
 		{
-			buttonAction("Да, отключить", menuCallbackAutopayOff),
-			buttonAction("Нет, оставить", menuCallbackAutopayOffNo),
+			buttonAction(botBtnAutopayDisableConfirm, menuCallbackAutopayOff),
+			buttonAction(botBtnAutopayDisableCancel, menuCallbackAutopayOffNo),
 		},
 	}
 	if err := h.respondToAction(ctx, cb, messenger.OutgoingMessage{Text: text, Buttons: keyboard}); err != nil {
@@ -212,7 +193,7 @@ func (h *Handler) restoreAutopayInfo(ctx context.Context, cb messenger.IncomingA
 			enabledCount++
 		}
 	}
-	text, keyboard := autopayInfoMessage(enabledCount, len(options), h.buildAutopayCancelURL(cb.User.ID))
+	text, keyboard := botAutopayInfoMessage(enabledCount, len(options), h.buildAutopayCancelURL(cb.User.ID))
 	if err := h.respondToAction(ctx, cb, messenger.OutgoingMessage{Text: text, Buttons: keyboard}); err != nil {
 		slog.Error("restore autopay info failed", "error", err, "telegram_id", cb.User.ID)
 	}
@@ -220,19 +201,19 @@ func (h *Handler) restoreAutopayInfo(ctx context.Context, cb messenger.IncomingA
 
 func (h *Handler) setAutopayPreference(ctx context.Context, chatID, telegramID int64, enabled bool) {
 	if !h.recurringEnabled {
-		h.send(ctx, chatID, "Автоплатеж временно недоступен. Подключим его после активации recurring в Robokassa.")
+		h.send(ctx, chatID, botMsgAutopayUnavailable)
 		return
 	}
 	if enabled {
-		h.send(ctx, chatID, "Автоплатеж включается на этапе оплаты через отдельное согласие на автоматические списания. При следующей оплате выберите режим с автоплатежом.")
+		h.send(ctx, chatID, botMsgAutopayEnableOnlyDuringPayment)
 		return
 	}
 	if err := h.store.SetUserAutoPayEnabled(ctx, telegramID, enabled, time.Now().UTC()); err != nil {
 		slog.Error("save user autopay preference failed", "error", err, "telegram_id", telegramID, "enabled", enabled)
-		h.send(ctx, chatID, "Не удалось изменить настройку автоплатежа.")
+		h.send(ctx, chatID, botMsgAutopayPreferenceUpdateFailed)
 		return
 	}
-	h.send(ctx, chatID, "Автоплатеж выключен.")
+	h.send(ctx, chatID, botMsgAutopayDisabledShort)
 	h.logAuditEvent(ctx, telegramID, 0, domain.AuditActionAutopayDisabled, "")
 }
 
@@ -241,21 +222,20 @@ func (h *Handler) disableAutopayConfirmed(ctx context.Context, cb messenger.Inco
 		return
 	}
 	if !h.recurringEnabled {
-		h.send(ctx, cb.ChatID, "Автоплатеж временно недоступен. Подключим его после активации recurring в Robokassa.")
+		h.send(ctx, cb.ChatID, botMsgAutopayUnavailable)
 		return
 	}
 	if err := h.store.SetUserAutoPayEnabled(ctx, cb.User.ID, false, time.Now().UTC()); err != nil {
 		slog.Error("disable autopay failed", "error", err, "telegram_id", cb.User.ID)
-		h.send(ctx, cb.ChatID, "Не удалось изменить настройку автоплатежа.")
+		h.send(ctx, cb.ChatID, botMsgAutopayPreferenceUpdateFailed)
 		return
 	}
 	if err := h.store.DisableAutoPayForActiveSubscriptions(ctx, cb.User.ID, time.Now().UTC()); err != nil {
 		slog.Error("disable subscription autopay failed", "error", err, "telegram_id", cb.User.ID)
-		h.send(ctx, cb.ChatID, "Не удалось отключить автоплатеж для активных подписок.")
+		h.send(ctx, cb.ChatID, botMsgAutopayDisableSubscriptionsFailed)
 		return
 	}
-	text := "🔁 Автоплатеж отключен.\n\nНовые автоматические списания больше не будут выполняться. Доступ сохранится до конца уже оплаченного периода."
-	if err := h.respondToAction(ctx, cb, messenger.OutgoingMessage{Text: text}); err != nil {
+	if err := h.respondToAction(ctx, cb, messenger.OutgoingMessage{Text: botMsgAutopayDisabled}); err != nil {
 		slog.Error("render autopay disabled message failed", "error", err, "telegram_id", cb.User.ID)
 		return
 	}
@@ -314,14 +294,14 @@ func (h *Handler) showAutopaySubscriptionChooser(ctx context.Context, cb messeng
 	for _, option := range options {
 		if option.AutoPayEnabled {
 			rows = append(rows, []messenger.ActionButton{{
-				Text:   "Отключить: " + option.Name,
+				Text:   botAutopayChooserButtonDisable(option.Name),
 				Action: menuCallbackAutopayOffSub + strconv.FormatInt(option.SubscriptionID, 10),
 			}})
 			continue
 		}
 		if option.Reactivatable {
 			rows = append(rows, []messenger.ActionButton{{
-				Text:   "Включить обратно: " + option.Name,
+				Text:   botAutopayChooserButtonReenable(option.Name),
 				Action: menuCallbackAutopayOnSub + strconv.FormatInt(option.SubscriptionID, 10),
 			}})
 			continue
@@ -331,16 +311,15 @@ func (h *Handler) showAutopaySubscriptionChooser(ctx context.Context, cb messeng
 			continue
 		}
 		rows = append(rows, []messenger.ActionButton{{
-			Text: "Оформить автоплатеж: " + option.Name,
+			Text: botAutopayChooserButtonCheckout(option.Name),
 			URL:  url,
 		}})
 	}
 	rows = append(rows, []messenger.ActionButton{{
-		Text:   "Назад",
+		Text:   botBtnBack,
 		Action: menuCallbackAutopay,
 	}})
-	text := "🔁 Выберите подписку\n\nДля каждой подписки доступно свое действие: повторное включение без оплаты или оформление автоплатежа для будущих периодов."
-	if err := h.respondToAction(ctx, cb, messenger.OutgoingMessage{Text: text, Buttons: rows}); err != nil {
+	if err := h.respondToAction(ctx, cb, messenger.OutgoingMessage{Text: botMsgAutopayChooser, Buttons: rows}); err != nil {
 		slog.Error("show autopay subscription chooser failed", "error", err, "telegram_id", cb.User.ID)
 	}
 }
@@ -352,16 +331,16 @@ func (h *Handler) reactivateAutopayForSubscription(ctx context.Context, cb messe
 	subIDRaw := strings.TrimPrefix(cb.Data, menuCallbackAutopayOnSub)
 	subID, err := strconv.ParseInt(subIDRaw, 10, 64)
 	if err != nil || subID <= 0 {
-		h.send(ctx, cb.ChatID, "Не удалось определить подписку для повторного включения автоплатежа.")
+		h.send(ctx, cb.ChatID, botMsgAutopayReactivationResolveFailed)
 		return
 	}
 	sub, found, err := h.store.GetSubscriptionByID(ctx, subID)
 	if err != nil || !found || sub.TelegramID != cb.User.ID {
-		h.send(ctx, cb.ChatID, "Подписка не найдена.")
+		h.send(ctx, cb.ChatID, botMsgAutopaySubscriptionNotFound)
 		return
 	}
 	if sub.Status != domain.SubscriptionStatusActive {
-		h.send(ctx, cb.ChatID, "Автоплатеж можно включить только для активной подписки.")
+		h.send(ctx, cb.ChatID, botMsgAutopayReactivationOnlyForActive)
 		return
 	}
 	if sub.AutoPayEnabled {
@@ -370,33 +349,32 @@ func (h *Handler) reactivateAutopayForSubscription(ctx context.Context, cb messe
 	}
 	paymentRow, found, err := h.store.GetPaymentByID(ctx, sub.PaymentID)
 	if err != nil || !found || !paymentRow.AutoPayEnabled {
-		h.send(ctx, cb.ChatID, "Для этой подписки нельзя включить автоплатеж без новой оплаты.")
+		h.send(ctx, cb.ChatID, botMsgAutopayReactivationUnavailable)
 		return
 	}
 	connector, found, err := h.store.GetConnector(ctx, sub.ConnectorID)
 	if err != nil || !found {
-		h.send(ctx, cb.ChatID, "Тариф не найден.")
+		h.send(ctx, cb.ChatID, botMsgTariffNotFound)
 		return
 	}
 	recurringConsent, consentErr := h.buildRecurringConsent(ctx, cb.User.ID, connector)
 	if consentErr != nil {
-		h.send(ctx, cb.ChatID, "Не удалось подтвердить согласие на автоплатеж.")
+		h.send(ctx, cb.ChatID, botMsgAutopayConsentConfirmFailed)
 		return
 	}
 	if err := h.store.CreateRecurringConsent(ctx, recurringConsent); err != nil {
-		h.send(ctx, cb.ChatID, "Не удалось сохранить согласие на автоплатеж.")
+		h.send(ctx, cb.ChatID, botMsgAutopayConsentPersistFailed)
 		return
 	}
 	now := time.Now().UTC()
 	if err := h.store.SetSubscriptionAutoPayEnabled(ctx, sub.ID, true, now); err != nil {
-		h.send(ctx, cb.ChatID, "Не удалось включить автоплатеж для подписки.")
+		h.send(ctx, cb.ChatID, botMsgAutopayReactivationFailed)
 		return
 	}
 	h.syncUserAutoPayPreference(ctx, cb.User.ID, now)
 	h.logAuditEvent(ctx, cb.User.ID, sub.ConnectorID, domain.AuditActionRecurringConsentGranted, "source=autopay_reactivate")
 	h.logAuditEvent(ctx, cb.User.ID, sub.ConnectorID, domain.AuditActionAutopayEnabled, "source=autopay_reactivate;subscription_id="+strconv.FormatInt(sub.ID, 10))
-	text := "🔁 Автоплатеж снова включен.\n\nДля этой активной подписки будущие списания снова будут выполняться автоматически. Повторная оплата не потребовалась."
-	if err := h.respondToAction(ctx, cb, messenger.OutgoingMessage{Text: text}); err != nil {
+	if err := h.respondToAction(ctx, cb, messenger.OutgoingMessage{Text: botMsgAutopayReactivated}); err != nil {
 		slog.Error("render autopay reactivated message failed", "error", err, "telegram_id", cb.User.ID)
 	}
 }
@@ -408,16 +386,16 @@ func (h *Handler) disableAutopayForSubscription(ctx context.Context, cb messenge
 	subIDRaw := strings.TrimPrefix(cb.Data, menuCallbackAutopayOffSub)
 	subID, err := strconv.ParseInt(subIDRaw, 10, 64)
 	if err != nil || subID <= 0 {
-		h.send(ctx, cb.ChatID, "Не удалось определить подписку для отключения автоплатежа.")
+		h.send(ctx, cb.ChatID, botMsgAutopayDisableResolveFailed)
 		return
 	}
 	sub, found, err := h.store.GetSubscriptionByID(ctx, subID)
 	if err != nil || !found || sub.TelegramID != cb.User.ID {
-		h.send(ctx, cb.ChatID, "Подписка не найдена.")
+		h.send(ctx, cb.ChatID, botMsgAutopaySubscriptionNotFound)
 		return
 	}
 	if sub.Status != domain.SubscriptionStatusActive {
-		h.send(ctx, cb.ChatID, "Автоплатеж можно отключить только для активной подписки.")
+		h.send(ctx, cb.ChatID, botMsgAutopayDisableOnlyForActive)
 		return
 	}
 	if !sub.AutoPayEnabled {
@@ -426,7 +404,7 @@ func (h *Handler) disableAutopayForSubscription(ctx context.Context, cb messenge
 	}
 	now := time.Now().UTC()
 	if err := h.store.SetSubscriptionAutoPayEnabled(ctx, sub.ID, false, now); err != nil {
-		h.send(ctx, cb.ChatID, "Не удалось отключить автоплатеж для подписки.")
+		h.send(ctx, cb.ChatID, botMsgAutopayDisablePerSubscriptionFailed)
 		return
 	}
 	h.syncUserAutoPayPreference(ctx, cb.User.ID, now)
@@ -435,12 +413,7 @@ func (h *Handler) disableAutopayForSubscription(ctx context.Context, cb messenge
 		connectorName = connector.Name
 	}
 	h.logAuditEvent(ctx, cb.User.ID, sub.ConnectorID, domain.AuditActionAutopayDisabled, "source=bot_menu;subscription_id="+strconv.FormatInt(sub.ID, 10))
-	text := "🔁 Автоплатеж отключен."
-	if strings.TrimSpace(connectorName) != "" {
-		text = "🔁 Автоплатеж отключен для подписки «" + connectorName + "»."
-	}
-	text += "\n\nНовые автоматические списания для этого тарифа больше не будут выполняться. Доступ сохранится до конца уже оплаченного периода."
-	if err := h.respondToAction(ctx, cb, messenger.OutgoingMessage{Text: text}); err != nil {
+	if err := h.respondToAction(ctx, cb, messenger.OutgoingMessage{Text: botAutopayDisabledForSubscription(connectorName)}); err != nil {
 		slog.Error("render autopay disabled per subscription message failed", "error", err, "telegram_id", cb.User.ID)
 	}
 }
@@ -457,32 +430,6 @@ func (h *Handler) syncUserAutoPayPreference(ctx context.Context, telegramID int6
 	if err := h.store.SetUserAutoPayEnabled(ctx, telegramID, enabled, now); err != nil {
 		slog.Error("sync user autopay preference failed", "error", err, "telegram_id", telegramID, "enabled", enabled)
 	}
-}
-
-func autopayInfoMessage(enabledCount, totalCount int, cancelURL string) (string, [][]messenger.ActionButton) {
-	text := "🔁 Автоплатеж\n\n"
-	if enabledCount > 0 {
-		text += fmt.Sprintf("Автоплатеж включен для %d из %d активных подписок.", enabledCount, totalCount)
-		rows := make([][]messenger.ActionButton, 0, 2)
-		if strings.TrimSpace(cancelURL) != "" {
-			text += "\n\nНа публичной странице можно отключить автоплатеж для конкретной подписки."
-			rows = append(rows, []messenger.ActionButton{
-				buttonURL("Страница отключения", cancelURL),
-			})
-		}
-		rows = append(rows, []messenger.ActionButton{
-			buttonAction("Управлять подписками", menuCallbackAutopayPick),
-		})
-		return text, rows
-	}
-	text += "Автоплатеж сейчас не включен ни для одной активной подписки."
-	if totalCount == 0 {
-		return text, nil
-	}
-	text += "\n\nВыберите подписку, для которой хотите включить или настроить автоплатеж."
-	return text, [][]messenger.ActionButton{{
-		buttonAction("Выбрать подписку", menuCallbackAutopayPick),
-	}}
 }
 
 func resolveChannelForBot(channelURL, chatID string) string {

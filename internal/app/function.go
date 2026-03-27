@@ -15,7 +15,7 @@ func NewHTTPHandler(cfg config.Config, st store.Store) (http.Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return loggingMiddleware(appCtx.newMux()), nil
+	return appCtx.newRouter(), nil
 }
 
 // RunLifecyclePassOnce executes one lifecycle pass without starting a background scheduler.

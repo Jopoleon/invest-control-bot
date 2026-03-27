@@ -37,7 +37,7 @@ func (h *Handler) handleCallback(ctx context.Context, cb messenger.IncomingActio
 	connectorIDRaw := strings.TrimPrefix(cb.Data, "accept_terms:")
 	connectorID, err := strconv.ParseInt(connectorIDRaw, 10, 64)
 	if err != nil || connectorID <= 0 {
-		h.send(ctx, cb.ChatID, "Коннектор не найден или отключен.")
+		h.send(ctx, cb.ChatID, botMsgConnectorUnavailable)
 		return
 	}
 	connector, ok, err := h.store.GetConnector(ctx, connectorID)
@@ -46,7 +46,7 @@ func (h *Handler) handleCallback(ctx context.Context, cb messenger.IncomingActio
 		return
 	}
 	if !ok || !connector.IsActive {
-		h.send(ctx, cb.ChatID, "Коннектор не найден или отключен.")
+		h.send(ctx, cb.ChatID, botMsgConnectorUnavailable)
 		return
 	}
 
@@ -120,7 +120,7 @@ func (h *Handler) handlePayConsentToggle(ctx context.Context, cb messenger.Incom
 
 	connectorID, enabled, ok := parsePayConsentCallbackData(cb.Data)
 	if !ok {
-		h.send(ctx, cb.ChatID, "Не удалось обновить настройку автоплатежа.")
+		h.send(ctx, cb.ChatID, botMsgPayConsentToggleFailed)
 		return
 	}
 	connector, found, err := h.store.GetConnector(ctx, connectorID)
@@ -129,7 +129,7 @@ func (h *Handler) handlePayConsentToggle(ctx context.Context, cb messenger.Incom
 		return
 	}
 	if !found || !connector.IsActive {
-		h.send(ctx, cb.ChatID, "Коннектор не найден или отключен.")
+		h.send(ctx, cb.ChatID, botMsgConnectorUnavailable)
 		return
 	}
 

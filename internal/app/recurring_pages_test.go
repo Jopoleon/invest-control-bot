@@ -6,12 +6,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Jopoleon/invest-control-bot/internal/config"
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 	"github.com/Jopoleon/invest-control-bot/internal/recurringlink"
 	"github.com/Jopoleon/invest-control-bot/internal/store"
 	"github.com/Jopoleon/invest-control-bot/internal/store/memory"
@@ -119,6 +121,80 @@ func TestRecurringCancelPage_DisablesAutopay(t *testing.T) {
 	}
 }
 
+func TestRecurringCancelPage_SendsConfirmationViaMAX(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	maxSpy := &spySender{}
+
+	connectorID := seedConnector(t, ctx, st, "in-max-cancel-recurring")
+	maxUser, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465776", "Федор Николаевич")
+	if err != nil {
+		t.Fatalf("create max user: %v", err)
+	}
+	if err := st.SetUserAutoPayEnabled(ctx, 193465776, true, time.Now().UTC()); err != nil {
+		t.Fatalf("enable autopay: %v", err)
+	}
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPaid,
+		Token:          "cancel-max-test-1",
+		UserID:         maxUser.ID,
+		TelegramID:     193465776,
+		ConnectorID:    connectorID,
+		AmountRUB:      2322,
+		AutoPayEnabled: true,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	})
+	paymentRow, found, err := st.GetPaymentByToken(ctx, "cancel-max-test-1")
+	if err != nil || !found {
+		t.Fatalf("get payment: found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         maxUser.ID,
+		TelegramID:     193465776,
+		ConnectorID:    connectorID,
+		PaymentID:      paymentRow.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       time.Now().UTC().Add(-24 * time.Hour),
+		EndsAt:         time.Now().UTC().Add(24 * time.Hour),
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create subscription: %v", err)
+	}
+	sub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, 193465776, connectorID)
+	if err != nil || !found {
+		t.Fatalf("get latest subscription: found=%v err=%v", found, err)
+	}
+	token, err := recurringlink.BuildCancelToken("test-encryption-key-12345678901234567890", 193465776, time.Now().UTC().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("build cancel token: %v", err)
+	}
+
+	handler := testRecurringPagesHandlerWithSenders(t, st, maxSpy)
+	postReq := httptest.NewRequest(http.MethodPost, "/unsubscribe/"+token, strings.NewReader(url.Values{
+		"subscription_id": []string{strconv.FormatInt(sub.ID, 10)},
+	}.Encode()))
+	postReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	postRR := httptest.NewRecorder()
+	handler.ServeHTTP(postRR, postReq)
+	if postRR.Code != http.StatusSeeOther {
+		body, _ := io.ReadAll(postRR.Body)
+		t.Fatalf("post status=%d body=%q", postRR.Code, string(body))
+	}
+	if len(maxSpy.sent) != 1 {
+		t.Fatalf("max sent messages = %d, want 1", len(maxSpy.sent))
+	}
+	if maxSpy.sent[0].user.Kind != messenger.KindMAX {
+		t.Fatalf("sent kind = %s, want %s", maxSpy.sent[0].user.Kind, messenger.KindMAX)
+	}
+	if got := maxSpy.sent[0].msg.Text; !strings.Contains(got, "Автоплатеж") {
+		t.Fatalf("confirmation text = %q, want autopay confirmation", got)
+	}
+}
+
 func testRecurringPagesHandler(t *testing.T, st store.Store) http.Handler {
 	t.Helper()
 	cfg := config.Config{
@@ -132,4 +208,26 @@ func testRecurringPagesHandler(t *testing.T, st store.Store) http.Handler {
 		Security:    config.SecurityConfig{AdminToken: "admin-token", EncryptionKey: "test-encryption-key-12345678901234567890"},
 	}
 	return testServerHandlerWithConfig(t, st, cfg)
+}
+
+func testRecurringPagesHandlerWithSenders(t *testing.T, st store.Store, maxSender messenger.Sender) http.Handler {
+	t.Helper()
+	cfg := config.Config{
+		AppName:     "test-app",
+		Environment: config.EnvLocal,
+		Runtime:     config.RuntimeServer,
+		HTTP:        config.HTTPConfig{Address: ":0", ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second},
+		Postgres:    config.PostgresConfig{Driver: "memory"},
+		Telegram:    config.TelegramConfig{BotUsername: "test_bot", Webhook: config.WebhookConfig{PublicURL: "https://example.com/telegram/webhook"}},
+		Payment:     config.PaymentConfig{Provider: "robokassa", Robokassa: config.RobokassaPaymentConfig{MerchantLogin: "merchant", Password1: "pass1", Password2: "pass2", IsTestMode: true, RecurringEnabled: true}},
+		Security:    config.SecurityConfig{AdminToken: "admin-token", EncryptionKey: "test-encryption-key-12345678901234567890"},
+	}
+	appCtx, err := newApplication(cfg, st, appInitOptions{ensureTelegramSetup: false, ensureMAXSetup: false})
+	if err != nil {
+		t.Fatalf("new application: %v", err)
+	}
+	if maxSender != nil {
+		appCtx.maxSender = maxSender
+	}
+	return appCtx.newRouter()
 }

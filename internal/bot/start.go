@@ -2,7 +2,6 @@ package bot
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -15,7 +14,7 @@ import (
 func (h *Handler) handleStart(ctx context.Context, msg messenger.IncomingMessage) {
 	parts := strings.Fields(strings.TrimSpace(msg.Text))
 	if len(parts) < 2 {
-		h.send(ctx, msg.ChatID, "Нужна ссылка вида /start <connector_payload>.")
+		h.send(ctx, msg.ChatID, botMsgStartUsage)
 		return
 	}
 
@@ -35,7 +34,7 @@ func (h *Handler) handleStart(ctx context.Context, msg messenger.IncomingMessage
 		}
 	}
 	if !ok || !connector.IsActive {
-		h.send(ctx, msg.ChatID, "Коннектор не найден или отключен.")
+		h.send(ctx, msg.ChatID, botMsgConnectorUnavailable)
 		return
 	}
 	h.logAuditEvent(ctx, msg.User.ID, connector.ID, domain.AuditActionStartOpened, "payload="+payload)
@@ -49,19 +48,10 @@ func (h *Handler) handleStart(ctx context.Context, msg messenger.IncomingMessage
 		privacyURL = h.resolveLegalURL(ctx, domain.LegalDocumentTypePrivacy)
 	}
 
-	text := fmt.Sprintf(
-		"%s\n%s\n⚡️ Подписка: %d ₽\nПериод оплаты: Ежемесячно\nЧтобы продолжить, вам необходимо принять условия публичной оферты (%s) и политики обработки персональных данных (%s).",
-		connector.Name,
-		connector.Description,
-		connector.PriceRUB,
-		offerURL,
-		privacyURL,
-	)
-
 	out := messenger.OutgoingMessage{
-		Text: text,
+		Text: botStartCardText(connector, offerURL, privacyURL),
 		Buttons: [][]messenger.ActionButton{{
-			buttonAction("Принимаю условия", "accept_terms:"+strconv.FormatInt(connector.ID, 10)),
+			buttonAction(botBtnAcceptTerms, "accept_terms:"+strconv.FormatInt(connector.ID, 10)),
 		}},
 	}
 

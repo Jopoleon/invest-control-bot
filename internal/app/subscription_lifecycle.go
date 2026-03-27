@@ -10,10 +10,8 @@ import (
 	"time"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
-	"github.com/Jopoleon/invest-control-bot/internal/store"
-	"github.com/Jopoleon/invest-control-bot/internal/telegram"
+	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 	"github.com/go-co-op/gocron/v2"
-	"github.com/go-telegram/bot/models"
 )
 
 const (
@@ -36,7 +34,7 @@ func newSubscriptionLifecycleScheduler(appCtx *application) (gocron.Scheduler, e
 	if _, err := scheduler.NewJob(
 		gocron.DurationJob(subscriptionJobEvery),
 		gocron.NewTask(func() {
-			processSubscriptionReminders(context.Background(), appCtx.store, appCtx.telegramClient, appCtx.config.Telegram.BotUsername)
+			processSubscriptionReminders(context.Background(), appCtx)
 		}),
 		jobOptions...,
 	); err != nil {
@@ -46,7 +44,7 @@ func newSubscriptionLifecycleScheduler(appCtx *application) (gocron.Scheduler, e
 	if _, err := scheduler.NewJob(
 		gocron.DurationJob(subscriptionJobEvery),
 		gocron.NewTask(func() {
-			processSubscriptionExpiryNotices(context.Background(), appCtx.store, appCtx.telegramClient, appCtx.config.Telegram.BotUsername)
+			processSubscriptionExpiryNotices(context.Background(), appCtx)
 		}),
 		jobOptions...,
 	); err != nil {
@@ -56,7 +54,7 @@ func newSubscriptionLifecycleScheduler(appCtx *application) (gocron.Scheduler, e
 	if _, err := scheduler.NewJob(
 		gocron.DurationJob(subscriptionJobEvery),
 		gocron.NewTask(func() {
-			processExpiredSubscriptions(context.Background(), appCtx.store, appCtx.telegramClient, appCtx.config.Telegram.BotUsername)
+			processExpiredSubscriptions(context.Background(), appCtx)
 		}),
 		jobOptions...,
 	); err != nil {
@@ -81,12 +79,12 @@ func newSubscriptionLifecycleScheduler(appCtx *application) (gocron.Scheduler, e
 
 // runSubscriptionLifecyclePass executes both lifecycle phases once.
 func runSubscriptionLifecyclePass(ctx context.Context, appCtx *application) {
-	processSubscriptionReminders(ctx, appCtx.store, appCtx.telegramClient, appCtx.config.Telegram.BotUsername)
-	processSubscriptionExpiryNotices(ctx, appCtx.store, appCtx.telegramClient, appCtx.config.Telegram.BotUsername)
+	processSubscriptionReminders(ctx, appCtx)
+	processSubscriptionExpiryNotices(ctx, appCtx)
 	if appCtx.robokassaService != nil && appCtx.config.Payment.Robokassa.RecurringEnabled {
 		processRecurringRebills(ctx, appCtx)
 	}
-	processExpiredSubscriptions(ctx, appCtx.store, appCtx.telegramClient, appCtx.config.Telegram.BotUsername)
+	processExpiredSubscriptions(ctx, appCtx)
 }
 
 func processRecurringRebills(ctx context.Context, appCtx *application) {
@@ -122,16 +120,16 @@ func processRecurringRebills(ctx context.Context, appCtx *application) {
 	}
 }
 
-func processSubscriptionReminders(ctx context.Context, st store.Store, tg *telegram.Client, botUsername string) {
+func processSubscriptionReminders(ctx context.Context, appCtx *application) {
 	now := time.Now().UTC()
 	remindBefore := now.AddDate(0, 0, reminderDaysBeforeEnd)
-	subs, err := st.ListSubscriptionsForReminder(ctx, remindBefore, subscriptionJobLimit)
+	subs, err := appCtx.store.ListSubscriptionsForReminder(ctx, remindBefore, subscriptionJobLimit)
 	if err != nil {
 		slog.Error("list reminder due subscriptions failed", "error", err)
 		return
 	}
 	for _, sub := range subs {
-		connector, ok, err := st.GetConnector(ctx, sub.ConnectorID)
+		connector, ok, err := appCtx.store.GetConnector(ctx, sub.ConnectorID)
 		if err != nil {
 			slog.Error("load connector for reminder failed", "error", err, "subscription_id", sub.ID, "connector_id", sub.ConnectorID)
 			continue
@@ -140,26 +138,16 @@ func processSubscriptionReminders(ctx context.Context, st store.Store, tg *teleg
 			continue
 		}
 
-		renewURL := buildBotStartURL(botUsername, connector.StartPayload)
-		text := fmt.Sprintf("🔔 Напоминание: подписка закончится %s. Чтобы продлить доступ, нажмите кнопку ниже.",
-			sub.EndsAt.In(time.Local).Format("02.01.2006 15:04"),
-		)
-		var keyboard *models.InlineKeyboardMarkup
-		if renewURL != "" {
-			keyboard = &models.InlineKeyboardMarkup{
-				InlineKeyboard: [][]models.InlineKeyboardButton{{
-					{Text: "Продлить подписку", URL: renewURL},
-				}},
-			}
-		}
-		if err := tg.SendMessage(ctx, sub.TelegramID, text, keyboard); err != nil {
-			slog.Error("send subscription reminder failed", "error", err, "subscription_id", sub.ID, "telegram_id", sub.TelegramID)
+		text := appSubscriptionReminderMessage(sub.EndsAt)
+		msg := appCtx.buildRenewalNotification(ctx, sub.UserID, sub.TelegramID, connector.StartPayload, text)
+		if err := appCtx.sendUserNotification(ctx, sub.UserID, sub.TelegramID, msg); err != nil {
+			slog.Error("send subscription reminder failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "legacy_external_id", sub.TelegramID)
 			continue
 		}
-		if err := st.MarkSubscriptionReminderSent(ctx, sub.ID, now); err != nil {
+		if err := appCtx.store.MarkSubscriptionReminderSent(ctx, sub.ID, now); err != nil {
 			slog.Error("mark subscription reminder sent failed", "error", err, "subscription_id", sub.ID)
 		}
-		_ = st.SaveAuditEvent(ctx, domain.AuditEvent{
+		_ = appCtx.store.SaveAuditEvent(ctx, domain.AuditEvent{
 			TelegramID:  sub.TelegramID,
 			ConnectorID: sub.ConnectorID,
 			Action:      domain.AuditActionSubscriptionReminderSent,
@@ -169,16 +157,16 @@ func processSubscriptionReminders(ctx context.Context, st store.Store, tg *teleg
 	}
 }
 
-func processSubscriptionExpiryNotices(ctx context.Context, st store.Store, tg *telegram.Client, botUsername string) {
+func processSubscriptionExpiryNotices(ctx context.Context, appCtx *application) {
 	now := time.Now().UTC()
 	noticeBefore := now.Add(expiryNoticeWindow)
-	subs, err := st.ListSubscriptionsForExpiryNotice(ctx, noticeBefore, subscriptionJobLimit)
+	subs, err := appCtx.store.ListSubscriptionsForExpiryNotice(ctx, noticeBefore, subscriptionJobLimit)
 	if err != nil {
 		slog.Error("list expiry notice subscriptions failed", "error", err)
 		return
 	}
 	for _, sub := range subs {
-		connector, ok, err := st.GetConnector(ctx, sub.ConnectorID)
+		connector, ok, err := appCtx.store.GetConnector(ctx, sub.ConnectorID)
 		if err != nil {
 			slog.Error("load connector for expiry notice failed", "error", err, "subscription_id", sub.ID, "connector_id", sub.ConnectorID)
 			continue
@@ -187,26 +175,16 @@ func processSubscriptionExpiryNotices(ctx context.Context, st store.Store, tg *t
 			continue
 		}
 
-		renewURL := buildBotStartURL(botUsername, connector.StartPayload)
-		text := fmt.Sprintf("⏰ Сегодня заканчивается подписка. Доступ будет отключен %s, если продление не поступит.",
-			sub.EndsAt.In(time.Local).Format("02.01.2006 15:04"),
-		)
-		var keyboard *models.InlineKeyboardMarkup
-		if renewURL != "" {
-			keyboard = &models.InlineKeyboardMarkup{
-				InlineKeyboard: [][]models.InlineKeyboardButton{{
-					{Text: "Продлить подписку", URL: renewURL},
-				}},
-			}
-		}
-		if err := tg.SendMessage(ctx, sub.TelegramID, text, keyboard); err != nil {
-			slog.Error("send subscription expiry notice failed", "error", err, "subscription_id", sub.ID, "telegram_id", sub.TelegramID)
+		text := appSubscriptionExpiryNoticeMessage(sub.EndsAt)
+		msg := appCtx.buildRenewalNotification(ctx, sub.UserID, sub.TelegramID, connector.StartPayload, text)
+		if err := appCtx.sendUserNotification(ctx, sub.UserID, sub.TelegramID, msg); err != nil {
+			slog.Error("send subscription expiry notice failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "legacy_external_id", sub.TelegramID)
 			continue
 		}
-		if err := st.MarkSubscriptionExpiryNoticeSent(ctx, sub.ID, now); err != nil {
+		if err := appCtx.store.MarkSubscriptionExpiryNoticeSent(ctx, sub.ID, now); err != nil {
 			slog.Error("mark subscription expiry notice sent failed", "error", err, "subscription_id", sub.ID)
 		}
-		_ = st.SaveAuditEvent(ctx, domain.AuditEvent{
+		_ = appCtx.store.SaveAuditEvent(ctx, domain.AuditEvent{
 			TelegramID:  sub.TelegramID,
 			ConnectorID: sub.ConnectorID,
 			Action:      domain.AuditActionSubscriptionExpiryNoticeSent,
@@ -216,31 +194,31 @@ func processSubscriptionExpiryNotices(ctx context.Context, st store.Store, tg *t
 	}
 }
 
-func processExpiredSubscriptions(ctx context.Context, st store.Store, tg *telegram.Client, botUsername string) {
+func processExpiredSubscriptions(ctx context.Context, appCtx *application) {
 	now := time.Now().UTC()
-	subs, err := st.ListExpiredActiveSubscriptions(ctx, now, subscriptionJobLimit)
+	subs, err := appCtx.store.ListExpiredActiveSubscriptions(ctx, now, subscriptionJobLimit)
 	if err != nil {
 		slog.Error("list expired subscriptions failed", "error", err)
 		return
 	}
 	for _, sub := range subs {
-		connector, connectorFound, err := st.GetConnector(ctx, sub.ConnectorID)
+		connector, connectorFound, err := appCtx.store.GetConnector(ctx, sub.ConnectorID)
 		if err != nil {
 			slog.Error("load connector for expiration failed", "error", err, "subscription_id", sub.ID, "connector_id", sub.ConnectorID)
 		}
 
 		// Business status transition to expired.
-		if err := st.UpdateSubscriptionStatus(ctx, sub.ID, domain.SubscriptionStatusExpired, now); err != nil {
+		if err := appCtx.store.UpdateSubscriptionStatus(ctx, sub.ID, domain.SubscriptionStatusExpired, now); err != nil {
 			slog.Error("update subscription status failed", "error", err, "subscription_id", sub.ID)
 			continue
 		}
 
 		// Best-effort revoke from chat when chat_id is configured and bot has rights.
-		if connectorFound {
+		if connectorFound && appCtx.resolvePreferredMessengerKind(ctx, sub.UserID, sub.TelegramID) == messenger.KindTelegram {
 			if chatID, ok := normalizeTelegramChatID(connector.ChatID); ok {
-				if err := tg.RemoveChatMember(ctx, chatID, sub.TelegramID); err != nil {
+				if err := appCtx.telegramClient.RemoveChatMember(ctx, chatID, sub.TelegramID); err != nil {
 					slog.Error("remove chat member failed", "error", err, "subscription_id", sub.ID, "telegram_id", sub.TelegramID, "chat_id", chatID)
-					_ = st.SaveAuditEvent(ctx, domain.AuditEvent{
+					_ = appCtx.store.SaveAuditEvent(ctx, domain.AuditEvent{
 						TelegramID:  sub.TelegramID,
 						ConnectorID: sub.ConnectorID,
 						Action:      domain.AuditActionSubscriptionRevokeFailed,
@@ -248,7 +226,7 @@ func processExpiredSubscriptions(ctx context.Context, st store.Store, tg *telegr
 						CreatedAt:   now,
 					})
 				} else {
-					_ = st.SaveAuditEvent(ctx, domain.AuditEvent{
+					_ = appCtx.store.SaveAuditEvent(ctx, domain.AuditEvent{
 						TelegramID:  sub.TelegramID,
 						ConnectorID: sub.ConnectorID,
 						Action:      domain.AuditActionSubscriptionRevokedFromChat,
@@ -259,23 +237,15 @@ func processExpiredSubscriptions(ctx context.Context, st store.Store, tg *telegr
 			}
 		}
 
-		renewURL := ""
+		text := appSubscriptionExpiredText
+		msg := messenger.OutgoingMessage{Text: text}
 		if connectorFound {
-			renewURL = buildBotStartURL(botUsername, connector.StartPayload)
+			msg = appCtx.buildRenewalNotification(ctx, sub.UserID, sub.TelegramID, connector.StartPayload, text)
 		}
-		text := "⏰ Срок подписки истек. Чтобы восстановить доступ, оформите продление."
-		var keyboard *models.InlineKeyboardMarkup
-		if renewURL != "" {
-			keyboard = &models.InlineKeyboardMarkup{
-				InlineKeyboard: [][]models.InlineKeyboardButton{{
-					{Text: "Продлить подписку", URL: renewURL},
-				}},
-			}
+		if err := appCtx.sendUserNotification(ctx, sub.UserID, sub.TelegramID, msg); err != nil {
+			slog.Error("send subscription expired message failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "legacy_external_id", sub.TelegramID)
 		}
-		if err := tg.SendMessage(ctx, sub.TelegramID, text, keyboard); err != nil {
-			slog.Error("send subscription expired message failed", "error", err, "subscription_id", sub.ID, "telegram_id", sub.TelegramID)
-		}
-		_ = st.SaveAuditEvent(ctx, domain.AuditEvent{
+		_ = appCtx.store.SaveAuditEvent(ctx, domain.AuditEvent{
 			TelegramID:  sub.TelegramID,
 			ConnectorID: sub.ConnectorID,
 			Action:      domain.AuditActionSubscriptionExpired,
@@ -292,6 +262,27 @@ func buildBotStartURL(botUsername, startPayload string) string {
 		return ""
 	}
 	return "https://t.me/" + username + "?start=" + payload
+}
+
+func (a *application) buildRenewalNotification(ctx context.Context, userID, legacyExternalID int64, startPayload, text string) messenger.OutgoingMessage {
+	msg := messenger.OutgoingMessage{Text: text}
+	payload := strings.TrimSpace(startPayload)
+	if payload == "" {
+		return msg
+	}
+
+	switch a.resolvePreferredMessengerKind(ctx, userID, legacyExternalID) {
+	case messenger.KindMAX:
+		msg.Text += fmt.Sprintf(appSubscriptionReminderCommandFmt, payload)
+	default:
+		if renewURL := buildBotStartURL(a.config.Telegram.BotUsername, payload); renewURL != "" {
+			msg.Buttons = [][]messenger.ActionButton{{
+				{Text: appSubscriptionRenewButton, URL: renewURL},
+			}}
+		}
+	}
+
+	return msg
 }
 
 func normalizeTelegramChatID(chatIDRaw string) (int64, bool) {

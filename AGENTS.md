@@ -159,6 +159,7 @@ When you make meaningful product or architecture changes, update the relevant do
 - `README.md` - current operational/project summary
 - `IMPLEMENTATION_PLAN.md` - main working roadmap and progress log
 - `docs/MAX_IMPLEMENTATION_PLAN.md` - MAX-specific track
+- `docs/REFACTORING_AND_TEST_PLAN.md` - engineering backlog for tests, deduplication and safe refactors
 - `docs/PAYMENTS_FLOW_RU.md` - payment/autopay explanation
 - `docs/robokassa-recurring-checklist.md` - recurring operational/legal checklist
 
@@ -196,3 +197,4 @@ If continuing implementation from current state, the next sensible sequence is:
 - `migrations/0013_user_messenger_accounts.sql`
 - `IMPLEMENTATION_PLAN.md`
 - `docs/MAX_IMPLEMENTATION_PLAN.md`
+- `docs/REFACTORING_AND_TEST_PLAN.md`

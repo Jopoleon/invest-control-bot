@@ -11,6 +11,7 @@ import (
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
 	"github.com/Jopoleon/invest-control-bot/internal/store/memory"
+	"github.com/go-chi/chi/v5"
 )
 
 func TestLoginCreatesServerSessionAndAllowsProtectedPage(t *testing.T) {
@@ -114,12 +115,12 @@ func TestRegisterProtectsAdminRoutesWithMiddleware(t *testing.T) {
 	st := memory.New()
 	h := NewHandler(st, "test-admin-token", "test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil)
 
-	mux := http.NewServeMux()
-	h.Register(mux)
+	router := chi.NewRouter()
+	h.Register(router)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/connectors?lang=ru", nil)
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusFound {
 		t.Fatalf("middleware status = %d, want %d", rec.Code, http.StatusFound)

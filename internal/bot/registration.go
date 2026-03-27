@@ -14,7 +14,7 @@ import (
 func (h *Handler) handleRegistrationStep(ctx context.Context, msg messenger.IncomingMessage, state domain.RegistrationState) {
 	text := strings.TrimSpace(msg.Text)
 	if text == "" {
-		h.send(ctx, msg.ChatID, "Пустое значение. Попробуйте еще раз.")
+		h.send(ctx, msg.ChatID, botMsgEmptyValue)
 		return
 	}
 
@@ -31,14 +31,14 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg messenger.Inco
 	case domain.StepPhone:
 		phone := normalizePhone(text)
 		if !isValidE164(phone) {
-			h.send(ctx, msg.ChatID, "⚠️ Не правильный телефон. Введите номер в международном формате.")
+			h.send(ctx, msg.ChatID, botMsgInvalidPhone)
 			return
 		}
 		user.Phone = phone
 		h.logAuditEvent(ctx, msg.User.ID, state.ConnectorID, domain.AuditActionRegistrationPhoneSaved, "")
 	case domain.StepEmail:
 		if _, err := mail.ParseAddress(text); err != nil {
-			h.send(ctx, msg.ChatID, "⚠️ Неправильный e-mail")
+			h.send(ctx, msg.ChatID, botMsgInvalidEmail)
 			return
 		}
 		user.Email = text

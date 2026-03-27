@@ -17,7 +17,7 @@ const payConsentCallbackPrefix = "payconsent:"
 // It decides whether recurring opt-in can be offered for the selected connector
 // based on current product settings and available legal documents.
 func (h *Handler) buildFinalPaymentStep(ctx context.Context, connectorID int64, recurringOptIn bool) (string, [][]messenger.ActionButton) {
-	baseText := "✅ Спасибо! Ваша заявка оформлена успешно.\n💳 Осталось оплатить\nЧтобы произвести оплату, нажмите на кнопку «Оплатить» ниже, для переадресации на платежную страницу"
+	baseText := botMsgCheckoutBase
 
 	if !h.recurringEnabled {
 		return baseText, paymentKeyboard(connectorID, false, false)
@@ -35,44 +35,14 @@ func (h *Handler) buildFinalPaymentStep(ctx context.Context, connectorID int64, 
 	}
 
 	if recurringOptIn {
-		baseText += "\n\n☑️ Автоплатеж будет включен для следующих списаний.\nСогласие действует по оферте (" + offerURL + ") и пользовательскому соглашению (" + agreementURL + ")."
+		baseText += botCheckoutAutopayEnabled(offerURL, agreementURL)
 		return baseText, paymentKeyboard(connectorID, true, true)
 	}
 
 	_ = offerDoc
 	_ = offerDocFound
-	baseText += "\n\n☐ Автоплатеж выключен.\nЕсли хотите подключить автоматические списания, подтвердите согласие кнопкой ниже."
+	baseText += botMsgCheckoutAutopayDisabled
 	return baseText, paymentKeyboard(connectorID, false, true)
-}
-
-// paymentKeyboard keeps callback payload generation in one place so both bot
-// rendering and tests use the same button contract.
-func paymentKeyboard(connectorID int64, recurringOptIn, canOfferRecurring bool) [][]messenger.ActionButton {
-	rows := make([][]messenger.ActionButton, 0, 2)
-	if canOfferRecurring {
-		toggleText := "☐ Я согласен на автоматические списания"
-		toggleState := "on"
-		if recurringOptIn {
-			toggleText = "☑ Я согласен на автоматические списания"
-			toggleState = "off"
-		}
-		rows = append(rows, []messenger.ActionButton{
-			buttonAction(toggleText, payConsentCallbackPrefix+strconv.FormatInt(connectorID, 10)+":"+toggleState),
-		})
-	}
-
-	payText := "Оплатить"
-	payMode := "0"
-	if recurringOptIn && canOfferRecurring {
-		payText = "Оплатить и включить автоплатеж"
-		payMode = "1"
-	}
-	rows = append(rows, []messenger.ActionButton{{
-		Text:   payText,
-		Action: "pay:" + strconv.FormatInt(connectorID, 10) + ":" + payMode,
-	}})
-
-	return rows
 }
 
 func (h *Handler) resolveLegalDocumentURL(ctx context.Context, docType domain.LegalDocumentType) (string, domain.LegalDocument, bool) {

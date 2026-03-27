@@ -36,18 +36,3 @@ func nextRegistrationStep(user domain.User) domain.RegistrationStep {
 		return domain.StepDone
 	}
 }
-
-func registrationPrompt(step domain.RegistrationStep) string {
-	switch step {
-	case domain.StepFullName:
-		return "ФИО"
-	case domain.StepPhone:
-		return "Телефон"
-	case domain.StepEmail:
-		return "E-mail"
-	case domain.StepUsername:
-		return "Ник телеграм"
-	default:
-		return ""
-	}
-}

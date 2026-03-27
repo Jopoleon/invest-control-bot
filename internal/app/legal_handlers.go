@@ -16,27 +16,27 @@ type legalDocumentPageData struct {
 }
 
 func (a *application) handleLegalOffer(w http.ResponseWriter, r *http.Request) {
-	a.handleActiveLegalDocument(w, r, domain.LegalDocumentTypeOffer, "Публичная оферта")
+	a.handleActiveLegalDocument(w, r, domain.LegalDocumentTypeOffer, appLegalTitleOffer)
 }
 
 func (a *application) handleLegalPrivacy(w http.ResponseWriter, r *http.Request) {
-	a.handleActiveLegalDocument(w, r, domain.LegalDocumentTypePrivacy, "Политика обработки персональных данных")
+	a.handleActiveLegalDocument(w, r, domain.LegalDocumentTypePrivacy, appLegalTitlePrivacy)
 }
 
 func (a *application) handleLegalAgreement(w http.ResponseWriter, r *http.Request) {
-	a.handleActiveLegalDocument(w, r, domain.LegalDocumentTypeUserAgreement, "Пользовательское соглашение")
+	a.handleActiveLegalDocument(w, r, domain.LegalDocumentTypeUserAgreement, appLegalTitleAgreement)
 }
 
 func (a *application) handleOfferByID(w http.ResponseWriter, r *http.Request) {
-	a.handleLegalDocumentByID(w, r, "/oferta/", domain.LegalDocumentTypeOffer, "Публичная оферта")
+	a.handleLegalDocumentByID(w, r, "/oferta/", domain.LegalDocumentTypeOffer, appLegalTitleOffer)
 }
 
 func (a *application) handlePrivacyByID(w http.ResponseWriter, r *http.Request) {
-	a.handleLegalDocumentByID(w, r, "/policy/", domain.LegalDocumentTypePrivacy, "Политика обработки персональных данных")
+	a.handleLegalDocumentByID(w, r, "/policy/", domain.LegalDocumentTypePrivacy, appLegalTitlePrivacy)
 }
 
 func (a *application) handleAgreementByID(w http.ResponseWriter, r *http.Request) {
-	a.handleLegalDocumentByID(w, r, "/agreement/", domain.LegalDocumentTypeUserAgreement, "Пользовательское соглашение")
+	a.handleLegalDocumentByID(w, r, "/agreement/", domain.LegalDocumentTypeUserAgreement, appLegalTitleAgreement)
 }
 
 func (a *application) handleActiveLegalDocument(w http.ResponseWriter, r *http.Request, docType domain.LegalDocumentType, fallbackTitle string) {

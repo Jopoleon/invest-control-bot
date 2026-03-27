@@ -2,7 +2,6 @@ package bot
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"strconv"
 	"time"
@@ -26,23 +25,23 @@ func (h *Handler) sendExistingSubscriptionMessage(ctx context.Context, chatID, t
 		return false
 	}
 
-	text := fmt.Sprintf("У вас уже есть активная подписка «%s» до %s.", connector.Name, sub.EndsAt.In(time.Local).Format("02.01.2006 15:04"))
+	text := botExistingSubscriptionText(connector.Name, sub.EndsAt)
 	var buttons [][]messenger.ActionButton
 
 	if sub.AutoPayEnabled {
-		text += "\n\nАвтоплатеж для этого тарифа уже включен."
+		text += botMsgExistingSubscriptionAutopayEnabled
 		cancelURL := h.buildAutopayCancelURL(telegramID)
 		if cancelURL != "" {
 			buttons = [][]messenger.ActionButton{{
-				buttonURL("Страница отключения", cancelURL),
+				buttonURL(botBtnAutopayCancelPage, cancelURL),
 			}}
 		}
 	} else {
 		paymentRow, found, err := h.store.GetPaymentByID(ctx, sub.PaymentID)
 		if err == nil && found && paymentRow.AutoPayEnabled {
-			text += "\n\nАвтоплатеж для этого тарифа сейчас выключен, но его можно включить обратно без повторной оплаты."
+			text += botMsgExistingSubscriptionAutopayDisabledHint
 			buttons = [][]messenger.ActionButton{{
-				buttonAction("Включить автоплатеж обратно", menuCallbackAutopayOnSub+strconv.FormatInt(sub.ID, 10)),
+				buttonAction(botBtnAutopayEnableAgain, menuCallbackAutopayOnSub+strconv.FormatInt(sub.ID, 10)),
 			}}
 		} else {
 			return false

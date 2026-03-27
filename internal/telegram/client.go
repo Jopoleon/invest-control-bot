@@ -153,11 +153,7 @@ func (c *Client) EnsureDefaultMenu(ctx context.Context) error {
 		return nil
 	}
 
-	commands := []models.BotCommand{
-		{Command: "start", Description: "Запустить бота по ссылке"},
-		{Command: "menu", Description: "Открыть личный кабинет"},
-		{Command: "help", Description: "Помощь по использованию"},
-	}
+	commands := defaultBotCommands()
 	ok, err := c.bot.SetMyCommands(ctx, &tgbot.SetMyCommandsParams{Commands: commands})
 	if err != nil {
 		return fmt.Errorf("set my commands: %w", err)

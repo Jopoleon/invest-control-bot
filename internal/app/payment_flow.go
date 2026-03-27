@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"strconv"
 	"time"
@@ -86,19 +85,19 @@ func (a *application) activateSuccessfulPayment(ctx context.Context, paymentRow 
 	if connectorExists {
 		channelURL = resolveConnectorChannelURL(connector.ChannelURL, connector.ChatID)
 	}
-	successText := fmt.Sprintf("✅ Оплата прошла успешно. Подписка активирована до %s.", endsAt.In(time.Local).Format("02.01.2006 15:04"))
+	successText := appPaymentSuccessMessage(endsAt)
 	message := messenger.OutgoingMessage{
 		Text: successText,
 	}
 	if channelURL != "" {
-		message.Text += "\n\nНажмите кнопку ниже, чтобы перейти в канал и открыть кабинет."
+		message.Text += appPaymentSuccessChannelHint
 		message.Buttons = [][]messenger.ActionButton{
-			{{Text: "Перейти в канал", URL: channelURL}},
-			{{Text: "Моя подписка", Action: "menu:subscription"}},
+			{{Text: appPaymentActionOpenChannel, URL: channelURL}},
+			{{Text: appPaymentActionMySubscription, Action: "menu:subscription"}},
 		}
 	} else {
 		message.Buttons = [][]messenger.ActionButton{
-			{{Text: "Моя подписка", Action: "menu:subscription"}},
+			{{Text: appPaymentActionMySubscription, Action: "menu:subscription"}},
 		}
 	}
 	if err := a.sendUserNotification(ctx, paymentRow.UserID, paymentRow.TelegramID, message); err != nil {

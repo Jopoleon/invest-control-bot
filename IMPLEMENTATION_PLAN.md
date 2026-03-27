@@ -1,11 +1,15 @@
 # План реализации сервиса (рабочий документ)
 
-Статус: v1.13 (recurring active, MAX discovery in progress)
-Дата обновления: 2026-03-26
+Статус: v1.14 (MAX webhook and mixed-mode stabilization in progress)
+Дата обновления: 2026-03-27
 Основание: `tz.md`, `telegram-bot-flow.md`
 
 ## 1) Цель
 Собрать и реализовать Telegram-бот + backend + БД + интеграцию с выбранным платежным провайдером (YooKassa/Т-Банк/др.) + админ-панель для управления платным доступом в закрытые Telegram-чаты по подписке.
+
+Сопутствующие рабочие документы:
+- `docs/MAX_IMPLEMENTATION_PLAN.md` - MAX-specific track
+- `docs/REFACTORING_AND_TEST_PLAN.md` - отдельный backlog по unit-тестам, дедупликации и безопасным refactoring-задачам
 
 ## 2) Зафиксированные решения
 - Админка на первом этапе: встроенные server-rendered HTML-страницы на Go.

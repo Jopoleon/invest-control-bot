@@ -117,16 +117,16 @@ func (a *application) handlePaymentSuccess(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	actions := []paymentPageAction{
-		{Label: "Открыть бота", URL: botURL},
-		{Label: "Открыть канал", URL: channelURL, Secondary: true},
-		{Label: "Открыть Telegram", URL: "https://t.me"},
+		{Label: appPaymentActionOpenBot, URL: botURL},
+		{Label: appPaymentActionOpenChannel, URL: channelURL, Secondary: true},
+		{Label: appPaymentActionOpenTelegram, URL: "https://t.me"},
 	}
 	if paymentFound {
 		actions = a.buildPaymentPageActions(r.Context(), paymentRow, channelURL, true)
 	}
 	renderPaymentPage(w, paymentPageData{
-		Title:   "Оплата успешно завершена",
-		Message: "Платеж подтвержден. Подписка активируется автоматически, а в боте придет сообщение с деталями.",
+		Title:   appPaymentPageTitleSuccess,
+		Message: appPaymentPageMessageSuccess,
 		Actions: actions,
 	})
 }
@@ -163,7 +163,7 @@ func (a *application) handlePaymentFail(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 	}
-	actions := []paymentPageAction{{Label: "Вернуться в бота", URL: firstNonEmpty(buildBotChatURL(a.config.Telegram.BotUsername), "https://t.me")}}
+	actions := []paymentPageAction{{Label: appPaymentActionReturnToBot, URL: firstNonEmpty(buildBotChatURL(a.config.Telegram.BotUsername), "https://t.me")}}
 	if invID != "" {
 		if paymentRow, ok, err := a.store.GetPaymentByToken(r.Context(), invID); err == nil && ok {
 			channelURL := ""
@@ -174,8 +174,8 @@ func (a *application) handlePaymentFail(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 	renderPaymentPage(w, paymentPageData{
-		Title:   "Оплата не завершена",
-		Message: "Платеж был отменен или не прошел. Вернитесь в бота и попробуйте снова.",
+		Title:   appPaymentPageTitleFail,
+		Message: appPaymentPageMessageFail,
 		Actions: actions,
 	})
 }
@@ -241,34 +241,12 @@ func writeRebillResponse(w http.ResponseWriter, payload rebillResponse) {
 }
 
 func (a *application) buildPaymentPageActions(ctx context.Context, paymentRow domain.Payment, channelURL string, success bool) []paymentPageAction {
-	switch a.resolvePreferredMessengerKind(ctx, paymentRow.UserID, paymentRow.TelegramID) {
-	case messenger.KindMAX:
-		actions := make([]paymentPageAction, 0, 2)
-		if strings.TrimSpace(channelURL) != "" {
-			label := "Открыть канал MAX"
-			if !success {
-				label = "Вернуться в канал MAX"
-			}
-			actions = append(actions, paymentPageAction{Label: label, URL: channelURL})
-		}
-		actions = append(actions, paymentPageAction{
-			Label:     "Открыть MAX Web",
-			URL:       "https://web.max.ru/",
-			Secondary: len(actions) > 0,
-		})
-		return actions
-	default:
-		botURL := firstNonEmpty(buildBotChatURL(a.config.Telegram.BotUsername), "https://t.me")
-		primaryLabel := "Открыть бота"
-		if !success {
-			primaryLabel = "Вернуться в бота"
-		}
-		return []paymentPageAction{
-			{Label: primaryLabel, URL: botURL},
-			{Label: "Открыть канал", URL: channelURL, Secondary: true},
-			{Label: "Открыть Telegram", URL: "https://t.me"},
-		}
-	}
+	return appPaymentPageActions(
+		a.resolvePreferredMessengerKind(ctx, paymentRow.UserID, paymentRow.TelegramID),
+		success,
+		channelURL,
+		firstNonEmpty(buildBotChatURL(a.config.Telegram.BotUsername), "https://t.me"),
+	)
 }
 
 func (a *application) resolvePreferredMessengerKind(ctx context.Context, userID, legacyExternalID int64) messenger.Kind {
@@ -312,11 +290,11 @@ func (a *application) notifyFailedRecurringPayment(ctx context.Context, paymentR
 		return
 	}
 	renewURL := buildBotStartURL(a.config.Telegram.BotUsername, connector.StartPayload)
-	text := "⚠️ Автоматическое списание не прошло. Чтобы не потерять доступ, оплатите подписку вручную по кнопке ниже."
+	text := appPaymentFailedRecurringText
 	message := messenger.OutgoingMessage{Text: text}
 	if renewURL != "" {
 		message.Buttons = [][]messenger.ActionButton{{
-			{Text: "Оплатить вручную", URL: renewURL},
+			{Text: appPaymentFailedRecurringButton, URL: renewURL},
 		}}
 	}
 	if err := a.sendUserNotification(ctx, paymentRow.UserID, paymentRow.TelegramID, message); err != nil {

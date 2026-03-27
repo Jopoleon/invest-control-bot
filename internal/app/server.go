@@ -28,10 +28,10 @@ func New(cfg config.Config, st store.Store) (*Server, error) {
 		return nil, err
 	}
 
-	mux := appCtx.newMux()
+	router := appCtx.newRouter()
 	httpServer := &http.Server{
 		Addr:         cfg.HTTP.Address,
-		Handler:      loggingMiddleware(mux),
+		Handler:      router,
 		ReadTimeout:  cfg.HTTP.ReadTimeout,
 		WriteTimeout: cfg.HTTP.WriteTimeout,
 	}
@@ -56,15 +56,14 @@ func (s *Server) Run(ctx context.Context) error {
 	if s.lifecycleScheduler != nil {
 		schedulerStop := make(chan struct{})
 		group.Add(func() error {
+			// The scheduler actor only owns background work. HTTP shutdown stays in the
+			// shared server shutdown path so every actor tears down through one API.
 			s.lifecycleRunOnStart()
 			s.lifecycleScheduler.Start()
 			<-schedulerStop
 			return nil
 		}, func(error) {
 			close(schedulerStop)
-			if err := s.lifecycleScheduler.Shutdown(); err != nil {
-				slog.Error("subscription lifecycle scheduler shutdown failed", "error", err)
-			}
 		})
 	}
 
@@ -77,8 +76,8 @@ func (s *Server) Run(ctx context.Context) error {
 	}, func(error) {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if err := s.httpServer.Shutdown(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
-			slog.Error("http server shutdown failed", "error", err)
+		if err := s.Shutdown(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) {
+			slog.Error("server shutdown failed", "error", err)
 		}
 	})
 

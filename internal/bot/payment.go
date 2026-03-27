@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
-	"fmt"
 	"log/slog"
 	"strconv"
 	"time"
@@ -18,7 +17,7 @@ import (
 func (h *Handler) handlePay(ctx context.Context, cb messenger.IncomingAction) {
 	connectorID, selectedRecurring, hasExplicitRecurring, ok := parsePayCallbackData(cb.Data)
 	if !ok {
-		h.send(ctx, cb.ChatID, "Коннектор не найден или отключен.")
+		h.send(ctx, cb.ChatID, botMsgConnectorUnavailable)
 		return
 	}
 	h.logAuditEvent(ctx, cb.User.ID, connectorID, domain.AuditActionPayClicked, "")
@@ -28,11 +27,11 @@ func (h *Handler) handlePay(ctx context.Context, cb messenger.IncomingAction) {
 		return
 	}
 	if !ok || !connector.IsActive {
-		h.send(ctx, cb.ChatID, "Коннектор не найден или отключен.")
+		h.send(ctx, cb.ChatID, botMsgConnectorUnavailable)
 		return
 	}
 	if h.payment == nil {
-		h.send(ctx, cb.ChatID, "Платежный провайдер пока не настроен.")
+		h.send(ctx, cb.ChatID, botMsgPaymentProviderNotConfigured)
 		return
 	}
 	if handled := h.sendExistingSubscriptionMessage(ctx, cb.ChatID, cb.User.ID, connectorID); handled {
@@ -40,7 +39,7 @@ func (h *Handler) handlePay(ctx context.Context, cb messenger.IncomingAction) {
 	}
 	user, resolved := h.resolveMessengerUser(ctx, cb.User)
 	if !resolved {
-		h.send(ctx, cb.ChatID, "Не удалось подготовить профиль пользователя для оплаты. Попробуйте позже.")
+		h.send(ctx, cb.ChatID, botMsgPaymentProfilePrepareFailed)
 		return
 	}
 	autoPayEnabled, _, err := h.store.GetUserAutoPayEnabled(ctx, cb.User.ID)
@@ -63,7 +62,7 @@ func (h *Handler) handlePay(ctx context.Context, cb messenger.IncomingAction) {
 	})
 	if err != nil {
 		slog.Error("create checkout url failed", "error", err, "connector_id", connectorID, "telegram_id", cb.User.ID)
-		h.send(ctx, cb.ChatID, "Не удалось сформировать ссылку оплаты. Попробуйте позже.")
+		h.send(ctx, cb.ChatID, botMsgPaymentLinkFailed)
 		return
 	}
 
@@ -71,12 +70,12 @@ func (h *Handler) handlePay(ctx context.Context, cb messenger.IncomingAction) {
 		recurringConsent, consentErr := h.buildRecurringConsent(ctx, cb.User.ID, connector)
 		if consentErr != nil {
 			slog.Error("build recurring consent failed", "error", consentErr, "connector_id", connectorID, "telegram_id", cb.User.ID)
-			h.send(ctx, cb.ChatID, "Автоплатеж пока недоступен: не найдены обязательные документы для согласия.")
+			h.send(ctx, cb.ChatID, botMsgAutopayDocsMissing)
 			return
 		}
 		if err := h.store.CreateRecurringConsent(ctx, recurringConsent); err != nil {
 			slog.Error("save recurring consent failed", "error", err, "connector_id", connectorID, "telegram_id", cb.User.ID)
-			h.send(ctx, cb.ChatID, "Не удалось сохранить согласие на автоплатеж. Попробуйте еще раз.")
+			h.send(ctx, cb.ChatID, botMsgAutopayConsentSaveFailed)
 			return
 		}
 		h.logAuditEvent(ctx, cb.User.ID, connectorID, domain.AuditActionRecurringConsentGranted, "")
@@ -101,15 +100,15 @@ func (h *Handler) handlePay(ctx context.Context, cb messenger.IncomingAction) {
 	})
 	if err != nil {
 		slog.Error("save payment failed", "error", err, "connector_id", connectorID, "telegram_id", cb.User.ID)
-		h.send(ctx, cb.ChatID, "Не удалось сформировать ссылку оплаты. Попробуйте позже.")
+		h.send(ctx, cb.ChatID, botMsgPaymentLinkFailed)
 		return
 	}
 	h.logAuditEvent(ctx, cb.User.ID, connectorID, domain.AuditActionPaymentCreated, "token="+token)
 
 	out := messenger.OutgoingMessage{
-		Text: fmt.Sprintf("Сформирована ссылка оплаты через %s в тестовом режиме.", h.payment.ProviderName()),
+		Text: botPaymentLinkCreated(h.payment.ProviderName()),
 		Buttons: [][]messenger.ActionButton{{
-			buttonURL("Перейти к оплате", checkoutURL),
+			buttonURL(botBtnGoToPayment, checkoutURL),
 		}},
 	}
 	if err := h.sender.Send(ctx, chatRef(cb.ChatID), out); err != nil {

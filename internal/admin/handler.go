@@ -10,6 +10,7 @@ import (
 	"github.com/Jopoleon/invest-control-bot/internal/recurringlink"
 	"github.com/Jopoleon/invest-control-bot/internal/store"
 	"github.com/Jopoleon/invest-control-bot/internal/telegram"
+	"github.com/go-chi/chi/v5"
 )
 
 // Handler serves admin HTTP pages and operations for connector management.
@@ -70,41 +71,46 @@ func (h *Handler) logAdminAudit(r *http.Request, action, details string) {
 	})
 }
 
-// Register mounts admin routes into provided mux.
-func (h *Handler) Register(mux *http.ServeMux) {
-	mux.Handle("/admin/assets/", http.StripPrefix("/admin/assets/", staticHandler()))
-	mux.HandleFunc("/admin/login", h.loginPage)
-
-	protected := http.NewServeMux()
-	protected.HandleFunc("/admin/", func(w http.ResponseWriter, r *http.Request) {
+// Register mounts admin routes into the shared application router.
+func (h *Handler) Register(router chi.Router) {
+	router.Handle("/admin/assets/*", http.StripPrefix("/admin/assets/", staticHandler()))
+	router.HandleFunc("/admin/login", h.loginPage)
+	router.HandleFunc("/admin", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin/connectors", http.StatusFound)
 	})
-	protected.HandleFunc("/admin/logout", h.logout)
-	protected.HandleFunc("/admin/connectors", h.connectorsPage)
-	protected.HandleFunc("/admin/connectors/toggle", h.toggleConnector)
-	protected.HandleFunc("/admin/connectors/delete", h.deleteConnector)
-	protected.HandleFunc("/admin/connectors/export.csv", h.exportConnectorsCSV)
-	protected.HandleFunc("/admin/legal-documents", h.legalDocumentsPage)
-	protected.HandleFunc("/admin/legal-documents/toggle", h.toggleLegalDocument)
-	protected.HandleFunc("/admin/legal-documents/delete", h.deleteLegalDocument)
-	protected.HandleFunc("/admin/legal-documents/export.csv", h.exportLegalDocumentsCSV)
-	protected.HandleFunc("/admin/users", h.usersPage)
-	protected.HandleFunc("/admin/users/view", h.userDetailPage)
-	protected.HandleFunc("/admin/users/export.csv", h.exportUsersCSV)
-	protected.HandleFunc("/admin/users/message", h.sendUserMessage)
-	protected.HandleFunc("/admin/users/send-payment-link", h.sendUserPaymentLink)
-	protected.HandleFunc("/admin/subscriptions/revoke", h.revokeSubscription)
-	protected.HandleFunc("/admin/subscriptions/rebill", h.triggerSubscriptionRebill)
-	protected.HandleFunc("/admin/billing", h.billingPage)
-	protected.HandleFunc("/admin/billing/payments/export.csv", h.exportPaymentsCSV)
-	protected.HandleFunc("/admin/billing/subscriptions/export.csv", h.exportSubscriptionsCSV)
-	protected.HandleFunc("/admin/churn", h.churnPage)
-	protected.HandleFunc("/admin/churn/export.csv", h.exportChurnCSV)
-	protected.HandleFunc("/admin/events", h.eventsPage)
-	protected.HandleFunc("/admin/events/export.csv", h.exportEventsCSV)
-	protected.HandleFunc("/admin/sessions", h.sessionsPage)
-	protected.HandleFunc("/admin/sessions/revoke", h.revokeAdminSession)
-	protected.HandleFunc("/admin/help", h.helpPage)
 
-	mux.Handle("/admin/", h.withAdminSession(protected))
+	router.Route("/admin", func(r chi.Router) {
+		r.Use(func(next http.Handler) http.Handler {
+			return h.withAdminSession(next)
+		})
+		r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/admin/connectors", http.StatusFound)
+		})
+		r.HandleFunc("/logout", h.logout)
+		r.HandleFunc("/connectors", h.connectorsPage)
+		r.HandleFunc("/connectors/toggle", h.toggleConnector)
+		r.HandleFunc("/connectors/delete", h.deleteConnector)
+		r.HandleFunc("/connectors/export.csv", h.exportConnectorsCSV)
+		r.HandleFunc("/legal-documents", h.legalDocumentsPage)
+		r.HandleFunc("/legal-documents/toggle", h.toggleLegalDocument)
+		r.HandleFunc("/legal-documents/delete", h.deleteLegalDocument)
+		r.HandleFunc("/legal-documents/export.csv", h.exportLegalDocumentsCSV)
+		r.HandleFunc("/users", h.usersPage)
+		r.HandleFunc("/users/view", h.userDetailPage)
+		r.HandleFunc("/users/export.csv", h.exportUsersCSV)
+		r.HandleFunc("/users/message", h.sendUserMessage)
+		r.HandleFunc("/users/send-payment-link", h.sendUserPaymentLink)
+		r.HandleFunc("/subscriptions/revoke", h.revokeSubscription)
+		r.HandleFunc("/subscriptions/rebill", h.triggerSubscriptionRebill)
+		r.HandleFunc("/billing", h.billingPage)
+		r.HandleFunc("/billing/payments/export.csv", h.exportPaymentsCSV)
+		r.HandleFunc("/billing/subscriptions/export.csv", h.exportSubscriptionsCSV)
+		r.HandleFunc("/churn", h.churnPage)
+		r.HandleFunc("/churn/export.csv", h.exportChurnCSV)
+		r.HandleFunc("/events", h.eventsPage)
+		r.HandleFunc("/events/export.csv", h.exportEventsCSV)
+		r.HandleFunc("/sessions", h.sessionsPage)
+		r.HandleFunc("/sessions/revoke", h.revokeAdminSession)
+		r.HandleFunc("/help", h.helpPage)
+	})
 }
