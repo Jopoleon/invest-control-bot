@@ -190,6 +190,216 @@ func TestActivateSuccessfulPayment_SendsSuccessMessageViaMAXAccount(t *testing.T
 	}
 }
 
+func TestActivateSuccessfulPayment_ExtendsFromCurrentSubscriptionEnd(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	tg, err := telegram.NewClient("", "")
+	if err != nil {
+		t.Fatalf("create telegram client: %v", err)
+	}
+
+	connectorID := seedConnector(t, ctx, st, "in-extend-current-period")
+	now := time.Now().UTC()
+	currentEnd := now.Add(5 * 24 * time.Hour).Truncate(time.Second)
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:    "robokassa",
+		Status:      domain.PaymentStatusPending,
+		Token:       "extend-current-period-1",
+		TelegramID:  777777,
+		ConnectorID: connectorID,
+		AmountRUB:   2322,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	})
+
+	paymentRow, found, err := st.GetPaymentByToken(ctx, "extend-current-period-1")
+	if err != nil || !found {
+		t.Fatalf("get payment by token: found=%v err=%v", found, err)
+	}
+
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		TelegramID:  paymentRow.TelegramID,
+		ConnectorID: paymentRow.ConnectorID,
+		PaymentID:   999999,
+		Status:      domain.SubscriptionStatusActive,
+		StartsAt:    now.Add(-24 * time.Hour),
+		EndsAt:      currentEnd,
+		CreatedAt:   now.Add(-24 * time.Hour),
+		UpdatedAt:   now.Add(-24 * time.Hour),
+	}); err != nil {
+		t.Fatalf("seed current subscription: %v", err)
+	}
+
+	appCtx := &application{
+		store:          st,
+		telegramClient: tg,
+	}
+	appCtx.activateSuccessfulPayment(ctx, paymentRow, "robokassa:extend-current-period-1", now)
+
+	latestSub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, paymentRow.TelegramID, paymentRow.ConnectorID)
+	if err != nil || !found {
+		t.Fatalf("get latest subscription: found=%v err=%v", found, err)
+	}
+	if latestSub.PaymentID != paymentRow.ID {
+		t.Fatalf("latest subscription payment_id=%d want=%d", latestSub.PaymentID, paymentRow.ID)
+	}
+	if !latestSub.StartsAt.Equal(currentEnd) {
+		t.Fatalf("starts_at=%s want=%s", latestSub.StartsAt, currentEnd)
+	}
+	wantEnd := currentEnd.AddDate(0, 0, 30)
+	if !latestSub.EndsAt.Equal(wantEnd) {
+		t.Fatalf("ends_at=%s want=%s", latestSub.EndsAt, wantEnd)
+	}
+}
+
+func TestActivateSuccessfulPayment_DoesNotSendDuplicateSuccessNotificationForAlreadyPaidPayment(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	tg, err := telegram.NewClient("", "")
+	if err != nil {
+		t.Fatalf("create telegram client: %v", err)
+	}
+	maxSpy := &spySender{}
+
+	connectorID := seedConnector(t, ctx, st, "in-paid-no-duplicate-notify")
+	now := time.Now().UTC()
+	paidAt := now.Add(-time.Hour)
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPaid,
+		Token:          "already-paid-1",
+		UserID:         44,
+		TelegramID:     193465776,
+		ConnectorID:    connectorID,
+		AmountRUB:      2322,
+		AutoPayEnabled: true,
+		PaidAt:         &paidAt,
+		CreatedAt:      paidAt,
+		UpdatedAt:      paidAt,
+	})
+	paymentRow, found, err := st.GetPaymentByToken(ctx, "already-paid-1")
+	if err != nil || !found {
+		t.Fatalf("get payment by token: found=%v err=%v", found, err)
+	}
+
+	appCtx := &application{
+		store:          st,
+		telegramClient: tg,
+		maxSender:      maxSpy,
+	}
+	appCtx.activateSuccessfulPayment(ctx, paymentRow, "robokassa:already-paid-1", now)
+
+	if len(maxSpy.sent) != 0 {
+		t.Fatalf("max notifications=%d want=0", len(maxSpy.sent))
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if got := countAuditEvents(events, domain.AuditActionPaymentSuccessNotified); got != 0 {
+		t.Fatalf("payment_success_notified count=%d want=0", got)
+	}
+}
+
+func TestBuildPaymentPageActions_SelectsMessengerSpecificActions(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+
+	maxUser, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465776", "Федор Николаевич")
+	if err != nil {
+		t.Fatalf("create max user: %v", err)
+	}
+
+	appCtx := &application{store: st}
+
+	maxActions := appCtx.buildPaymentPageActions(ctx, domain.Payment{
+		UserID:     maxUser.ID,
+		TelegramID: 193465776,
+	}, "https://web.max.ru/-72598909498032", true)
+	if len(maxActions) != 2 {
+		t.Fatalf("max actions len=%d want=2", len(maxActions))
+	}
+	if maxActions[0].Label != appPaymentActionOpenMAXChannel {
+		t.Fatalf("max first label=%q want=%q", maxActions[0].Label, appPaymentActionOpenMAXChannel)
+	}
+	if maxActions[1].Label != appPaymentActionOpenMAX {
+		t.Fatalf("max second label=%q want=%q", maxActions[1].Label, appPaymentActionOpenMAX)
+	}
+
+	tgActions := appCtx.buildPaymentPageActions(ctx, domain.Payment{
+		UserID:     0,
+		TelegramID: 777123,
+	}, "https://t.me/example_channel", false)
+	if len(tgActions) != 3 {
+		t.Fatalf("telegram actions len=%d want=3", len(tgActions))
+	}
+	if tgActions[0].Label != appPaymentActionReturnToBot {
+		t.Fatalf("telegram first label=%q want=%q", tgActions[0].Label, appPaymentActionReturnToBot)
+	}
+	if tgActions[1].Label != appPaymentActionOpenChannel {
+		t.Fatalf("telegram second label=%q want=%q", tgActions[1].Label, appPaymentActionOpenChannel)
+	}
+	if tgActions[2].Label != appPaymentActionOpenTelegram {
+		t.Fatalf("telegram third label=%q want=%q", tgActions[2].Label, appPaymentActionOpenTelegram)
+	}
+}
+
+func TestNotifyFailedRecurringPayment_SendsMAXNotification(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	tg, err := telegram.NewClient("", "")
+	if err != nil {
+		t.Fatalf("create telegram client: %v", err)
+	}
+	maxSpy := &spySender{}
+
+	connectorID := seedConnector(t, ctx, st, "in-recurring-failed-max")
+	maxUser, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465776", "Федор Николаевич")
+	if err != nil {
+		t.Fatalf("create max user: %v", err)
+	}
+
+	appCtx := &application{
+		config: config.Config{
+			Telegram: config.TelegramConfig{BotUsername: "friendly_111_neighbour_bot"},
+		},
+		store:          st,
+		telegramClient: tg,
+		maxSender:      maxSpy,
+	}
+
+	appCtx.notifyFailedRecurringPayment(ctx, domain.Payment{
+		ID:             90,
+		UserID:         maxUser.ID,
+		TelegramID:     193465776,
+		ConnectorID:    connectorID,
+		SubscriptionID: 12,
+		AutoPayEnabled: true,
+	})
+
+	if len(maxSpy.sent) != 1 {
+		t.Fatalf("max sent=%d want=1", len(maxSpy.sent))
+	}
+	if maxSpy.sent[0].user.Kind != messenger.KindMAX {
+		t.Fatalf("kind=%s want=%s", maxSpy.sent[0].user.Kind, messenger.KindMAX)
+	}
+	if got := maxSpy.sent[0].msg.Text; !strings.Contains(got, "Автоматическое списание не прошло") {
+		t.Fatalf("text=%q want recurring failure notification", got)
+	}
+	if got := len(maxSpy.sent[0].msg.Buttons); got != 1 {
+		t.Fatalf("button rows=%d want=1", got)
+	}
+}
+
 func TestPaymentSuccessPage_MAXActionsUseMAXLinks(t *testing.T) {
 	t.Helper()
 
@@ -300,6 +510,129 @@ func TestPaymentResult_RejectsOutSumMismatch(t *testing.T) {
 	}
 	if len(subs) != 0 {
 		t.Fatalf("subscriptions = %d, want 0", len(subs))
+	}
+}
+
+func TestPaymentResult_RejectsInvalidResultSignature(t *testing.T) {
+	t.Helper()
+
+	const (
+		pass2 = "test-pass2"
+		invID = "1000000003"
+	)
+
+	ctx := context.Background()
+	st := memory.New()
+	connectorID := seedConnector(t, ctx, st, "in-result-bad-signature")
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:    "robokassa",
+		Status:      domain.PaymentStatusPending,
+		Token:       invID,
+		TelegramID:  777003,
+		ConnectorID: connectorID,
+		AmountRUB:   2322,
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	})
+
+	handler := testServerHandler(t, st, pass2)
+	code, _ := postPaymentResult(t, handler, "2322.00", invID, "bad-signature")
+	if code != http.StatusBadRequest {
+		t.Fatalf("callback status = %d, want %d", code, http.StatusBadRequest)
+	}
+
+	paymentRow, found, err := st.GetPaymentByToken(ctx, invID)
+	if err != nil || !found {
+		t.Fatalf("get payment by token: found=%v err=%v", found, err)
+	}
+	if paymentRow.Status != domain.PaymentStatusPending {
+		t.Fatalf("payment status = %s, want %s", paymentRow.Status, domain.PaymentStatusPending)
+	}
+}
+
+func TestPaymentSuccessPage_RejectsInvalidSuccessSignature(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	connectorID := seedConnector(t, ctx, st, "in-success-bad-signature")
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:    "robokassa",
+		Status:      domain.PaymentStatusPending,
+		Token:       "success-bad-signature-1",
+		TelegramID:  777004,
+		ConnectorID: connectorID,
+		AmountRUB:   2322,
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	})
+
+	handler := testServerHandler(t, st, "test-pass2")
+	req := httptest.NewRequest(http.MethodGet, "/payment/success?OutSum=2322.00&InvId=success-bad-signature-1&SignatureValue=bad-signature", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		body, _ := io.ReadAll(rr.Body)
+		t.Fatalf("status=%d body=%q", rr.Code, string(body))
+	}
+}
+
+func TestPaymentFailPage_MAXActionsUseMAXLinks(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	maxUser, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465776", "Федор Николаевич")
+	if err != nil {
+		t.Fatalf("create max user: %v", err)
+	}
+
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload: "in-max-page-fail",
+		Name:         "max-fail-connector",
+		ChannelURL:   "https://web.max.ru/-72598909498032",
+		PriceRUB:     2322,
+		PeriodDays:   30,
+		IsActive:     true,
+		CreatedAt:    time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create connector: %v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-max-page-fail")
+	if err != nil || !found {
+		t.Fatalf("get connector by payload: found=%v err=%v", found, err)
+	}
+
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:    "robokassa",
+		Status:      domain.PaymentStatusPending,
+		Token:       "max-page-fail-1",
+		UserID:      maxUser.ID,
+		TelegramID:  193465776,
+		ConnectorID: connector.ID,
+		AmountRUB:   2322,
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	})
+
+	handler := testServerHandler(t, st, "test-pass2")
+	req := httptest.NewRequest(http.MethodGet, "/payment/fail?InvId=max-page-fail-1", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		body, _ := io.ReadAll(rr.Body)
+		t.Fatalf("status=%d body=%q", rr.Code, string(body))
+	}
+	body, _ := io.ReadAll(rr.Body)
+	text := string(body)
+	if !strings.Contains(text, "https://web.max.ru/-72598909498032") {
+		t.Fatalf("response does not contain MAX channel URL: %q", text)
+	}
+	if !strings.Contains(text, "https://web.max.ru/") {
+		t.Fatalf("response does not contain MAX web URL: %q", text)
+	}
+	if strings.Contains(text, "https://t.me") {
+		t.Fatalf("response should not contain Telegram URLs for MAX fail page: %q", text)
 	}
 }
 

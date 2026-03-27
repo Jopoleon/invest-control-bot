@@ -268,3 +268,77 @@ func boolSuffix(v bool) string {
 	}
 	return "off"
 }
+
+func TestSendSubscriptionOverview_BuildsResolvedChannelText(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	sender := &fakeSender{}
+	h := NewHandler(st, sender, nil, true, "https://investcontrol.example", "test-encryption-key-123456789012345")
+
+	connectorID := seedAutopayConnector(t, ctx, st, "sub-overview", "sub-overview")
+	paymentID := seedPayment(t, ctx, st, 9106, connectorID, true)
+	_ = seedSubscription(t, ctx, st, 9106, connectorID, paymentID, true)
+
+	h.sendSubscriptionOverview(ctx, 9106, 9106)
+
+	if len(sender.sent) != 1 {
+		t.Fatalf("sent messages = %d, want 1", len(sender.sent))
+	}
+	text := sender.sent[0].msg.Text
+	if !strings.Contains(text, botMenuSubscriptionHeader) {
+		t.Fatalf("text = %q", text)
+	}
+	if !strings.Contains(text, "sub-overview") {
+		t.Fatalf("text = %q", text)
+	}
+	if !strings.Contains(text, "https://t.me/test_channel") {
+		t.Fatalf("text = %q", text)
+	}
+}
+
+func TestSendPaymentHistory_BuildsLatestPaymentsText(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	sender := &fakeSender{}
+	h := NewHandler(st, sender, nil, true, "https://investcontrol.example", "test-encryption-key-123456789012345")
+
+	connectorID := seedAutopayConnector(t, ctx, st, "payment-history", "payment-history")
+	_ = seedPayment(t, ctx, st, 9107, connectorID, true)
+
+	h.sendPaymentHistory(ctx, 9107, 9107)
+
+	if len(sender.sent) != 1 {
+		t.Fatalf("sent messages = %d, want 1", len(sender.sent))
+	}
+	text := sender.sent[0].msg.Text
+	if !strings.Contains(text, botMenuPaymentsHeader) {
+		t.Fatalf("text = %q", text)
+	}
+	if !strings.Contains(text, "2300 ₽") {
+		t.Fatalf("text = %q", text)
+	}
+	if !strings.Contains(text, "PAID") {
+		t.Fatalf("text = %q", text)
+	}
+}
+
+func TestReactivateAutopayForSubscription_RejectsForeignSubscription(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	sender := &fakeSender{}
+	h := NewHandler(st, sender, nil, true, "https://investcontrol.example", "test-encryption-key-123456789012345")
+
+	connectorID := seedAutopayConnector(t, ctx, st, "foreign-sub", "foreign-sub")
+	seedRecurringDocs(t, ctx, st)
+	paymentID := seedPayment(t, ctx, st, 9201, connectorID, true)
+	subID := seedSubscription(t, ctx, st, 9201, connectorID, paymentID, false)
+
+	h.handleMenuCallback(ctx, testAction("reactivate-foreign", 9202, "egor", menuCallbackAutopayOnSub+int64ToString(subID)))
+
+	if len(sender.sent) != 1 {
+		t.Fatalf("sent messages = %d, want 1", len(sender.sent))
+	}
+	if sender.sent[0].msg.Text != botMsgAutopaySubscriptionNotFound {
+		t.Fatalf("text = %q", sender.sent[0].msg.Text)
+	}
+}

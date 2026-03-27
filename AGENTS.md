@@ -138,17 +138,16 @@ When logic changes, comments must be updated in the same change.
 - do not introduce schema changes without a migration
 - for risky schema transitions, prefer additive migrations first
 - keep backward-compatible read/write paths during migration windows whenever possible
-- after the multi-messenger transition stabilizes, plan one explicit clean-schema pass:
-  - rebuild tables with the final column layout/order
-  - collapse legacy compatibility fields where no longer needed
-  - rewrite migrations so a fresh bootstrap creates the clean final schema directly
-  - treat this as a separate operation after behavior is proven, not during active feature debugging
+- clean-schema pass has already been executed for the current repository state:
+  - historical additive migrations were squashed into a fresh baseline
+  - `migrations/0001_init.sql` now represents the current canonical bootstrap schema
+  - local PostgreSQL was reset and the clean bootstrap was verified from an empty database
+  - future schema changes should continue from this new baseline using additive migrations
 
-Recent important migration:
-- `0013_user_messenger_accounts.sql`
-  - adds internal `users.id`
-  - allows nullable `telegram_id`
-  - introduces `user_messenger_accounts`
+Current important migration baseline:
+- `0001_init.sql`
+  - contains the current canonical schema for connectors, users, messenger accounts, payments, subscriptions, recurring data and admin sessions
+  - reflects the post-refactor clean bootstrap state, not the historical step-by-step evolution
 
 Any further migration of payments/subscriptions from `telegram_id` to `user_id` should be staged, not done in one shot.
 
@@ -194,7 +193,7 @@ If continuing implementation from current state, the next sensible sequence is:
 - `internal/messenger/events.go`
 - `internal/store/postgres/users.go`
 - `internal/store/memory/store.go`
-- `migrations/0013_user_messenger_accounts.sql`
+- `migrations/0001_init.sql`
 - `IMPLEMENTATION_PLAN.md`
 - `docs/MAX_IMPLEMENTATION_PLAN.md`
 - `docs/REFACTORING_AND_TEST_PLAN.md`

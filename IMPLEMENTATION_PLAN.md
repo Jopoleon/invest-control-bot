@@ -1,6 +1,6 @@
 # План реализации сервиса (рабочий документ)
 
-Статус: v1.14 (MAX webhook and mixed-mode stabilization in progress)
+Статус: v1.15 (clean migration baseline and MAX mixed-mode stabilization in progress)
 Дата обновления: 2026-03-27
 Основание: `tz.md`, `telegram-bot-flow.md`
 
@@ -10,6 +10,12 @@
 Сопутствующие рабочие документы:
 - `docs/MAX_IMPLEMENTATION_PLAN.md` - MAX-specific track
 - `docs/REFACTORING_AND_TEST_PLAN.md` - отдельный backlog по unit-тестам, дедупликации и безопасным refactoring-задачам
+
+### Обновление 2026-03-27
+- Историческая цепочка additive SQL-миграций схлопнута в новый clean bootstrap.
+- `migrations/0001_init.sql` теперь описывает актуальную canonical-схему проекта.
+- Локальная PostgreSQL-база была полностью очищена, затем новая baseline migration успешно применена с пустого состояния.
+- Fresh bootstrap verified: `schema_migrations` содержит только `0001_init.sql`, а `GOCACHE=/tmp/go-build go test ./...` остается зеленым.
 
 ## 2) Зафиксированные решения
 - Админка на первом этапе: встроенные server-rendered HTML-страницы на Go.

@@ -250,6 +250,38 @@
       font-size: 15px;
     }
     .action:hover { background: var(--accent-dark); }
+    .bot-actions {
+      display: grid;
+      gap: 12px;
+    }
+    .command-box {
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.68);
+    }
+    .command-box strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+    .command-box p {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .command-box code {
+      display: inline-block;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: #fff;
+      border: 1px solid var(--line);
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 14px;
+      color: var(--ink);
+      word-break: break-word;
+    }
     .warnings {
       display: grid;
       gap: 10px;
@@ -334,7 +366,7 @@
               <input type="checkbox" aria-label="Согласие на автоматические списания">
               <span>Я согласен на автоматические списания согласно условиям оферты.</span>
             </label>
-            <small>Чекбокс не проставлен по умолчанию. Финальное согласие фиксируется на следующем шаге оформления в Telegram-боте и сохраняется в истории согласий пользователя.</small>
+            <small>{{.ConsentNote}}</small>
           </div>
 
           <div class="links">
@@ -343,7 +375,17 @@
             {{if .AgreementURL}}<a href="{{.AgreementURL}}" target="_blank" rel="noreferrer">Соглашение</a>{{end}}
           </div>
 
-          {{if .BotStartURL}}<a class="action" href="{{.BotStartURL}}">Продолжить оформление в Telegram</a>{{end}}
+          <div class="bot-actions">
+            {{if .TelegramBotURL}}<a class="action" href="{{.TelegramBotURL}}">{{.PrimaryCTA}}</a>{{end}}
+            {{if .StartCommand}}
+            <div class="command-box">
+              <strong>{{.MAXTitle}}</strong>
+              <p>{{.MAXHint}}</p>
+              <code>{{.StartCommand}}</code>
+              {{if .MAXWebURL}}<div style="margin-top:10px;"><a href="{{.MAXWebURL}}" target="_blank" rel="noreferrer">{{.MAXCTA}}</a></div>{{end}}
+            </div>
+            {{end}}
+          </div>
 
           <div class="warnings">
             {{if not .HasRecurringDocs}}<div class="warning">Для полноценного recurring-flow должны быть опубликованы активные версии оферты и пользовательского соглашения.</div>{{end}}

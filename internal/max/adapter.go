@@ -141,16 +141,23 @@ func mapIncomingAction(update Update) (messenger.IncomingAction, bool) {
 }
 
 func mapBotStarted(update Update) (messenger.IncomingMessage, bool) {
-	user := parseUserIdentity(update.User)
+	user := parseUserIdentity(firstNonNilUser(update.User, messageSender(update.Message), callbackUser(update.Callback)))
 	if user.ID <= 0 {
 		return messenger.IncomingMessage{}, false
 	}
 	chatID := firstNonZeroInt64(update.ChatID, user.ID)
+	if update.Message != nil {
+		chatID = incomingChatID(update.Message.Recipient, user.ID, chatID)
+	}
 	if chatID <= 0 {
 		return messenger.IncomingMessage{}, false
 	}
 	text := "/start"
-	payload := strings.TrimSpace(firstNonEmpty(update.StartPayload, update.Payload))
+	payload := strings.TrimSpace(firstNonEmpty(
+		update.StartPayload,
+		update.Payload,
+		extractStartPayload(parseMessageText(update.Message)),
+	))
 	if payload != "" {
 		text += " " + payload
 	}
@@ -191,6 +198,13 @@ func callbackMessage(update Update) *Message {
 		return update.Callback.Message
 	}
 	return update.Message
+}
+
+func callbackUser(callback *Callback) *User {
+	if callback == nil {
+		return nil
+	}
+	return callback.User
 }
 
 func callbackRecipient(msg *Message) *Recipient {
@@ -250,4 +264,18 @@ func messageMID(msg *Message) string {
 		return ""
 	}
 	return msg.Body.MID
+}
+
+func extractStartPayload(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	if text == "/start" {
+		return ""
+	}
+	if strings.HasPrefix(text, "/start ") {
+		return strings.TrimSpace(strings.TrimPrefix(text, "/start "))
+	}
+	return ""
 }

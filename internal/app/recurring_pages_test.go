@@ -57,6 +57,15 @@ func TestRecurringCheckoutPage_RendersConnectorAndConsent(t *testing.T) {
 	if !strings.Contains(text, "https://t.me/test_bot?start=in-public-recurring") {
 		t.Fatalf("response does not contain bot deeplink: %q", text)
 	}
+	if !strings.Contains(text, "/start in-public-recurring") {
+		t.Fatalf("response does not contain start command for MAX/manual flow: %q", text)
+	}
+	if !strings.Contains(text, "https://web.max.ru/") {
+		t.Fatalf("response does not contain MAX web link: %q", text)
+	}
+	if strings.Contains(text, "Продолжить оформление в Telegram") {
+		t.Fatalf("response still contains telegram-only CTA wording: %q", text)
+	}
 }
 
 func TestRecurringCancelPage_DisablesAutopay(t *testing.T) {

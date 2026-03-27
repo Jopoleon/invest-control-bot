@@ -76,3 +76,19 @@ func TestAutopayInfoMessage_DisabledWithCheckoutURL(t *testing.T) {
 		t.Fatalf("text is empty")
 	}
 }
+
+func TestBuildAutopayChooserRows_SkipsCheckoutWithoutURL(t *testing.T) {
+	rows := buildAutopayChooserRows([]autopayOption{{
+		SubscriptionID: 11,
+		ConnectorID:    22,
+		Name:           "plan",
+		AutoPayEnabled: false,
+		Reactivatable:  false,
+	}}, func(int64) string {
+		return ""
+	})
+
+	if len(rows) != 0 {
+		t.Fatalf("rows = %d, want 0", len(rows))
+	}
+}

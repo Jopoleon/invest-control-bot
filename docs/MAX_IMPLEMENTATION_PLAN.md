@@ -1,6 +1,6 @@
 # MAX IMPLEMENTATION PLAN
 
-Последнее обновление: 2026-03-26
+Последнее обновление: 2026-03-27
 
 ## Текущий статус
 
@@ -38,8 +38,14 @@
 - MAX private-dialog transport исправлен: outbound сообщения для текущего bot-DM flow теперь отправляются через `user_id`, а пустые callback-ack больше не отправляются в `/answers`, чтобы не получать `proto.payload` на harmless callbacks.
 - На живом local E2E прогоне подтверждены `/menu`, `/start <payload>`, регистрация, `accept_terms`, `payconsent` и генерация checkout-ссылки через Robokassa.
 - App-level post-payment notification path больше не Telegram-only: success/failure уведомления по платежам переведены на messenger-aware notifier с выбором linked messenger account и fallback-роутингом для mixed-mode записей.
-- После стабилизации MAX/Telegram mixed-mode отдельно запланирован clean-schema этап: финальная чистка таблиц и миграций под fresh bootstrap без исторического legacy-порядка полей.
 - Основной backend теперь поддерживает MAX webhook mode: `cmd/server` синхронизирует webhook subscription, удаляет stale subscriptions и принимает update delivery на `POST /max/webhook`. Long polling остается инструментом локальной отладки, а не production transport.
+
+### 2026-03-27
+- Выполнен clean-schema pass для всего репозитория:
+  - историческая цепочка `0001..0014` схлопнута в новый baseline `migrations/0001_init.sql`;
+  - локальная PostgreSQL-база очищена и проверена новой чистой накаткой;
+  - fresh bootstrap подтвержден отдельным прогоном `migrations.ApplyUp`.
+- Это важно для MAX-track, потому что дальнейшие multi-messenger изменения теперь опираются на clean bootstrap schema, а не на историческую цепочку совместимых миграций.
 
 ## Дорожная карта
 

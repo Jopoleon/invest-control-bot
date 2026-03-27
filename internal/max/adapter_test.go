@@ -68,6 +68,34 @@ func TestAdapterDispatchesBotStartedAsStartMessage(t *testing.T) {
 	}
 }
 
+func TestMapBotStartedUsesMessageSenderAndStartCommandText(t *testing.T) {
+	var update Update
+	if err := json.Unmarshal([]byte(`{
+		"update_type":"bot_started",
+		"message":{
+			"sender":{"user_id":193465776,"username":"egor"},
+			"recipient":{"chat_id":109778209,"chat_type":"dialog","user_id":218306705},
+			"body":{"mid":"123","text":"/start in-123"}
+		}
+	}`), &update); err != nil {
+		t.Fatalf("unmarshal update: %v", err)
+	}
+
+	msg, ok := mapBotStarted(update)
+	if !ok {
+		t.Fatalf("mapBotStarted returned ok=false, raw=%s", string(update.Raw))
+	}
+	if msg.User.ID != 193465776 {
+		t.Fatalf("user id = %d, want 193465776", msg.User.ID)
+	}
+	if msg.ChatID != 193465776 {
+		t.Fatalf("chat id = %d, want 193465776", msg.ChatID)
+	}
+	if msg.Text != "/start in-123" {
+		t.Fatalf("text = %q, want /start in-123", msg.Text)
+	}
+}
+
 func TestAdapterDispatchesMessageCallbackAsAction(t *testing.T) {
 	st := memory.New()
 	sender := &fakeSender{}

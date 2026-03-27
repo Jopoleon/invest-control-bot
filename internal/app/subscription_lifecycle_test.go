@@ -178,6 +178,140 @@ func TestProcessSubscriptionReminders_SendsMAXRenewalPrompt(t *testing.T) {
 	}
 }
 
+func TestProcessSubscriptionReminders_SkipsWhenConnectorMissing(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	tg, err := telegram.NewClient("", "")
+	if err != nil {
+		t.Fatalf("create telegram client: %v", err)
+	}
+
+	now := time.Now().UTC()
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:    "robokassa",
+		Status:      domain.PaymentStatusPaid,
+		Token:       "sub-missing-connector",
+		TelegramID:  880101,
+		ConnectorID: 999999,
+		AmountRUB:   2322,
+		CreatedAt:   now.Add(-24 * time.Hour),
+		UpdatedAt:   now.Add(-24 * time.Hour),
+		PaidAt:      &now,
+	})
+
+	paymentRow, found, err := st.GetPaymentByToken(ctx, "sub-missing-connector")
+	if err != nil || !found {
+		t.Fatalf("get payment by token: found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		TelegramID:  paymentRow.TelegramID,
+		ConnectorID: 999999,
+		PaymentID:   paymentRow.ID,
+		Status:      domain.SubscriptionStatusActive,
+		StartsAt:    now.Add(-24 * time.Hour),
+		EndsAt:      now.Add(48 * time.Hour),
+		CreatedAt:   now.Add(-24 * time.Hour),
+		UpdatedAt:   now.Add(-24 * time.Hour),
+	}); err != nil {
+		t.Fatalf("upsert subscription: %v", err)
+	}
+
+	sub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, paymentRow.TelegramID, 999999)
+	if err != nil || !found {
+		t.Fatalf("get latest subscription: found=%v err=%v", found, err)
+	}
+
+	appCtx := &application{
+		config:         config.Config{Telegram: config.TelegramConfig{BotUsername: "test_bot"}},
+		store:          st,
+		telegramClient: tg,
+	}
+
+	processSubscriptionReminders(ctx, appCtx)
+
+	sub, found, err = st.GetSubscriptionByID(ctx, sub.ID)
+	if err != nil || !found {
+		t.Fatalf("get subscription by id: found=%v err=%v", found, err)
+	}
+	if sub.ReminderSentAt != nil {
+		t.Fatalf("reminder_sent_at = %v, want nil", sub.ReminderSentAt)
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionReminderSent); got != 0 {
+		t.Fatalf("subscription_reminder_sent count = %d, want 0", got)
+	}
+}
+
+func TestProcessExpiredSubscriptions_MAXDoesNotWriteTelegramRevokeAudit(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	tg, err := telegram.NewClient("", "")
+	if err != nil {
+		t.Fatalf("create telegram client: %v", err)
+	}
+	maxSpy := &spySender{}
+
+	connectorID := seedConnector(t, ctx, st, "in-expired-max-no-revoke")
+	maxUser, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465776", "Федор Николаевич")
+	if err != nil {
+		t.Fatalf("create max user: %v", err)
+	}
+	seedActiveSubscriptionForUser(t, ctx, st, connectorID, maxUser.ID, 193465776, "sub-max-expired", time.Now().UTC().Add(-1*time.Minute))
+
+	appCtx := &application{
+		config:         config.Config{Telegram: config.TelegramConfig{BotUsername: "test_bot"}},
+		store:          st,
+		telegramClient: tg,
+		maxSender:      maxSpy,
+	}
+
+	processExpiredSubscriptions(ctx, appCtx)
+
+	if len(maxSpy.sent) != 1 {
+		t.Fatalf("max sent messages = %d, want 1", len(maxSpy.sent))
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionExpired); got != 1 {
+		t.Fatalf("subscription_expired count = %d, want 1", got)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionRevokedFromChat); got != 0 {
+		t.Fatalf("subscription_revoked_from_chat count = %d, want 0 for MAX", got)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionRevokeFailed); got != 0 {
+		t.Fatalf("subscription_revoke_failed count = %d, want 0 for MAX", got)
+	}
+}
+
+func TestBuildRenewalNotification_WithoutPayloadLeavesPlainText(t *testing.T) {
+	t.Helper()
+
+	appCtx := &application{
+		config: config.Config{
+			Telegram: config.TelegramConfig{BotUsername: "test_bot"},
+		},
+	}
+
+	msg := appCtx.buildRenewalNotification(context.Background(), 0, 880555, "", "test reminder")
+	if msg.Text != "test reminder" {
+		t.Fatalf("text = %q, want plain reminder text", msg.Text)
+	}
+	if len(msg.Buttons) != 0 {
+		t.Fatalf("button rows = %d, want 0", len(msg.Buttons))
+	}
+}
+
 func seedActiveSubscription(t *testing.T, ctx context.Context, st store.Store, connectorID, telegramID int64, paymentToken string, endsAt time.Time) int64 {
 	t.Helper()
 	return seedActiveSubscriptionForUser(t, ctx, st, connectorID, 0, telegramID, paymentToken, endsAt)

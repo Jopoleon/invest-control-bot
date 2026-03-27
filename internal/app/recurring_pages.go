@@ -27,10 +27,17 @@ type recurringCheckoutPageData struct {
 	OfferURL          string
 	PrivacyURL        string
 	AgreementURL      string
-	BotStartURL       string
+	TelegramBotURL    string
+	MAXWebURL         string
+	StartCommand      string
+	PrimaryCTA        string
+	MAXTitle          string
+	MAXHint           string
+	MAXCTA            string
 	HasRecurringDocs  bool
 	RecurringDisabled bool
 	HelperNote        string
+	ConsentNote       string
 }
 
 type recurringCancelPageData struct {
@@ -95,11 +102,25 @@ func (a *application) handleRecurringCheckout(w http.ResponseWriter, r *http.Req
 		OfferURL:          offerURL,
 		PrivacyURL:        privacyURL,
 		AgreementURL:      agreementURL,
-		BotStartURL:       buildBotStartURL(a.config.Telegram.BotUsername, connector.StartPayload),
+		TelegramBotURL:    buildBotStartURL(a.config.Telegram.BotUsername, connector.StartPayload),
+		MAXWebURL:         "https://web.max.ru/",
+		StartCommand:      buildBotStartCommand(connector.StartPayload),
+		PrimaryCTA:        recurringCheckoutPrimaryCTA(a.config.Telegram.BotUsername),
+		MAXTitle:          appRecurringCheckoutMAXTitle,
+		MAXHint:           appRecurringCheckoutMAXHint,
+		MAXCTA:            appRecurringCheckoutMAXCTA,
 		HasRecurringDocs:  offerURL != "" && agreementURL != "",
 		RecurringDisabled: !a.config.Payment.Robokassa.RecurringEnabled,
 		HelperNote:        appRecurringCheckoutHelperNote,
+		ConsentNote:       appRecurringCheckoutConsentNote,
 	})
+}
+
+func recurringCheckoutPrimaryCTA(botUsername string) string {
+	if strings.TrimSpace(strings.TrimPrefix(botUsername, "@")) == "" {
+		return appRecurringCheckoutBotCTA
+	}
+	return appRecurringCheckoutTelegramCTA
 }
 
 func (a *application) handleRecurringCancel(w http.ResponseWriter, r *http.Request) {
@@ -219,15 +240,6 @@ func (a *application) buildRecurringCancelPageData(ctx context.Context, token st
 	if done, _ := ctx.Value(recurringCancelDoneContextKey{}).(string); strings.TrimSpace(done) != "" {
 		data.SuccessMessage = appRecurringCancelSuccessForSubscription(done)
 	}
-	// This compatibility flag is still keyed by the legacy external id because
-	// public cancel links predate the internal user_id migration.
-	enabled, _, err := a.store.GetUserAutoPayEnabled(ctx, legacyExternalID)
-	if err != nil {
-		logStoreError("load autopay flag for public cancel page failed", err, "legacy_external_id", legacyExternalID)
-		data.ErrorMessage = appRecurringCancelStatusLoadFail
-		return data, http.StatusInternalServerError
-	}
-	data.AutoPayEnabled = enabled
 	subs, err := a.store.ListSubscriptions(ctx, domain.SubscriptionListQuery{
 		TelegramID: legacyExternalID,
 		Status:     domain.SubscriptionStatusActive,
@@ -238,6 +250,13 @@ func (a *application) buildRecurringCancelPageData(ctx context.Context, token st
 		data.ErrorMessage = appRecurringCancelSubsLoadFail
 		return data, http.StatusInternalServerError
 	}
+	enabled, _, err := a.store.GetUserAutoPayEnabled(ctx, legacyExternalID)
+	if err != nil {
+		logStoreError("load autopay flag for public cancel page failed", err, "legacy_external_id", legacyExternalID)
+		data.ErrorMessage = appRecurringCancelStatusLoadFail
+		return data, http.StatusInternalServerError
+	}
+	data.AutoPayEnabled = enabled
 	// Prefer the canonical user linked from the subscriptions shown on the page.
 	// Fall back to the legacy Telegram bridge only for rows that have not been
 	// fully migrated to user_id yet.

@@ -264,6 +264,14 @@ func buildBotStartURL(botUsername, startPayload string) string {
 	return "https://t.me/" + username + "?start=" + payload
 }
 
+func buildBotStartCommand(startPayload string) string {
+	payload := strings.TrimSpace(startPayload)
+	if payload == "" {
+		return ""
+	}
+	return "/start " + payload
+}
+
 func (a *application) buildRenewalNotification(ctx context.Context, userID, legacyExternalID int64, startPayload, text string) messenger.OutgoingMessage {
 	msg := messenger.OutgoingMessage{Text: text}
 	payload := strings.TrimSpace(startPayload)
