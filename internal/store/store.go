@@ -50,30 +50,28 @@ type AdminSessionStore interface {
 // ConsentStore manages legal and recurring consent persistence.
 type ConsentStore interface {
 	SaveConsent(ctx context.Context, consent domain.Consent) error
-	GetConsent(ctx context.Context, telegramID int64, connectorID int64) (domain.Consent, bool, error)
-	ListConsentsByTelegram(ctx context.Context, telegramID int64) ([]domain.Consent, error)
+	GetConsent(ctx context.Context, userID int64, connectorID int64) (domain.Consent, bool, error)
+	ListConsentsByUser(ctx context.Context, userID int64) ([]domain.Consent, error)
 	CreateRecurringConsent(ctx context.Context, consent domain.RecurringConsent) error
-	ListRecurringConsentsByTelegram(ctx context.Context, telegramID int64) ([]domain.RecurringConsent, error)
+	ListRecurringConsentsByUser(ctx context.Context, userID int64) ([]domain.RecurringConsent, error)
 }
 
-// UserStore manages user profile and recurring preference persistence.
+// UserStore manages user profile and linked messenger identities.
 type UserStore interface {
 	SaveUser(ctx context.Context, user domain.User) error
 	GetUserByID(ctx context.Context, userID int64) (domain.User, bool, error)
 	GetUser(ctx context.Context, telegramID int64) (domain.User, bool, error)
-	GetUserByMessenger(ctx context.Context, kind domain.MessengerKind, externalUserID string) (domain.User, bool, error)
-	GetOrCreateUserByMessenger(ctx context.Context, kind domain.MessengerKind, externalUserID, username string) (domain.User, bool, error)
+	GetUserByMessenger(ctx context.Context, kind domain.MessengerKind, messengerUserID string) (domain.User, bool, error)
+	GetOrCreateUserByMessenger(ctx context.Context, kind domain.MessengerKind, messengerUserID, username string) (domain.User, bool, error)
 	ListUserMessengerAccounts(ctx context.Context, userID int64) ([]domain.UserMessengerAccount, error)
 	ListUsers(ctx context.Context, query domain.UserListQuery) ([]domain.UserListItem, error)
-	SetUserAutoPayEnabled(ctx context.Context, telegramID int64, enabled bool, updatedAt time.Time) error
-	GetUserAutoPayEnabled(ctx context.Context, telegramID int64) (bool, bool, error)
 }
 
 // RegistrationStateStore manages bot registration FSM state.
 type RegistrationStateStore interface {
 	SaveRegistrationState(ctx context.Context, state domain.RegistrationState) error
-	GetRegistrationState(ctx context.Context, telegramID int64) (domain.RegistrationState, bool, error)
-	DeleteRegistrationState(ctx context.Context, telegramID int64) error
+	GetRegistrationState(ctx context.Context, kind domain.MessengerKind, messengerUserID string) (domain.RegistrationState, bool, error)
+	DeleteRegistrationState(ctx context.Context, kind domain.MessengerKind, messengerUserID string) error
 }
 
 // AuditEventStore manages immutable audit log persistence.

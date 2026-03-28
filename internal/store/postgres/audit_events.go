@@ -16,9 +16,33 @@ func (s *Store) SaveAuditEvent(ctx context.Context, event domain.AuditEvent) err
 	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO audit_events (
-			telegram_id, connector_id, action, details, created_at
-		) VALUES ($1,$2,$3,$4,$5)
-	`, event.TelegramID, event.ConnectorID, event.Action, event.Details, now)
+			actor_type,
+			actor_user_id,
+			actor_messenger_kind,
+			actor_messenger_user_id,
+			actor_subject,
+			target_user_id,
+			target_messenger_kind,
+			target_messenger_user_id,
+			connector_id,
+			action,
+			details,
+			created_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+	`,
+		event.ActorType,
+		nullableInt64(event.ActorUserID),
+		string(event.ActorMessengerKind),
+		event.ActorMessengerUserID,
+		event.ActorSubject,
+		nullableInt64(event.TargetUserID),
+		string(event.TargetMessengerKind),
+		event.TargetMessengerUserID,
+		nullableInt64(event.ConnectorID),
+		event.Action,
+		event.Details,
+		now,
+	)
 	return err
 }
 
@@ -36,12 +60,14 @@ func (s *Store) ListAuditEvents(ctx context.Context, query domain.AuditEventList
 
 	sortColumn := "created_at"
 	switch query.SortBy {
-	case "telegram_id":
-		sortColumn = "telegram_id"
+	case "target_messenger_user_id":
+		sortColumn = "target_messenger_user_id"
 	case "connector_id":
 		sortColumn = "connector_id"
 	case "action":
 		sortColumn = "action"
+	case "actor_type":
+		sortColumn = "actor_type"
 	case "created_at", "":
 		sortColumn = "created_at"
 	default:
@@ -60,8 +86,17 @@ func (s *Store) ListAuditEvents(ctx context.Context, query domain.AuditEventList
 		return fmt.Sprintf("$%d", len(args))
 	}
 
-	if query.TelegramID > 0 {
-		where = append(where, "telegram_id = "+addArg(query.TelegramID))
+	if query.ActorType != "" {
+		where = append(where, "actor_type = "+addArg(query.ActorType))
+	}
+	if query.TargetUserID > 0 {
+		where = append(where, "target_user_id = "+addArg(query.TargetUserID))
+	}
+	if query.TargetMessengerKind != "" {
+		where = append(where, "target_messenger_kind = "+addArg(query.TargetMessengerKind))
+	}
+	if query.TargetMessengerUserID != "" {
+		where = append(where, "target_messenger_user_id = "+addArg(query.TargetMessengerUserID))
 	}
 	if query.ConnectorID > 0 {
 		where = append(where, "connector_id = "+addArg(query.ConnectorID))
@@ -89,7 +124,20 @@ func (s *Store) ListAuditEvents(ctx context.Context, query domain.AuditEventList
 
 	offset := (query.Page - 1) * query.PageSize
 	dataSQL := fmt.Sprintf(`
-		SELECT id, telegram_id, connector_id, action, details, created_at
+		SELECT
+			id,
+			actor_type,
+			COALESCE(actor_user_id, 0),
+			actor_messenger_kind,
+			actor_messenger_user_id,
+			actor_subject,
+			COALESCE(target_user_id, 0),
+			target_messenger_kind,
+			target_messenger_user_id,
+			COALESCE(connector_id, 0),
+			action,
+			details,
+			created_at
 		FROM audit_events
 		WHERE %s
 		ORDER BY %s %s, id %s
@@ -107,7 +155,14 @@ func (s *Store) ListAuditEvents(ctx context.Context, query domain.AuditEventList
 		var event domain.AuditEvent
 		if err := rows.Scan(
 			&event.ID,
-			&event.TelegramID,
+			&event.ActorType,
+			&event.ActorUserID,
+			&event.ActorMessengerKind,
+			&event.ActorMessengerUserID,
+			&event.ActorSubject,
+			&event.TargetUserID,
+			&event.TargetMessengerKind,
+			&event.TargetMessengerUserID,
 			&event.ConnectorID,
 			&event.Action,
 			&event.Details,

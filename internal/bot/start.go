@@ -37,7 +37,7 @@ func (h *Handler) handleStart(ctx context.Context, msg messenger.IncomingMessage
 		h.send(ctx, msg.ChatID, botMsgConnectorUnavailable)
 		return
 	}
-	h.logAuditEvent(ctx, msg.User.ID, connector.ID, domain.AuditActionStartOpened, "payload="+payload)
+	h.logAuditEvent(ctx, msg.User, connector.ID, domain.AuditActionStartOpened, "payload="+payload)
 
 	offerURL := connector.OfferURL
 	if offerURL == "" {

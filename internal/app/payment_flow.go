@@ -68,13 +68,15 @@ func (a *application) activateSuccessfulPayment(ctx context.Context, paymentRow 
 	}
 
 	slog.Info("subscription activated", "payment_id", paymentRow.ID, "telegram_id", paymentRow.TelegramID, "connector_id", paymentRow.ConnectorID, "starts_at", startAt, "ends_at", endsAt)
-	if err := a.store.SaveAuditEvent(ctx, domain.AuditEvent{
-		TelegramID:  paymentRow.TelegramID,
-		ConnectorID: paymentRow.ConnectorID,
-		Action:      domain.AuditActionSubscriptionActivated,
-		Details:     "payment_id=" + strconv.FormatInt(paymentRow.ID, 10),
-		CreatedAt:   now,
-	}); err != nil {
+	if err := a.store.SaveAuditEvent(ctx, a.buildAppTargetAuditEvent(
+		ctx,
+		paymentRow.UserID,
+		paymentRow.TelegramID,
+		paymentRow.ConnectorID,
+		domain.AuditActionSubscriptionActivated,
+		"payment_id="+strconv.FormatInt(paymentRow.ID, 10),
+		now,
+	)); err != nil {
 		slog.Error("save audit event failed", "error", err, "action", domain.AuditActionSubscriptionActivated)
 	}
 
@@ -109,13 +111,15 @@ func (a *application) activateSuccessfulPayment(ctx context.Context, paymentRow 
 		)
 		return
 	}
-	if err := a.store.SaveAuditEvent(ctx, domain.AuditEvent{
-		TelegramID:  paymentRow.TelegramID,
-		ConnectorID: paymentRow.ConnectorID,
-		Action:      domain.AuditActionPaymentSuccessNotified,
-		Details:     "payment_id=" + strconv.FormatInt(paymentRow.ID, 10),
-		CreatedAt:   now,
-	}); err != nil {
+	if err := a.store.SaveAuditEvent(ctx, a.buildAppTargetAuditEvent(
+		ctx,
+		paymentRow.UserID,
+		paymentRow.TelegramID,
+		paymentRow.ConnectorID,
+		domain.AuditActionPaymentSuccessNotified,
+		"payment_id="+strconv.FormatInt(paymentRow.ID, 10),
+		now,
+	)); err != nil {
 		slog.Error("save audit event failed", "error", err, "action", domain.AuditActionPaymentSuccessNotified)
 	}
 }

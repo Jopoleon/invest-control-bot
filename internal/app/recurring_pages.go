@@ -43,7 +43,7 @@ type recurringCheckoutPageData struct {
 type recurringCancelPageData struct {
 	Title               string
 	Token               string
-	ExternalUserID      int64
+	MessengerUserID     int64
 	UserName            string
 	AutoPayEnabled      bool
 	SuccessMessage      string
@@ -199,21 +199,19 @@ func (a *application) processRecurringCancelPost(w http.ResponseWriter, r *http.
 		renderAppTemplate(w, "recurring_cancel.html", pageData)
 		return
 	}
-	// The aggregate user-level autopay flag is derived from all active
-	// subscriptions. After disabling one subscription we need to recalculate the
-	// compatibility field instead of forcing it to false unconditionally.
-	a.syncUserAutoPayPreferenceAfterPublicCancel(r.Context(), legacyExternalID, now)
 	connectorName := ""
 	if connector, found, err := a.store.GetConnector(r.Context(), sub.ConnectorID); err == nil && found {
 		connectorName = connector.Name
 	}
-	if err := a.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
-		TelegramID:  legacyExternalID,
-		ConnectorID: sub.ConnectorID,
-		Action:      domain.AuditActionAutopayDisabled,
-		Details:     "source=web_cancel_page;subscription_id=" + strconv.FormatInt(sub.ID, 10),
-		CreatedAt:   now,
-	}); err != nil {
+	if err := a.store.SaveAuditEvent(r.Context(), a.buildAppTargetAuditEvent(
+		r.Context(),
+		sub.UserID,
+		legacyExternalID,
+		sub.ConnectorID,
+		domain.AuditActionAutopayDisabled,
+		"source=web_cancel_page;subscription_id="+strconv.FormatInt(sub.ID, 10),
+		now,
+	)); err != nil {
 		logAuditError(domain.AuditActionAutopayDisabled, err)
 	}
 	message := appRecurringCancelNotification(connectorName)
@@ -232,10 +230,10 @@ func (a *application) processRecurringCancelPost(w http.ResponseWriter, r *http.
 
 func (a *application) buildRecurringCancelPageData(ctx context.Context, token string, legacyExternalID int64, expiresAt time.Time) (recurringCancelPageData, int) {
 	data := recurringCancelPageData{
-		Title:          appRecurringCancelTitle,
-		Token:          token,
-		ExternalUserID: legacyExternalID,
-		ExpiresAt:      expiresAt.In(time.Local).Format("02.01.2006 15:04"),
+		Title:           appRecurringCancelTitle,
+		Token:           token,
+		MessengerUserID: legacyExternalID,
+		ExpiresAt:       expiresAt.In(time.Local).Format("02.01.2006 15:04"),
 	}
 	if done, _ := ctx.Value(recurringCancelDoneContextKey{}).(string); strings.TrimSpace(done) != "" {
 		data.SuccessMessage = appRecurringCancelSuccessForSubscription(done)
@@ -250,13 +248,6 @@ func (a *application) buildRecurringCancelPageData(ctx context.Context, token st
 		data.ErrorMessage = appRecurringCancelSubsLoadFail
 		return data, http.StatusInternalServerError
 	}
-	enabled, _, err := a.store.GetUserAutoPayEnabled(ctx, legacyExternalID)
-	if err != nil {
-		logStoreError("load autopay flag for public cancel page failed", err, "legacy_external_id", legacyExternalID)
-		data.ErrorMessage = appRecurringCancelStatusLoadFail
-		return data, http.StatusInternalServerError
-	}
-	data.AutoPayEnabled = enabled
 	// Prefer the canonical user linked from the subscriptions shown on the page.
 	// Fall back to the legacy Telegram bridge only for rows that have not been
 	// fully migrated to user_id yet.
@@ -360,28 +351,4 @@ func (a *application) resolveRecurringCancelUserName(ctx context.Context, subs [
 		return firstNonEmpty(strings.TrimSpace(user.FullName), strings.TrimSpace(user.TelegramUsername))
 	}
 	return ""
-}
-
-func (a *application) syncUserAutoPayPreferenceAfterPublicCancel(ctx context.Context, legacyExternalID int64, now time.Time) {
-	// The compatibility-level user autopay flag stays enabled as long as at least
-	// one active subscription still has recurring turned on.
-	subs, err := a.store.ListSubscriptions(ctx, domain.SubscriptionListQuery{
-		TelegramID: legacyExternalID,
-		Status:     domain.SubscriptionStatusActive,
-		Limit:      20,
-	})
-	if err != nil {
-		logStoreError("list subscriptions for user autopay sync failed", err, "legacy_external_id", legacyExternalID)
-		return
-	}
-	enabled := false
-	for _, sub := range subs {
-		if sub.AutoPayEnabled {
-			enabled = true
-			break
-		}
-	}
-	if err := a.store.SetUserAutoPayEnabled(ctx, legacyExternalID, enabled, now); err != nil {
-		logStoreError("sync user autopay after public cancel failed", err, "legacy_external_id", legacyExternalID)
-	}
 }

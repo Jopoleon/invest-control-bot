@@ -50,8 +50,20 @@ func (h *Handler) handleCallback(ctx context.Context, cb messenger.IncomingActio
 		return
 	}
 
+	user, ok := h.resolveMessengerUser(ctx, cb.User)
+	if !ok {
+		return
+	}
+	updatedUsername := applyCurrentTelegramUsername(&user, cb.User.Username)
+	if updatedUsername {
+		if err := h.store.SaveUser(ctx, user); err != nil {
+			slog.Error("save user before registration flow failed", "error", err, "telegram_id", cb.User.ID, "connector_id", connectorID)
+			return
+		}
+	}
+
 	consent := domain.Consent{
-		TelegramID:        cb.User.ID,
+		UserID:            user.ID,
 		ConnectorID:       connectorID,
 		OfferAcceptedAt:   time.Now().UTC(),
 		PrivacyAcceptedAt: time.Now().UTC(),
@@ -69,44 +81,33 @@ func (h *Handler) handleCallback(ctx context.Context, cb messenger.IncomingActio
 		}
 	}
 	if err := h.store.SaveConsent(ctx, consent); err != nil {
-		slog.Error("save consent failed", "error", err, "telegram_id", cb.User.ID, "connector_id", connectorID)
+		slog.Error("save consent failed", "error", err, "user_id", user.ID, "connector_id", connectorID)
 		return
 	}
-	h.logAuditEvent(ctx, cb.User.ID, connectorID, domain.AuditActionConsentAccepted, "")
-
-	user, ok := h.resolveMessengerUser(ctx, cb.User)
-	if !ok {
-		return
-	}
-	updatedUsername := applyCurrentTelegramUsername(&user, cb.User.Username)
-	if updatedUsername {
-		if err := h.store.SaveUser(ctx, user); err != nil {
-			slog.Error("save user before registration flow failed", "error", err, "telegram_id", cb.User.ID, "connector_id", connectorID)
-			return
-		}
-	}
+	h.logAuditEvent(ctx, cb.User, connectorID, domain.AuditActionConsentAccepted, "")
 
 	nextStep := nextRegistrationStep(user)
 	if nextStep == domain.StepDone {
-		if err := h.store.DeleteRegistrationState(ctx, cb.User.ID); err != nil {
+		if err := h.store.DeleteRegistrationState(ctx, messengerKindFromIdentity(cb.User.Kind), strconv.FormatInt(cb.User.ID, 10)); err != nil {
 			slog.Error("delete registration state failed", "error", err, "telegram_id", cb.User.ID)
 		}
-		h.logAuditEvent(ctx, cb.User.ID, connectorID, domain.AuditActionRegistrationReusedProfile, "")
+		h.logAuditEvent(ctx, cb.User, connectorID, domain.AuditActionRegistrationReusedProfile, "")
 		h.sendFinalRegistrationMessage(ctx, cb.ChatID, cb.User.ID, connectorID)
 		return
 	}
 
 	state := domain.RegistrationState{
-		TelegramID:       cb.User.ID,
-		ConnectorID:      connectorID,
-		Step:             nextStep,
-		TelegramUsername: user.TelegramUsername,
+		MessengerKind:   messengerKindFromIdentity(cb.User.Kind),
+		MessengerUserID: strconv.FormatInt(cb.User.ID, 10),
+		ConnectorID:     connectorID,
+		Step:            nextStep,
+		Username:        user.TelegramUsername,
 	}
 	if err := h.store.SaveRegistrationState(ctx, state); err != nil {
 		slog.Error("save registration state failed", "error", err, "telegram_id", cb.User.ID, "connector_id", connectorID)
 		return
 	}
-	h.logAuditEvent(ctx, cb.User.ID, connectorID, domain.AuditActionRegistrationStepRequested, string(nextStep))
+	h.logAuditEvent(ctx, cb.User, connectorID, domain.AuditActionRegistrationStepRequested, string(nextStep))
 
 	h.send(ctx, cb.ChatID, registrationPrompt(nextStep))
 }

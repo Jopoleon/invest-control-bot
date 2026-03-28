@@ -54,12 +54,13 @@ type loginPageData struct {
 
 // auditEventView is a template-friendly representation of audit event row.
 type auditEventView struct {
-	CreatedAt   string
-	TelegramID  int64
-	ConnectorID int64
-	Connector   string
-	Action      string
-	Details     string
+	CreatedAt             string
+	ActorType             string
+	TargetMessengerUserID string
+	ConnectorID           int64
+	Connector             string
+	Action                string
+	Details               string
 }
 
 // eventsPageData is context passed into events.html template.
@@ -70,12 +71,13 @@ type eventsPageData struct {
 	ExportURL string
 	Rows      []auditEventView
 
-	TelegramID  string
-	ConnectorID string
-	Action      string
-	Search      string
-	DateFrom    string
-	DateTo      string
+	ActorType       string
+	MessengerUserID string
+	ConnectorID     string
+	Action          string
+	Search          string
+	DateFrom        string
+	DateTo          string
 
 	SortBy   string
 	SortDir  string

@@ -3,6 +3,7 @@ package bot
 import (
 	"context"
 	"log/slog"
+	"strconv"
 	"strings"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
@@ -25,7 +26,7 @@ func (h *Handler) handleMessage(ctx context.Context, msg messenger.IncomingMessa
 		return
 	}
 
-	state, ok, err := h.store.GetRegistrationState(ctx, msg.User.ID)
+	state, ok, err := h.store.GetRegistrationState(ctx, messengerKindFromIdentity(msg.User.Kind), strconv.FormatInt(msg.User.ID, 10))
 	if err != nil {
 		slog.Error("load registration state failed", "error", err, "telegram_id", msg.User.ID)
 		return

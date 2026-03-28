@@ -10,10 +10,10 @@ import (
 func (s *Store) SaveConsent(ctx context.Context, consent domain.Consent) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO user_consents (
-			telegram_id, connector_id, offer_accepted_at, privacy_accepted_at,
+			user_id, connector_id, offer_accepted_at, privacy_accepted_at,
 			offer_document_id, offer_document_version, privacy_document_id, privacy_document_version
 		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-		ON CONFLICT (telegram_id, connector_id)
+		ON CONFLICT (user_id, connector_id)
 		DO UPDATE SET
 			offer_accepted_at = EXCLUDED.offer_accepted_at,
 			privacy_accepted_at = EXCLUDED.privacy_accepted_at,
@@ -22,7 +22,7 @@ func (s *Store) SaveConsent(ctx context.Context, consent domain.Consent) error {
 			privacy_document_id = EXCLUDED.privacy_document_id,
 			privacy_document_version = EXCLUDED.privacy_document_version
 	`,
-		consent.TelegramID,
+		consent.UserID,
 		consent.ConnectorID,
 		consent.OfferAcceptedAt,
 		consent.PrivacyAcceptedAt,
@@ -35,15 +35,15 @@ func (s *Store) SaveConsent(ctx context.Context, consent domain.Consent) error {
 }
 
 // GetConsent returns stored consent.
-func (s *Store) GetConsent(ctx context.Context, telegramID int64, connectorID int64) (domain.Consent, bool, error) {
+func (s *Store) GetConsent(ctx context.Context, userID int64, connectorID int64) (domain.Consent, bool, error) {
 	var c domain.Consent
 	err := s.db.QueryRowContext(ctx, `
-		SELECT telegram_id, connector_id, offer_accepted_at, privacy_accepted_at,
+		SELECT user_id, connector_id, offer_accepted_at, privacy_accepted_at,
 		       offer_document_id, offer_document_version, privacy_document_id, privacy_document_version
 		FROM user_consents
-		WHERE telegram_id = $1 AND connector_id = $2
-	`, telegramID, connectorID).Scan(
-		&c.TelegramID,
+		WHERE user_id = $1 AND connector_id = $2
+	`, userID, connectorID).Scan(
+		&c.UserID,
 		&c.ConnectorID,
 		&c.OfferAcceptedAt,
 		&c.PrivacyAcceptedAt,
@@ -61,15 +61,15 @@ func (s *Store) GetConsent(ctx context.Context, telegramID int64, connectorID in
 	return c, true, nil
 }
 
-// ListConsentsByTelegram returns all consents for a specific Telegram user.
-func (s *Store) ListConsentsByTelegram(ctx context.Context, telegramID int64) ([]domain.Consent, error) {
+// ListConsentsByUser returns all consents for a specific internal user.
+func (s *Store) ListConsentsByUser(ctx context.Context, userID int64) ([]domain.Consent, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT telegram_id, connector_id, offer_accepted_at, privacy_accepted_at,
+		SELECT user_id, connector_id, offer_accepted_at, privacy_accepted_at,
 		       offer_document_id, offer_document_version, privacy_document_id, privacy_document_version
 		FROM user_consents
-		WHERE telegram_id = $1
+		WHERE user_id = $1
 		ORDER BY GREATEST(offer_accepted_at, privacy_accepted_at) DESC, connector_id DESC
-	`, telegramID)
+	`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func (s *Store) ListConsentsByTelegram(ctx context.Context, telegramID int64) ([
 	for rows.Next() {
 		var c domain.Consent
 		if err := rows.Scan(
-			&c.TelegramID,
+			&c.UserID,
 			&c.ConnectorID,
 			&c.OfferAcceptedAt,
 			&c.PrivacyAcceptedAt,
@@ -99,12 +99,12 @@ func (s *Store) ListConsentsByTelegram(ctx context.Context, telegramID int64) ([
 func (s *Store) CreateRecurringConsent(ctx context.Context, consent domain.RecurringConsent) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO recurring_consents (
-			telegram_id, connector_id, accepted_at,
+			user_id, connector_id, accepted_at,
 			offer_document_id, offer_document_version,
 			user_agreement_document_id, user_agreement_document_version
 		) VALUES ($1,$2,$3,$4,$5,$6,$7)
 	`,
-		consent.TelegramID,
+		consent.UserID,
 		consent.ConnectorID,
 		consent.AcceptedAt,
 		consent.OfferDocumentID,
@@ -115,16 +115,16 @@ func (s *Store) CreateRecurringConsent(ctx context.Context, consent domain.Recur
 	return err
 }
 
-// ListRecurringConsentsByTelegram returns recurring consent history for one Telegram user.
-func (s *Store) ListRecurringConsentsByTelegram(ctx context.Context, telegramID int64) ([]domain.RecurringConsent, error) {
+// ListRecurringConsentsByUser returns recurring consent history for one internal user.
+func (s *Store) ListRecurringConsentsByUser(ctx context.Context, userID int64) ([]domain.RecurringConsent, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, telegram_id, connector_id, accepted_at,
+		SELECT id, user_id, connector_id, accepted_at,
 		       offer_document_id, offer_document_version,
 		       user_agreement_document_id, user_agreement_document_version
 		FROM recurring_consents
-		WHERE telegram_id = $1
+		WHERE user_id = $1
 		ORDER BY accepted_at DESC, id DESC
-	`, telegramID)
+	`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func (s *Store) ListRecurringConsentsByTelegram(ctx context.Context, telegramID 
 		var consent domain.RecurringConsent
 		if err := rows.Scan(
 			&consent.ID,
-			&consent.TelegramID,
+			&consent.UserID,
 			&consent.ConnectorID,
 			&consent.AcceptedAt,
 			&consent.OfferDocumentID,

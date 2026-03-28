@@ -48,7 +48,7 @@ func TestGetOrCreateUserByMessengerCreatesTelegramUserAndAccount(t *testing.T) {
 	if len(accounts) != 1 {
 		t.Fatalf("accounts len = %d, want 1", len(accounts))
 	}
-	if accounts[0].MessengerKind != domain.MessengerKindTelegram || accounts[0].ExternalUserID != "264704572" {
+	if accounts[0].MessengerKind != domain.MessengerKindTelegram || accounts[0].MessengerUserID != "264704572" {
 		t.Fatalf("unexpected account: %+v", accounts[0])
 	}
 

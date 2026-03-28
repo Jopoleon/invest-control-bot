@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/mail"
+	"strconv"
 	"strings"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
@@ -27,7 +28,7 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg messenger.Inco
 	switch state.Step {
 	case domain.StepFullName:
 		user.FullName = text
-		h.logAuditEvent(ctx, msg.User.ID, state.ConnectorID, domain.AuditActionRegistrationFullNameSaved, "")
+		h.logAuditEvent(ctx, msg.User, state.ConnectorID, domain.AuditActionRegistrationFullNameSaved, "")
 	case domain.StepPhone:
 		phone := normalizePhone(text)
 		if !isValidE164(phone) {
@@ -35,14 +36,14 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg messenger.Inco
 			return
 		}
 		user.Phone = phone
-		h.logAuditEvent(ctx, msg.User.ID, state.ConnectorID, domain.AuditActionRegistrationPhoneSaved, "")
+		h.logAuditEvent(ctx, msg.User, state.ConnectorID, domain.AuditActionRegistrationPhoneSaved, "")
 	case domain.StepEmail:
 		if _, err := mail.ParseAddress(text); err != nil {
 			h.send(ctx, msg.ChatID, botMsgInvalidEmail)
 			return
 		}
 		user.Email = text
-		h.logAuditEvent(ctx, msg.User.ID, state.ConnectorID, domain.AuditActionRegistrationEmailSaved, "")
+		h.logAuditEvent(ctx, msg.User, state.ConnectorID, domain.AuditActionRegistrationEmailSaved, "")
 	case domain.StepUsername:
 		if text != "-" {
 			user.TelegramUsername = normalizeTelegramUsername(text)
@@ -58,11 +59,11 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg messenger.Inco
 
 	state.Step = nextRegistrationStep(user)
 	if state.Step == domain.StepDone {
-		if err := h.store.DeleteRegistrationState(ctx, msg.User.ID); err != nil {
+		if err := h.store.DeleteRegistrationState(ctx, messengerKindFromIdentity(msg.User.Kind), strconv.FormatInt(msg.User.ID, 10)); err != nil {
 			slog.Error("delete registration state failed", "error", err, "telegram_id", msg.User.ID)
 		}
 		h.sendFinalRegistrationMessage(ctx, msg.ChatID, msg.User.ID, state.ConnectorID)
-		h.logAuditEvent(ctx, msg.User.ID, state.ConnectorID, domain.AuditActionRegistrationCompleted, "")
+		h.logAuditEvent(ctx, msg.User, state.ConnectorID, domain.AuditActionRegistrationCompleted, "")
 		return
 	}
 

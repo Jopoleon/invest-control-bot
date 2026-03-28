@@ -32,12 +32,12 @@ func (s *Store) SaveUser(ctx context.Context, user domain.User) error {
 		}
 		if user.TelegramID > 0 {
 			return s.saveUserMessengerAccount(ctx, domain.UserMessengerAccount{
-				UserID:         user.ID,
-				MessengerKind:  domain.MessengerKindTelegram,
-				ExternalUserID: strconv.FormatInt(user.TelegramID, 10),
-				Username:       user.TelegramUsername,
-				LinkedAt:       now,
-				UpdatedAt:      now,
+				UserID:          user.ID,
+				MessengerKind:   domain.MessengerKindTelegram,
+				MessengerUserID: strconv.FormatInt(user.TelegramID, 10),
+				Username:        user.TelegramUsername,
+				LinkedAt:        now,
+				UpdatedAt:       now,
 			})
 		}
 		return nil
@@ -66,12 +66,12 @@ func (s *Store) SaveUser(ctx context.Context, user domain.User) error {
 		return err
 	}
 	return s.saveUserMessengerAccount(ctx, domain.UserMessengerAccount{
-		UserID:         createdUser.ID,
-		MessengerKind:  domain.MessengerKindTelegram,
-		ExternalUserID: strconv.FormatInt(user.TelegramID, 10),
-		Username:       user.TelegramUsername,
-		LinkedAt:       now,
-		UpdatedAt:      now,
+		UserID:          createdUser.ID,
+		MessengerKind:   domain.MessengerKindTelegram,
+		MessengerUserID: strconv.FormatInt(user.TelegramID, 10),
+		Username:        user.TelegramUsername,
+		LinkedAt:        now,
+		UpdatedAt:       now,
 	})
 }
 
@@ -110,14 +110,14 @@ func (s *Store) GetUser(ctx context.Context, telegramID int64) (domain.User, boo
 }
 
 // GetUserByMessenger resolves an existing user by external messenger identity without creating one.
-func (s *Store) GetUserByMessenger(ctx context.Context, kind domain.MessengerKind, externalUserID string) (domain.User, bool, error) {
+func (s *Store) GetUserByMessenger(ctx context.Context, kind domain.MessengerKind, messengerUserID string) (domain.User, bool, error) {
 	var u domain.User
 	err := s.db.QueryRowContext(ctx, `
 		SELECT u.id, COALESCE(u.telegram_id, 0), u.telegram_username, u.full_name, u.phone, u.email, u.updated_at
 		FROM user_messenger_accounts a
 		JOIN users u ON u.id = a.user_id
 		WHERE a.messenger_kind = $1 AND a.external_user_id = $2
-	`, string(kind), externalUserID).Scan(&u.ID, &u.TelegramID, &u.TelegramUsername, &u.FullName, &u.Phone, &u.Email, &u.UpdatedAt)
+	`, string(kind), messengerUserID).Scan(&u.ID, &u.TelegramID, &u.TelegramUsername, &u.FullName, &u.Phone, &u.Email, &u.UpdatedAt)
 	if err == nil {
 		return u, true, nil
 	}
@@ -128,7 +128,7 @@ func (s *Store) GetUserByMessenger(ctx context.Context, kind domain.MessengerKin
 		return domain.User{}, false, nil
 	}
 
-	telegramID, parseErr := strconv.ParseInt(externalUserID, 10, 64)
+	telegramID, parseErr := strconv.ParseInt(messengerUserID, 10, 64)
 	if parseErr != nil || telegramID <= 0 {
 		return domain.User{}, false, nil
 	}
@@ -136,7 +136,7 @@ func (s *Store) GetUserByMessenger(ctx context.Context, kind domain.MessengerKin
 }
 
 // GetOrCreateUserByMessenger resolves a user by external messenger identity and creates one if absent.
-func (s *Store) GetOrCreateUserByMessenger(ctx context.Context, kind domain.MessengerKind, externalUserID, username string) (domain.User, bool, error) {
+func (s *Store) GetOrCreateUserByMessenger(ctx context.Context, kind domain.MessengerKind, messengerUserID, username string) (domain.User, bool, error) {
 	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return domain.User{}, false, err
@@ -151,7 +151,7 @@ func (s *Store) GetOrCreateUserByMessenger(ctx context.Context, kind domain.Mess
 		FROM user_messenger_accounts a
 		JOIN users u ON u.id = a.user_id
 		WHERE a.messenger_kind = $1 AND a.external_user_id = $2
-	`, string(kind), externalUserID).Scan(
+	`, string(kind), messengerUserID).Scan(
 		&existing.ID,
 		&existing.TelegramID,
 		&existing.TelegramUsername,
@@ -166,7 +166,7 @@ func (s *Store) GetOrCreateUserByMessenger(ctx context.Context, kind domain.Mess
 				UPDATE user_messenger_accounts
 				SET username = $3, updated_at = $4
 				WHERE messenger_kind = $1 AND external_user_id = $2
-			`, string(kind), externalUserID, username, time.Now().UTC()); err != nil {
+			`, string(kind), messengerUserID, username, time.Now().UTC()); err != nil {
 				return domain.User{}, false, err
 			}
 			if kind == domain.MessengerKindTelegram && existing.TelegramUsername != username {
@@ -192,7 +192,7 @@ func (s *Store) GetOrCreateUserByMessenger(ctx context.Context, kind domain.Mess
 	var telegramID sql.NullInt64
 	var telegramUsername string
 	if kind == domain.MessengerKindTelegram {
-		parsedID, parseErr := strconv.ParseInt(externalUserID, 10, 64)
+		parsedID, parseErr := strconv.ParseInt(messengerUserID, 10, 64)
 		if parseErr != nil || parsedID <= 0 {
 			return domain.User{}, false, fmt.Errorf("invalid telegram external user id")
 		}
@@ -222,7 +222,7 @@ func (s *Store) GetOrCreateUserByMessenger(ctx context.Context, kind domain.Mess
 					user_id = EXCLUDED.user_id,
 					username = EXCLUDED.username,
 					updated_at = EXCLUDED.updated_at
-			`, existing.ID, string(kind), externalUserID, username, time.Now().UTC(), time.Now().UTC()); err != nil {
+			`, existing.ID, string(kind), messengerUserID, username, time.Now().UTC(), time.Now().UTC()); err != nil {
 				return domain.User{}, false, err
 			}
 			if err := tx.Commit(); err != nil {
@@ -257,7 +257,7 @@ func (s *Store) GetOrCreateUserByMessenger(ctx context.Context, kind domain.Mess
 		INSERT INTO user_messenger_accounts (
 			user_id, messenger_kind, external_user_id, username, linked_at, updated_at
 		) VALUES ($1,$2,$3,$4,$5,$6)
-	`, created.ID, string(kind), externalUserID, username, time.Now().UTC(), time.Now().UTC()); err != nil {
+	`, created.ID, string(kind), messengerUserID, username, time.Now().UTC(), time.Now().UTC()); err != nil {
 		return domain.User{}, false, err
 	}
 
@@ -289,7 +289,7 @@ func (s *Store) ListUserMessengerAccounts(ctx context.Context, userID int64) ([]
 		if err := rows.Scan(
 			&item.UserID,
 			&kind,
-			&item.ExternalUserID,
+			&item.MessengerUserID,
 			&item.Username,
 			&item.LinkedAt,
 			&item.UpdatedAt,
@@ -335,11 +335,18 @@ func (s *Store) ListUsers(ctx context.Context, query domain.UserListQuery) ([]do
 			u.full_name,
 			u.phone,
 			u.email,
-			COALESCE(us.auto_pay_enabled, false) AS auto_pay_enabled,
-			us.telegram_id IS NOT NULL AS has_auto_pay_settings,
+			COALESCE(sub_summary.auto_pay_enabled, false) AS auto_pay_enabled,
+			COALESCE(sub_summary.has_active_subscriptions, false) AS has_auto_pay_settings,
 			u.updated_at
 		FROM users u
-		LEFT JOIN user_settings us ON us.telegram_id = u.telegram_id
+		LEFT JOIN (
+			SELECT
+				user_id,
+				BOOL_OR(auto_pay_enabled) FILTER (WHERE status = 'active') AS auto_pay_enabled,
+				COUNT(*) FILTER (WHERE status = 'active') > 0 AS has_active_subscriptions
+			FROM subscriptions
+			GROUP BY user_id
+		) sub_summary ON sub_summary.user_id = u.id
 	`
 	if len(where) > 0 {
 		stmt += " WHERE " + strings.Join(where, " AND ")
@@ -372,39 +379,6 @@ func (s *Store) ListUsers(ctx context.Context, query domain.UserListQuery) ([]do
 		items = append(items, item)
 	}
 	return items, rows.Err()
-}
-
-// SetUserAutoPayEnabled stores user recurring preference used for future payment creation.
-func (s *Store) SetUserAutoPayEnabled(ctx context.Context, telegramID int64, enabled bool, updatedAt time.Time) error {
-	if updatedAt.IsZero() {
-		updatedAt = time.Now().UTC()
-	}
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO user_settings (telegram_id, auto_pay_enabled, updated_at)
-		VALUES ($1,$2,$3)
-		ON CONFLICT (telegram_id)
-		DO UPDATE SET
-			auto_pay_enabled = EXCLUDED.auto_pay_enabled,
-			updated_at = EXCLUDED.updated_at
-	`, telegramID, enabled, updatedAt)
-	return err
-}
-
-// GetUserAutoPayEnabled returns user recurring preference if record exists.
-func (s *Store) GetUserAutoPayEnabled(ctx context.Context, telegramID int64) (bool, bool, error) {
-	var enabled bool
-	err := s.db.QueryRowContext(ctx, `
-		SELECT auto_pay_enabled
-		FROM user_settings
-		WHERE telegram_id = $1
-	`, telegramID).Scan(&enabled)
-	if err == sql.ErrNoRows {
-		return false, false, nil
-	}
-	if err != nil {
-		return false, false, err
-	}
-	return enabled, true, nil
 }
 
 func nullableTelegramID(telegramID int64) sql.NullInt64 {
@@ -452,6 +426,6 @@ func (s *Store) saveUserMessengerAccount(ctx context.Context, account domain.Use
 			user_id = EXCLUDED.user_id,
 			username = EXCLUDED.username,
 			updated_at = EXCLUDED.updated_at
-	`, account.UserID, string(account.MessengerKind), account.ExternalUserID, account.Username, account.LinkedAt, account.UpdatedAt)
+	`, account.UserID, string(account.MessengerKind), account.MessengerUserID, account.Username, account.LinkedAt, account.UpdatedAt)
 	return err
 }

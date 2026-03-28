@@ -40,11 +40,15 @@ func (h *Handler) eventsPage(w http.ResponseWriter, r *http.Request) {
 	}
 	params := r.URL.Query()
 
-	data.TelegramID = strings.TrimSpace(params.Get("telegram_id"))
-	if data.TelegramID != "" {
-		if v, err := strconv.ParseInt(data.TelegramID, 10, 64); err == nil && v > 0 {
-			query.TelegramID = v
-		}
+	data.ActorType = strings.TrimSpace(params.Get("actor_type"))
+	if data.ActorType == string(domain.AuditActorTypeAdmin) || data.ActorType == string(domain.AuditActorTypeUser) || data.ActorType == string(domain.AuditActorTypeApp) {
+		query.ActorType = domain.AuditActorType(data.ActorType)
+	}
+
+	data.MessengerUserID = strings.TrimSpace(params.Get("messenger_user_id"))
+	query.TargetMessengerUserID = data.MessengerUserID
+	if query.TargetMessengerUserID != "" {
+		query.TargetMessengerKind = domain.MessengerKindTelegram
 	}
 
 	data.ConnectorID = strings.TrimSpace(params.Get("connector_id"))
@@ -76,7 +80,7 @@ func (h *Handler) eventsPage(w http.ResponseWriter, r *http.Request) {
 
 	sortBy := strings.TrimSpace(params.Get("sort_by"))
 	switch sortBy {
-	case "telegram_id", "connector_id", "action", "created_at":
+	case "actor_type", "target_messenger_user_id", "connector_id", "action", "created_at":
 		data.SortBy = sortBy
 	}
 	query.SortBy = data.SortBy
@@ -124,12 +128,13 @@ func (h *Handler) eventsPage(w http.ResponseWriter, r *http.Request) {
 	rows := make([]auditEventView, 0, len(events))
 	for _, event := range events {
 		rows = append(rows, auditEventView{
-			CreatedAt:   event.CreatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
-			TelegramID:  event.TelegramID,
-			ConnectorID: event.ConnectorID,
-			Connector:   connectorDisplayName(connectorNames, event.ConnectorID),
-			Action:      event.Action,
-			Details:     event.Details,
+			CreatedAt:             event.CreatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
+			ActorType:             string(event.ActorType),
+			TargetMessengerUserID: event.TargetMessengerUserID,
+			ConnectorID:           event.ConnectorID,
+			Connector:             connectorDisplayName(connectorNames, event.ConnectorID),
+			Action:                event.Action,
+			Details:               event.Details,
 		})
 	}
 

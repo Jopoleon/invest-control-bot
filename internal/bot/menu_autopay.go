@@ -21,7 +21,7 @@ func (h *Handler) sendAutopayInfo(ctx context.Context, chatID, telegramID int64)
 		slog.Error("send autopay info failed", "error", err, "telegram_id", telegramID)
 		return
 	}
-	h.logAuditEvent(ctx, telegramID, 0, domain.AuditActionMenuAutoPayOpened, "")
+	h.logAuditEvent(ctx, messenger.UserIdentity{Kind: messenger.KindTelegram, ID: telegramID}, 0, domain.AuditActionMenuAutoPayOpened, "")
 }
 
 func (h *Handler) buildAutopayInfo(ctx context.Context, telegramID int64) (string, [][]messenger.ActionButton) {
@@ -53,7 +53,7 @@ func (h *Handler) confirmAutopayDisable(ctx context.Context, cb messenger.Incomi
 		slog.Error("render autopay disable confirm failed", "error", err, "telegram_id", cb.User.ID)
 		return
 	}
-	h.logAuditEvent(ctx, cb.User.ID, 0, domain.AuditActionAutopayDisableRequested, "")
+	h.logAuditEvent(ctx, cb.User, 0, domain.AuditActionAutopayDisableRequested, "")
 }
 
 func (h *Handler) restoreAutopayInfo(ctx context.Context, cb messenger.IncomingAction) {
@@ -75,13 +75,8 @@ func (h *Handler) setAutopayPreference(ctx context.Context, chatID, telegramID i
 		h.send(ctx, chatID, botMsgAutopayEnableOnlyDuringPayment)
 		return
 	}
-	if err := h.store.SetUserAutoPayEnabled(ctx, telegramID, enabled, time.Now().UTC()); err != nil {
-		slog.Error("save user autopay preference failed", "error", err, "telegram_id", telegramID, "enabled", enabled)
-		h.send(ctx, chatID, botMsgAutopayPreferenceUpdateFailed)
-		return
-	}
 	h.send(ctx, chatID, botMsgAutopayDisabledShort)
-	h.logAuditEvent(ctx, telegramID, 0, domain.AuditActionAutopayDisabled, "")
+	h.logAuditEvent(ctx, messenger.UserIdentity{Kind: messenger.KindTelegram, ID: telegramID}, 0, domain.AuditActionAutopayDisabled, "")
 }
 
 func (h *Handler) disableAutopayConfirmed(ctx context.Context, cb messenger.IncomingAction) {
@@ -90,11 +85,6 @@ func (h *Handler) disableAutopayConfirmed(ctx context.Context, cb messenger.Inco
 	}
 	if !h.recurringEnabled {
 		h.send(ctx, cb.ChatID, botMsgAutopayUnavailable)
-		return
-	}
-	if err := h.store.SetUserAutoPayEnabled(ctx, cb.User.ID, false, time.Now().UTC()); err != nil {
-		slog.Error("disable autopay failed", "error", err, "telegram_id", cb.User.ID)
-		h.send(ctx, cb.ChatID, botMsgAutopayPreferenceUpdateFailed)
 		return
 	}
 	if err := h.store.DisableAutoPayForActiveSubscriptions(ctx, cb.User.ID, time.Now().UTC()); err != nil {
@@ -106,7 +96,7 @@ func (h *Handler) disableAutopayConfirmed(ctx context.Context, cb messenger.Inco
 		slog.Error("render autopay disabled message failed", "error", err, "telegram_id", cb.User.ID)
 		return
 	}
-	h.logAuditEvent(ctx, cb.User.ID, 0, domain.AuditActionAutopayDisabled, "")
+	h.logAuditEvent(ctx, cb.User, 0, domain.AuditActionAutopayDisabled, "")
 }
 
 type autopayOption struct {
@@ -220,7 +210,12 @@ func (h *Handler) reactivateAutopayForSubscription(ctx context.Context, cb messe
 		h.send(ctx, cb.ChatID, botMsgTariffNotFound)
 		return
 	}
-	recurringConsent, consentErr := h.buildRecurringConsent(ctx, cb.User.ID, connector)
+	user, resolved := h.resolveMessengerUser(ctx, cb.User)
+	if !resolved {
+		h.send(ctx, cb.ChatID, botMsgAutopayConsentConfirmFailed)
+		return
+	}
+	recurringConsent, consentErr := h.buildRecurringConsent(ctx, user.ID, connector)
 	if consentErr != nil {
 		h.send(ctx, cb.ChatID, botMsgAutopayConsentConfirmFailed)
 		return
@@ -234,9 +229,8 @@ func (h *Handler) reactivateAutopayForSubscription(ctx context.Context, cb messe
 		h.send(ctx, cb.ChatID, botMsgAutopayReactivationFailed)
 		return
 	}
-	h.syncUserAutoPayPreference(ctx, cb.User.ID, now)
-	h.logAuditEvent(ctx, cb.User.ID, sub.ConnectorID, domain.AuditActionRecurringConsentGranted, "source=autopay_reactivate")
-	h.logAuditEvent(ctx, cb.User.ID, sub.ConnectorID, domain.AuditActionAutopayEnabled, "source=autopay_reactivate;subscription_id="+strconv.FormatInt(sub.ID, 10))
+	h.logAuditEvent(ctx, cb.User, sub.ConnectorID, domain.AuditActionRecurringConsentGranted, "source=autopay_reactivate")
+	h.logAuditEvent(ctx, cb.User, sub.ConnectorID, domain.AuditActionAutopayEnabled, "source=autopay_reactivate;subscription_id="+strconv.FormatInt(sub.ID, 10))
 	if err := h.respondToAction(ctx, cb, messenger.OutgoingMessage{Text: botMsgAutopayReactivated}); err != nil {
 		slog.Error("render autopay reactivated message failed", "error", err, "telegram_id", cb.User.ID)
 	}
@@ -263,9 +257,8 @@ func (h *Handler) disableAutopayForSubscription(ctx context.Context, cb messenge
 		h.send(ctx, cb.ChatID, botMsgAutopayDisablePerSubscriptionFailed)
 		return
 	}
-	h.syncUserAutoPayPreference(ctx, cb.User.ID, now)
 	connectorName := h.lookupConnectorName(ctx, sub.ConnectorID)
-	h.logAuditEvent(ctx, cb.User.ID, sub.ConnectorID, domain.AuditActionAutopayDisabled, "source=bot_menu;subscription_id="+strconv.FormatInt(sub.ID, 10))
+	h.logAuditEvent(ctx, cb.User, sub.ConnectorID, domain.AuditActionAutopayDisabled, "source=bot_menu;subscription_id="+strconv.FormatInt(sub.ID, 10))
 	if err := h.respondToAction(ctx, cb, messenger.OutgoingMessage{Text: botAutopayDisabledForSubscription(connectorName)}); err != nil {
 		slog.Error("render autopay disabled per subscription message failed", "error", err, "telegram_id", cb.User.ID)
 	}
@@ -292,12 +285,4 @@ func (h *Handler) lookupConnectorName(ctx context.Context, connectorID int64) st
 		return ""
 	}
 	return connector.Name
-}
-
-func (h *Handler) syncUserAutoPayPreference(ctx context.Context, telegramID int64, now time.Time) {
-	options := h.listAutopayOptions(ctx, telegramID)
-	enabled := countEnabledAutopayOptions(options) > 0
-	if err := h.store.SetUserAutoPayEnabled(ctx, telegramID, enabled, now); err != nil {
-		slog.Error("sync user autopay preference failed", "error", err, "telegram_id", telegramID, "enabled", enabled)
-	}
 }

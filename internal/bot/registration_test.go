@@ -39,7 +39,7 @@ func TestHandleCallback_ReusesExistingCompletedProfile(t *testing.T) {
 
 	h.handleCallback(ctx, testAction("cb-1", 1001, "existing_user", "accept_terms:"+int64ToString(connectorID)))
 
-	if state, found, err := st.GetRegistrationState(ctx, 1001); err != nil {
+	if state, found, err := st.GetRegistrationState(ctx, domain.MessengerKindTelegram, "1001"); err != nil {
 		t.Fatalf("get registration state: %v", err)
 	} else if found {
 		t.Fatalf("unexpected registration state: %+v", state)
@@ -70,7 +70,7 @@ func TestHandleCallback_RequestsOnlyMissingField(t *testing.T) {
 
 	h.handleCallback(ctx, testAction("cb-2", 1002, "partial_user", "accept_terms:"+int64ToString(connectorID)))
 
-	state, found, err := st.GetRegistrationState(ctx, 1002)
+	state, found, err := st.GetRegistrationState(ctx, domain.MessengerKindTelegram, "1002")
 	if err != nil {
 		t.Fatalf("get registration state: %v", err)
 	}
@@ -117,7 +117,14 @@ func TestHandleCallback_SavesLegalDocumentVersionsForFallbackDocs(t *testing.T) 
 
 	h.handleCallback(ctx, testAction("cb-consent-versioned", 1101, "versioned_user", "accept_terms:"+int64ToString(connectorID)))
 
-	consent, found, err := st.GetConsent(ctx, 1101, connectorID)
+	user, found, err := st.GetUser(ctx, 1101)
+	if err != nil {
+		t.Fatalf("get user: %v", err)
+	}
+	if !found {
+		t.Fatalf("user not found")
+	}
+	consent, found, err := st.GetConsent(ctx, user.ID, connectorID)
 	if err != nil {
 		t.Fatalf("get consent: %v", err)
 	}
@@ -177,7 +184,15 @@ func TestHandleCallback_LeavesConsentVersionsEmptyForConnectorCustomURLs(t *test
 
 	h.handleCallback(ctx, testAction("cb-consent-custom", 1102, "custom_user", "accept_terms:"+int64ToString(connector.ID)))
 
-	consent, found, err := st.GetConsent(ctx, 1102, connector.ID)
+	user, found := domain.User{}, false
+	user, found, err = st.GetUser(ctx, 1102)
+	if err != nil {
+		t.Fatalf("get user: %v", err)
+	}
+	if !found {
+		t.Fatalf("user not found")
+	}
+	consent, found, err := st.GetConsent(ctx, user.ID, connector.ID)
 	if err != nil {
 		t.Fatalf("get consent: %v", err)
 	}
@@ -225,7 +240,7 @@ func TestHandleCallback_CreatesInternalUserAndTelegramAccount(t *testing.T) {
 	if len(accounts) != 1 {
 		t.Fatalf("accounts len = %d, want 1", len(accounts))
 	}
-	if accounts[0].MessengerKind != domain.MessengerKindTelegram || accounts[0].ExternalUserID != "1201" {
+	if accounts[0].MessengerKind != domain.MessengerKindTelegram || accounts[0].MessengerUserID != "1201" {
 		t.Fatalf("unexpected messenger account: %+v", accounts[0])
 	}
 }
@@ -249,9 +264,6 @@ func TestHandlePay_DisablesRecurringWhenCapabilityOff(t *testing.T) {
 	h := NewHandler(st, tg, robokassa, false, "http://localhost:8080", "test-encryption-key-123456789012345")
 
 	connectorID := seedBotConnector(t, ctx, st, "in-pay-no-recurring")
-	if err := st.SetUserAutoPayEnabled(ctx, 1003, true, time.Now().UTC()); err != nil {
-		t.Fatalf("set user autopay: %v", err)
-	}
 
 	h.handlePay(ctx, testAction("cb-3", 1003, "", "pay:"+int64ToString(connectorID)))
 
@@ -307,15 +319,14 @@ func TestHandlePay_WithExplicitRecurringOptInCreatesRecurringConsent(t *testing.
 		t.Fatalf("checkout URL should contain recurring flag: %s", payments[0].CheckoutURL)
 	}
 
-	enabled, hasSettings, err := st.GetUserAutoPayEnabled(ctx, 1004)
+	user, found, err := st.GetUser(ctx, 1004)
 	if err != nil {
-		t.Fatalf("get user autopay: %v", err)
+		t.Fatalf("get user: %v", err)
 	}
-	if !hasSettings || !enabled {
-		t.Fatalf("autopay preference = (%v,%v), want (true,true)", enabled, hasSettings)
+	if !found {
+		t.Fatalf("user not found")
 	}
-
-	consents, err := st.ListRecurringConsentsByTelegram(ctx, 1004)
+	consents, err := st.ListRecurringConsentsByUser(ctx, user.ID)
 	if err != nil {
 		t.Fatalf("list recurring consents: %v", err)
 	}
@@ -347,9 +358,6 @@ func TestHandlePay_WithExplicitManualModeOverridesStoredAutopay(t *testing.T) {
 
 	connectorID := seedBotConnector(t, ctx, st, "in-pay-manual-override")
 	seedRecurringLegalDocs(t, ctx, st)
-	if err := st.SetUserAutoPayEnabled(ctx, 1005, true, time.Now().UTC()); err != nil {
-		t.Fatalf("set user autopay: %v", err)
-	}
 
 	h.handlePay(ctx, testAction("cb-5", 1005, "", "pay:"+int64ToString(connectorID)+":0"))
 
@@ -367,7 +375,14 @@ func TestHandlePay_WithExplicitManualModeOverridesStoredAutopay(t *testing.T) {
 		t.Fatalf("checkout URL should not contain recurring flag: %s", payments[0].CheckoutURL)
 	}
 
-	consents, err := st.ListRecurringConsentsByTelegram(ctx, 1005)
+	user, found, err := st.GetUser(ctx, 1005)
+	if err != nil {
+		t.Fatalf("get user: %v", err)
+	}
+	if !found {
+		t.Fatalf("user not found")
+	}
+	consents, err := st.ListRecurringConsentsByUser(ctx, user.ID)
 	if err != nil {
 		t.Fatalf("list recurring consents: %v", err)
 	}

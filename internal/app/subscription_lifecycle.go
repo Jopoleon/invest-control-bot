@@ -147,13 +147,7 @@ func processSubscriptionReminders(ctx context.Context, appCtx *application) {
 		if err := appCtx.store.MarkSubscriptionReminderSent(ctx, sub.ID, now); err != nil {
 			slog.Error("mark subscription reminder sent failed", "error", err, "subscription_id", sub.ID)
 		}
-		_ = appCtx.store.SaveAuditEvent(ctx, domain.AuditEvent{
-			TelegramID:  sub.TelegramID,
-			ConnectorID: sub.ConnectorID,
-			Action:      domain.AuditActionSubscriptionReminderSent,
-			Details:     "subscription_id=" + strconv.FormatInt(sub.ID, 10),
-			CreatedAt:   now,
-		})
+		_ = appCtx.store.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, sub.TelegramID, sub.ConnectorID, domain.AuditActionSubscriptionReminderSent, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
 	}
 }
 
@@ -184,13 +178,7 @@ func processSubscriptionExpiryNotices(ctx context.Context, appCtx *application) 
 		if err := appCtx.store.MarkSubscriptionExpiryNoticeSent(ctx, sub.ID, now); err != nil {
 			slog.Error("mark subscription expiry notice sent failed", "error", err, "subscription_id", sub.ID)
 		}
-		_ = appCtx.store.SaveAuditEvent(ctx, domain.AuditEvent{
-			TelegramID:  sub.TelegramID,
-			ConnectorID: sub.ConnectorID,
-			Action:      domain.AuditActionSubscriptionExpiryNoticeSent,
-			Details:     "subscription_id=" + strconv.FormatInt(sub.ID, 10),
-			CreatedAt:   now,
-		})
+		_ = appCtx.store.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, sub.TelegramID, sub.ConnectorID, domain.AuditActionSubscriptionExpiryNoticeSent, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
 	}
 }
 
@@ -218,21 +206,9 @@ func processExpiredSubscriptions(ctx context.Context, appCtx *application) {
 			if chatID, ok := normalizeTelegramChatID(connector.ChatID); ok {
 				if err := appCtx.telegramClient.RemoveChatMember(ctx, chatID, sub.TelegramID); err != nil {
 					slog.Error("remove chat member failed", "error", err, "subscription_id", sub.ID, "telegram_id", sub.TelegramID, "chat_id", chatID)
-					_ = appCtx.store.SaveAuditEvent(ctx, domain.AuditEvent{
-						TelegramID:  sub.TelegramID,
-						ConnectorID: sub.ConnectorID,
-						Action:      domain.AuditActionSubscriptionRevokeFailed,
-						Details:     "subscription_id=" + strconv.FormatInt(sub.ID, 10),
-						CreatedAt:   now,
-					})
+					_ = appCtx.store.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, sub.TelegramID, sub.ConnectorID, domain.AuditActionSubscriptionRevokeFailed, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
 				} else {
-					_ = appCtx.store.SaveAuditEvent(ctx, domain.AuditEvent{
-						TelegramID:  sub.TelegramID,
-						ConnectorID: sub.ConnectorID,
-						Action:      domain.AuditActionSubscriptionRevokedFromChat,
-						Details:     "subscription_id=" + strconv.FormatInt(sub.ID, 10),
-						CreatedAt:   now,
-					})
+					_ = appCtx.store.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, sub.TelegramID, sub.ConnectorID, domain.AuditActionSubscriptionRevokedFromChat, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
 				}
 			}
 		}
@@ -245,13 +221,7 @@ func processExpiredSubscriptions(ctx context.Context, appCtx *application) {
 		if err := appCtx.sendUserNotification(ctx, sub.UserID, sub.TelegramID, msg); err != nil {
 			slog.Error("send subscription expired message failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "legacy_external_id", sub.TelegramID)
 		}
-		_ = appCtx.store.SaveAuditEvent(ctx, domain.AuditEvent{
-			TelegramID:  sub.TelegramID,
-			ConnectorID: sub.ConnectorID,
-			Action:      domain.AuditActionSubscriptionExpired,
-			Details:     "subscription_id=" + strconv.FormatInt(sub.ID, 10),
-			CreatedAt:   now,
-		})
+		_ = appCtx.store.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, sub.TelegramID, sub.ConnectorID, domain.AuditActionSubscriptionExpired, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
 	}
 }
 

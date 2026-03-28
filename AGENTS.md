@@ -40,11 +40,11 @@ The current codebase is production-oriented, but still in active architectural r
   - payments
   - subscriptions
   - consents
-  - audit events
   - recurring pages
   - admin user detail / exports
 - do not try to replace all `telegram_id` references in one pass
 - the correct path is incremental: identity resolution first, downstream foreign-key migration later
+ - `audit_events` has already been generalized into actor/target records and no longer assumes Telegram-only user context
 
 ## Repository Map
 
@@ -90,6 +90,7 @@ Current direction:
 - internal user identity is `users.id`
 - external messenger identity is modeled separately
 - Telegram remains supported through `telegram_id`, but it is no longer the long-term canonical identity
+- `user_settings.auto_pay_enabled` has been removed from the runtime model; recurring state is derived from subscriptions and explicit checkout choice
 
 When changing code:
 1. Prefer using store methods that resolve users through messenger identity.

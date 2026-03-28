@@ -75,7 +75,7 @@ func (h *Handler) resolveRecurringOfferLink(ctx context.Context, connector domai
 	return h.resolveLegalDocumentURL(ctx, domain.LegalDocumentTypeOffer)
 }
 
-func (h *Handler) buildRecurringConsent(ctx context.Context, telegramID int64, connector domain.Connector) (domain.RecurringConsent, error) {
+func (h *Handler) buildRecurringConsent(ctx context.Context, userID int64, connector domain.Connector) (domain.RecurringConsent, error) {
 	_, offerDoc, offerDocFound := h.resolveRecurringOfferLink(ctx, connector)
 	_, agreementDoc, agreementFound := h.resolveLegalDocumentURL(ctx, domain.LegalDocumentTypeUserAgreement)
 	if !agreementFound {
@@ -83,7 +83,7 @@ func (h *Handler) buildRecurringConsent(ctx context.Context, telegramID int64, c
 	}
 
 	consent := domain.RecurringConsent{
-		TelegramID:  telegramID,
+		UserID:      userID,
 		ConnectorID: connector.ID,
 		AcceptedAt:  time.Now().UTC(),
 	}

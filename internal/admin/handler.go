@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -65,10 +66,29 @@ func (h *Handler) buildAutopayCancelURL(telegramID int64) string {
 
 func (h *Handler) logAdminAudit(r *http.Request, action, details string) {
 	_ = h.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
-		Action:    action,
-		Details:   details,
-		CreatedAt: time.Now().UTC(),
+		ActorType:    domain.AuditActorTypeAdmin,
+		ActorSubject: "admin_panel",
+		Action:       action,
+		Details:      details,
+		CreatedAt:    time.Now().UTC(),
 	})
+}
+
+func (h *Handler) logAdminTargetAudit(r *http.Request, user domain.User, connectorID int64, action, details string) {
+	event := domain.AuditEvent{
+		ActorType:    domain.AuditActorTypeAdmin,
+		ActorSubject: "admin_panel",
+		TargetUserID: user.ID,
+		ConnectorID:  connectorID,
+		Action:       action,
+		Details:      details,
+		CreatedAt:    time.Now().UTC(),
+	}
+	if user.TelegramID > 0 {
+		event.TargetMessengerKind = domain.MessengerKindTelegram
+		event.TargetMessengerUserID = strconv.FormatInt(user.TelegramID, 10)
+	}
+	_ = h.store.SaveAuditEvent(r.Context(), event)
 }
 
 // Register mounts admin routes into the shared application router.

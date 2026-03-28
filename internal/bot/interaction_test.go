@@ -44,9 +44,6 @@ func TestReactivateAutopayForSubscription_ReenablesWithoutNewPayment(t *testing.
 	seedRecurringDocs(t, ctx, st)
 	paymentID := seedPayment(t, ctx, st, 7001, connectorID, true)
 	subID := seedSubscription(t, ctx, st, 7001, connectorID, paymentID, false)
-	if err := st.SetUserAutoPayEnabled(ctx, 7001, false, time.Now().UTC()); err != nil {
-		t.Fatalf("set user autopay: %v", err)
-	}
 
 	h.handleMenuCallback(ctx, testAction("reactivate", 7001, "egor", menuCallbackAutopayOnSub+int64ToString(subID)))
 
@@ -61,15 +58,14 @@ func TestReactivateAutopayForSubscription_ReenablesWithoutNewPayment(t *testing.
 		t.Fatalf("subscription autopay = false, want true")
 	}
 
-	enabled, hasSetting, err := st.GetUserAutoPayEnabled(ctx, 7001)
+	user, found, err := st.GetUser(ctx, 7001)
 	if err != nil {
-		t.Fatalf("get user autopay: %v", err)
+		t.Fatalf("get user: %v", err)
 	}
-	if !hasSetting || !enabled {
-		t.Fatalf("user autopay = (%v,%v), want (true,true)", enabled, hasSetting)
+	if !found {
+		t.Fatalf("user not found")
 	}
-
-	consents, err := st.ListRecurringConsentsByTelegram(ctx, 7001)
+	consents, err := st.ListRecurringConsentsByUser(ctx, user.ID)
 	if err != nil {
 		t.Fatalf("list recurring consents: %v", err)
 	}
@@ -105,9 +101,6 @@ func TestDisableAutopayForSubscription_OnlyTouchesTargetSubscription(t *testing.
 	paymentTwo := seedPayment(t, ctx, st, 8001, connectorTwo, true)
 	subOne := seedSubscription(t, ctx, st, 8001, connectorOne, paymentOne, true)
 	subTwo := seedSubscription(t, ctx, st, 8001, connectorTwo, paymentTwo, true)
-	if err := st.SetUserAutoPayEnabled(ctx, 8001, true, time.Now().UTC()); err != nil {
-		t.Fatalf("set user autopay: %v", err)
-	}
 
 	h.handleMenuCallback(ctx, testAction("disable-one", 8001, "egor", menuCallbackAutopayOffSub+int64ToString(subOne)))
 
@@ -131,14 +124,6 @@ func TestDisableAutopayForSubscription_OnlyTouchesTargetSubscription(t *testing.
 	}
 	if !gotTwo.AutoPayEnabled {
 		t.Fatalf("second subscription autopay = false, want true")
-	}
-
-	enabled, hasSetting, err := st.GetUserAutoPayEnabled(ctx, 8001)
-	if err != nil {
-		t.Fatalf("get user autopay: %v", err)
-	}
-	if !hasSetting || !enabled {
-		t.Fatalf("user autopay = (%v,%v), want (true,true)", enabled, hasSetting)
 	}
 
 	if len(sender.edited) != 1 {

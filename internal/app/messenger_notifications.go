@@ -22,13 +22,13 @@ func (a *application) sendUserNotification(ctx context.Context, userID, legacyEx
 		}
 		targetExternalID := strconv.FormatInt(legacyExternalID, 10)
 		for _, account := range accounts {
-			if account.ExternalUserID != targetExternalID {
+			if account.MessengerUserID != targetExternalID {
 				continue
 			}
 			if err := a.sendViaMessengerAccount(ctx, account, msg); err == nil {
 				return nil
 			} else {
-				slog.Warn("send via matched messenger account failed", "user_id", userID, "messenger_kind", account.MessengerKind, "external_user_id", account.ExternalUserID, "error", err)
+				slog.Warn("send via matched messenger account failed", "user_id", userID, "messenger_kind", account.MessengerKind, "external_user_id", account.MessengerUserID, "error", err)
 			}
 		}
 	}
@@ -60,9 +60,9 @@ func (a *application) sendUserNotification(ctx context.Context, userID, legacyEx
 }
 
 func (a *application) sendViaMessengerAccount(ctx context.Context, account domain.UserMessengerAccount, msg messenger.OutgoingMessage) error {
-	externalID, err := strconv.ParseInt(account.ExternalUserID, 10, 64)
+	externalID, err := strconv.ParseInt(account.MessengerUserID, 10, 64)
 	if err != nil || externalID <= 0 {
-		return fmt.Errorf("invalid external user id %q for %s", account.ExternalUserID, account.MessengerKind)
+		return fmt.Errorf("invalid external user id %q for %s", account.MessengerUserID, account.MessengerKind)
 	}
 
 	switch account.MessengerKind {

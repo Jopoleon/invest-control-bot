@@ -95,23 +95,27 @@ func (a *application) triggerRebill(ctx context.Context, subscriptionID int64, s
 		if _, markErr := a.store.UpdatePaymentFailed(ctx, pendingPayment.ID, "rebill_request_failed:"+parentPayment.Token, time.Now().UTC()); markErr != nil {
 			logStoreError("mark rebill payment failed failed", markErr, "payment_id", pendingPayment.ID)
 		}
-		_ = a.store.SaveAuditEvent(ctx, domain.AuditEvent{
-			TelegramID:  subscription.TelegramID,
-			ConnectorID: subscription.ConnectorID,
-			Action:      domain.AuditActionRebillRequestFailed,
-			Details:     "subscription_id=" + strconv.FormatInt(subscription.ID, 10) + ";invoice_id=" + invoiceID + ";source=" + source + ";error=" + err.Error(),
-			CreatedAt:   time.Now().UTC(),
-		})
+		_ = a.store.SaveAuditEvent(ctx, a.buildAppTargetAuditEvent(
+			ctx,
+			subscription.UserID,
+			subscription.TelegramID,
+			subscription.ConnectorID,
+			domain.AuditActionRebillRequestFailed,
+			"subscription_id="+strconv.FormatInt(subscription.ID, 10)+";invoice_id="+invoiceID+";source="+source+";error="+err.Error(),
+			time.Now().UTC(),
+		))
 		return rebillResponse{}, errRebillRequestFailed
 	}
 
-	if err := a.store.SaveAuditEvent(ctx, domain.AuditEvent{
-		TelegramID:  subscription.TelegramID,
-		ConnectorID: subscription.ConnectorID,
-		Action:      domain.AuditActionRebillRequested,
-		Details:     "subscription_id=" + strconv.FormatInt(subscription.ID, 10) + ";invoice_id=" + invoiceID + ";parent=" + parentPayment.Token + ";source=" + source,
-		CreatedAt:   now,
-	}); err != nil {
+	if err := a.store.SaveAuditEvent(ctx, a.buildAppTargetAuditEvent(
+		ctx,
+		subscription.UserID,
+		subscription.TelegramID,
+		subscription.ConnectorID,
+		domain.AuditActionRebillRequested,
+		"subscription_id="+strconv.FormatInt(subscription.ID, 10)+";invoice_id="+invoiceID+";parent="+parentPayment.Token+";source="+source,
+		now,
+	)); err != nil {
 		logAuditError(domain.AuditActionRebillRequested, err)
 	}
 

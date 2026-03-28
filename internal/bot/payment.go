@@ -20,7 +20,7 @@ func (h *Handler) handlePay(ctx context.Context, cb messenger.IncomingAction) {
 		h.send(ctx, cb.ChatID, botMsgConnectorUnavailable)
 		return
 	}
-	h.logAuditEvent(ctx, cb.User.ID, connectorID, domain.AuditActionPayClicked, "")
+	h.logAuditEvent(ctx, cb.User, connectorID, domain.AuditActionPayClicked, "")
 	connector, ok, err := h.store.GetConnector(ctx, connectorID)
 	if err != nil {
 		slog.Error("load connector for pay failed", "error", err, "connector_id", connectorID)
@@ -42,11 +42,7 @@ func (h *Handler) handlePay(ctx context.Context, cb messenger.IncomingAction) {
 		h.send(ctx, cb.ChatID, botMsgPaymentProfilePrepareFailed)
 		return
 	}
-	autoPayEnabled, _, err := h.store.GetUserAutoPayEnabled(ctx, cb.User.ID)
-	if err != nil {
-		slog.Error("load user autopay preference failed", "error", err, "telegram_id", cb.User.ID)
-	}
-	effectiveRecurring := h.recurringEnabled && autoPayEnabled
+	effectiveRecurring := false
 	if hasExplicitRecurring {
 		effectiveRecurring = h.recurringEnabled && selectedRecurring
 	}
@@ -67,7 +63,7 @@ func (h *Handler) handlePay(ctx context.Context, cb messenger.IncomingAction) {
 	}
 
 	if effectiveRecurring {
-		recurringConsent, consentErr := h.buildRecurringConsent(ctx, cb.User.ID, connector)
+		recurringConsent, consentErr := h.buildRecurringConsent(ctx, user.ID, connector)
 		if consentErr != nil {
 			slog.Error("build recurring consent failed", "error", consentErr, "connector_id", connectorID, "telegram_id", cb.User.ID)
 			h.send(ctx, cb.ChatID, botMsgAutopayDocsMissing)
@@ -78,10 +74,7 @@ func (h *Handler) handlePay(ctx context.Context, cb messenger.IncomingAction) {
 			h.send(ctx, cb.ChatID, botMsgAutopayConsentSaveFailed)
 			return
 		}
-		h.logAuditEvent(ctx, cb.User.ID, connectorID, domain.AuditActionRecurringConsentGranted, "")
-		if err := h.store.SetUserAutoPayEnabled(ctx, cb.User.ID, true, time.Now().UTC()); err != nil {
-			slog.Error("save user autopay preference after consent failed", "error", err, "telegram_id", cb.User.ID)
-		}
+		h.logAuditEvent(ctx, cb.User, connectorID, domain.AuditActionRecurringConsentGranted, "")
 	}
 
 	token := invoiceID
@@ -103,7 +96,7 @@ func (h *Handler) handlePay(ctx context.Context, cb messenger.IncomingAction) {
 		h.send(ctx, cb.ChatID, botMsgPaymentLinkFailed)
 		return
 	}
-	h.logAuditEvent(ctx, cb.User.ID, connectorID, domain.AuditActionPaymentCreated, "token="+token)
+	h.logAuditEvent(ctx, cb.User, connectorID, domain.AuditActionPaymentCreated, "token="+token)
 
 	out := messenger.OutgoingMessage{
 		Text: botPaymentLinkCreated(h.payment.ProviderName()),
@@ -119,7 +112,7 @@ func (h *Handler) handlePay(ctx context.Context, cb messenger.IncomingAction) {
 	if effectiveRecurring {
 		details += ";autopay=on"
 	}
-	h.logAuditEvent(ctx, cb.User.ID, connectorID, domain.AuditActionPayLinkSent, details)
+	h.logAuditEvent(ctx, cb.User, connectorID, domain.AuditActionPayLinkSent, details)
 }
 
 func generateInvoiceID() string {

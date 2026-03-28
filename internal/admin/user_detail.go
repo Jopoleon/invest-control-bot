@@ -62,12 +62,6 @@ func (h *Handler) renderUserDetailPage(ctx context.Context, w http.ResponseWrite
 
 func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.ResponseWriter, r *http.Request, lang string, item domain.User, notice string) {
 	telegramID := item.TelegramID
-	autoPayEnabled, hasAutoPaySettings, err := h.store.GetUserAutoPayEnabled(ctx, telegramID)
-	if err != nil {
-		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
-		return
-	}
-
 	payments, err := h.store.ListPayments(ctx, domain.PaymentListQuery{TelegramID: telegramID, Limit: 200})
 	if err != nil {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
@@ -79,28 +73,29 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 		return
 	}
 	events, _, err := h.store.ListAuditEvents(ctx, domain.AuditEventListQuery{
-		TelegramID: telegramID,
-		SortBy:     "created_at",
-		SortDesc:   true,
-		Page:       1,
-		PageSize:   200,
+		TargetUserID: item.ID,
+		SortBy:       "created_at",
+		SortDesc:     true,
+		Page:         1,
+		PageSize:     200,
 	})
 	if err != nil {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
 		return
 	}
-	consents, err := h.store.ListConsentsByTelegram(ctx, telegramID)
+	consents, err := h.store.ListConsentsByUser(ctx, item.ID)
 	if err != nil {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
 		return
 	}
-	recurringConsents, err := h.store.ListRecurringConsentsByTelegram(ctx, telegramID)
+	recurringConsents, err := h.store.ListRecurringConsentsByUser(ctx, item.ID)
 	if err != nil {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
 		return
 	}
 
 	connectorNames := h.loadConnectorNames(ctx)
+	autoPayEnabled, hasAutoPaySettings := summarizeAutopayFromSubscriptions(subs)
 	data := userDetailPageData{
 		basePageData: basePageData{
 			Lang:       lang,
@@ -213,12 +208,13 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 	data.Events = make([]auditEventView, 0, len(events))
 	for _, event := range events {
 		data.Events = append(data.Events, auditEventView{
-			CreatedAt:   event.CreatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
-			TelegramID:  event.TelegramID,
-			ConnectorID: event.ConnectorID,
-			Connector:   connectorDisplayName(connectorNames, event.ConnectorID),
-			Action:      event.Action,
-			Details:     event.Details,
+			CreatedAt:             event.CreatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
+			ActorType:             string(event.ActorType),
+			TargetMessengerUserID: event.TargetMessengerUserID,
+			ConnectorID:           event.ConnectorID,
+			Connector:             connectorDisplayName(connectorNames, event.ConnectorID),
+			Action:                event.Action,
+			Details:               event.Details,
 		})
 	}
 
@@ -290,4 +286,19 @@ func buildRecurringSummary(lang string, autoPayEnabled, hasAutoPaySettings bool,
 		break
 	}
 	return summary
+}
+
+func summarizeAutopayFromSubscriptions(subs []domain.Subscription) (bool, bool) {
+	hasActive := false
+	enabled := false
+	for _, sub := range subs {
+		if sub.Status != domain.SubscriptionStatusActive {
+			continue
+		}
+		hasActive = true
+		if sub.AutoPayEnabled {
+			enabled = true
+		}
+	}
+	return enabled, hasActive
 }

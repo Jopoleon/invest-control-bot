@@ -16,6 +16,14 @@
 - `migrations/0001_init.sql` теперь описывает актуальную canonical-схему проекта.
 - Локальная PostgreSQL-база была полностью очищена, затем новая baseline migration успешно применена с пустого состояния.
 - Fresh bootstrap verified: `schema_migrations` содержит только `0001_init.sql`, а `GOCACHE=/tmp/go-build go test ./...` остается зеленым.
+- `audit_events` переведена в более общую actor/target модель:
+  - admin login/logout/session events и user/app events теперь живут в одной таблице;
+  - запись больше не завязана на обязательный `telegram_id`;
+  - admin events page/export уже читают новый формат.
+- `user_settings` окончательно убрана из runtime-кода:
+  - global user-level `auto_pay_enabled` больше не используется;
+  - recurring state для UI считается из активных подписок;
+  - checkout recurring choice задается только явным действием пользователя в bot flow.
 
 ## 2) Зафиксированные решения
 - Админка на первом этапе: встроенные server-rendered HTML-страницы на Go.

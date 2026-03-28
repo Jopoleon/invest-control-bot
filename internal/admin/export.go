@@ -128,13 +128,14 @@ func (h *Handler) exportEventsCSV(w http.ResponseWriter, r *http.Request) {
 
 	records := make([][]string, 0, len(rows)+1)
 	records = append(records, []string{
-		"id", "created_at", "telegram_id", "connector_id", "connector", "action", "details",
+		"id", "created_at", "actor_type", "target_messenger_user_id", "connector_id", "connector", "action", "details",
 	})
 	for _, event := range rows {
 		records = append(records, []string{
 			strconv.FormatInt(event.ID, 10),
 			event.CreatedAt.In(time.Local).Format(time.RFC3339),
-			strconv.FormatInt(event.TelegramID, 10),
+			string(event.ActorType),
+			event.TargetMessengerUserID,
 			strconv.FormatInt(event.ConnectorID, 10),
 			connectorDisplayName(connectorNames, event.ConnectorID),
 			event.Action,
@@ -347,8 +348,13 @@ func parseEventsQuery(params url.Values) domain.AuditEventListQuery {
 		Search:   strings.TrimSpace(params.Get("search")),
 	}
 
-	if id, err := strconv.ParseInt(strings.TrimSpace(params.Get("telegram_id")), 10, 64); err == nil && id > 0 {
-		query.TelegramID = id
+	rawActorType := strings.TrimSpace(params.Get("actor_type"))
+	if rawActorType == string(domain.AuditActorTypeAdmin) || rawActorType == string(domain.AuditActorTypeUser) || rawActorType == string(domain.AuditActorTypeApp) {
+		query.ActorType = domain.AuditActorType(rawActorType)
+	}
+	query.TargetMessengerUserID = strings.TrimSpace(params.Get("messenger_user_id"))
+	if query.TargetMessengerUserID != "" {
+		query.TargetMessengerKind = domain.MessengerKindTelegram
 	}
 	if id, err := strconv.ParseInt(strings.TrimSpace(params.Get("connector_id")), 10, 64); err == nil && id > 0 {
 		query.ConnectorID = id
@@ -361,7 +367,7 @@ func parseEventsQuery(params url.Values) domain.AuditEventListQuery {
 	}
 
 	switch sortBy := strings.TrimSpace(params.Get("sort_by")); sortBy {
-	case "telegram_id", "connector_id", "action", "created_at":
+	case "actor_type", "target_messenger_user_id", "connector_id", "action", "created_at":
 		query.SortBy = sortBy
 	}
 	if strings.EqualFold(strings.TrimSpace(params.Get("sort_dir")), "asc") {

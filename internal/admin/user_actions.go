@@ -51,22 +51,13 @@ func (h *Handler) sendUserMessage(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC()
 	if err := h.tg.SendMessage(r.Context(), telegramID, text, nil); err != nil {
-		_ = h.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
-			TelegramID: telegramID,
-			Action:     domain.AuditActionAdminMessageSendFailed,
-			Details:    err.Error(),
-			CreatedAt:  now,
-		})
+		h.logAdminTargetAudit(r, user, 0, domain.AuditActionAdminMessageSendFailed, err.Error())
 		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, err.Error())
 		return
 	}
 
-	_ = h.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
-		TelegramID: telegramID,
-		Action:     domain.AuditActionAdminMessageSent,
-		Details:    trimAuditDetails(text, 500),
-		CreatedAt:  now,
-	})
+	_ = now
+	h.logAdminTargetAudit(r, user, 0, domain.AuditActionAdminMessageSent, trimAuditDetails(text, 500))
 	h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.actions.message_sent"))
 }
 
@@ -142,24 +133,14 @@ func (h *Handler) sendUserPaymentLink(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now().UTC()
 	if err := h.tg.SendMessage(r.Context(), telegramID, text, keyboard); err != nil {
-		_ = h.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
-			TelegramID:  telegramID,
-			ConnectorID: connector.ID,
-			Action:      domain.AuditActionAdminPaymentLinkSendFailed,
-			Details:     err.Error(),
-			CreatedAt:   now,
-		})
+		_ = now
+		h.logAdminTargetAudit(r, user, connector.ID, domain.AuditActionAdminPaymentLinkSendFailed, err.Error())
 		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, err.Error())
 		return
 	}
 
-	_ = h.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
-		TelegramID:  telegramID,
-		ConnectorID: connector.ID,
-		Action:      domain.AuditActionAdminPaymentLinkSent,
-		Details:     "subscription_id=" + strconv.FormatInt(subID, 10) + ",connector_id=" + strconv.FormatInt(connectorID, 10),
-		CreatedAt:   now,
-	})
+	_ = now
+	h.logAdminTargetAudit(r, user, connector.ID, domain.AuditActionAdminPaymentLinkSent, "subscription_id="+strconv.FormatInt(subID, 10)+",connector_id="+strconv.FormatInt(connectorID, 10))
 	h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.actions.paylink_sent"))
 }
 
@@ -222,21 +203,11 @@ func (h *Handler) revokeSubscription(w http.ResponseWriter, r *http.Request) {
 	if connectorFound {
 		if chatID, ok := normalizeAdminTelegramChatID(connector.ChatID); ok {
 			if err := h.tg.RemoveChatMember(r.Context(), chatID, telegramID); err != nil {
-				_ = h.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
-					TelegramID:  telegramID,
-					ConnectorID: sub.ConnectorID,
-					Action:      domain.AuditActionAdminSubscriptionRevokeFailed,
-					Details:     fmt.Sprintf("subscription_id=%d", sub.ID),
-					CreatedAt:   now,
-				})
+				_ = now
+				h.logAdminTargetAudit(r, user, sub.ConnectorID, domain.AuditActionAdminSubscriptionRevokeFailed, fmt.Sprintf("subscription_id=%d", sub.ID))
 			} else {
-				_ = h.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
-					TelegramID:  telegramID,
-					ConnectorID: sub.ConnectorID,
-					Action:      domain.AuditActionAdminSubscriptionRevokedChat,
-					Details:     fmt.Sprintf("subscription_id=%d", sub.ID),
-					CreatedAt:   now,
-				})
+				_ = now
+				h.logAdminTargetAudit(r, user, sub.ConnectorID, domain.AuditActionAdminSubscriptionRevokedChat, fmt.Sprintf("subscription_id=%d", sub.ID))
 			}
 		}
 	}
@@ -254,13 +225,8 @@ func (h *Handler) revokeSubscription(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	_ = h.tg.SendMessage(r.Context(), telegramID, notifyText, keyboard)
-	_ = h.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
-		TelegramID:  telegramID,
-		ConnectorID: sub.ConnectorID,
-		Action:      domain.AuditActionAdminSubscriptionRevoked,
-		Details:     fmt.Sprintf("subscription_id=%d", sub.ID),
-		CreatedAt:   now,
-	})
+	_ = now
+	h.logAdminTargetAudit(r, user, sub.ConnectorID, domain.AuditActionAdminSubscriptionRevoked, fmt.Sprintf("subscription_id=%d", sub.ID))
 
 	h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.revoke.success"))
 }

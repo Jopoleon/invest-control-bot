@@ -41,8 +41,17 @@
     <form method="GET" action="/admin/events" class="filter-form">
       <div class="filter-grid">
         <label class="filter-field">
-          <span>{{index .I18N "events.filter.telegram_id"}}</span>
-          <input name="telegram_id" value="{{.TelegramID}}" placeholder="264704572">
+          <span>Actor</span>
+          <select name="actor_type">
+            <option value="" {{if eq .ActorType ""}}selected{{end}}>all</option>
+            <option value="user" {{if eq .ActorType "user"}}selected{{end}}>user</option>
+            <option value="admin" {{if eq .ActorType "admin"}}selected{{end}}>admin</option>
+            <option value="app" {{if eq .ActorType "app"}}selected{{end}}>app</option>
+          </select>
+        </label>
+        <label class="filter-field">
+          <span>Messenger User ID</span>
+          <input name="messenger_user_id" value="{{.MessengerUserID}}" placeholder="264704572">
         </label>
         <label class="filter-field">
           <span>{{index .I18N "events.filter.connector_id"}}</span>
@@ -70,7 +79,8 @@
           <span>{{index .I18N "events.filter.sort_by"}}</span>
           <select name="sort_by">
             <option value="created_at" {{if eq .SortBy "created_at"}}selected{{end}}>created_at</option>
-            <option value="telegram_id" {{if eq .SortBy "telegram_id"}}selected{{end}}>telegram_id</option>
+            <option value="actor_type" {{if eq .SortBy "actor_type"}}selected{{end}}>actor_type</option>
+            <option value="target_messenger_user_id" {{if eq .SortBy "target_messenger_user_id"}}selected{{end}}>messenger_user_id</option>
             <option value="connector_id" {{if eq .SortBy "connector_id"}}selected{{end}}>connector_id</option>
             <option value="action" {{if eq .SortBy "action"}}selected{{end}}>action</option>
           </select>
@@ -117,7 +127,8 @@
         <thead>
           <tr>
             <th>{{index .I18N "events.table.time"}}</th>
-            <th>{{index .I18N "events.table.telegram_id"}}</th>
+            <th>Actor</th>
+            <th>Messenger User ID</th>
             <th>{{index .I18N "events.table.connector"}}</th>
             <th>{{index .I18N "events.table.action"}}</th>
             <th>{{index .I18N "events.table.details"}}</th>
@@ -127,7 +138,8 @@
         {{range .Rows}}
           <tr>
             <td class="mono">{{.CreatedAt}}</td>
-            <td class="mono">{{.TelegramID}}</td>
+            <td class="mono">{{.ActorType}}</td>
+            <td class="mono">{{.TargetMessengerUserID}}</td>
             <td>{{.Connector}}</td>
             <td class="mono">{{.Action}}</td>
             <td class="mono">{{.Details}}</td>

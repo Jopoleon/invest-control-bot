@@ -153,11 +153,11 @@ func TestListUserMessengerAccounts(t *testing.T) {
 	for _, account := range accounts {
 		switch account.MessengerKind {
 		case domain.MessengerKindTelegram:
-			if account.ExternalUserID == "264704572" {
+			if account.MessengerUserID == "264704572" {
 				foundTelegram = true
 			}
 		case domain.MessengerKindMAX:
-			if account.ExternalUserID == "max-user-1" {
+			if account.MessengerUserID == "max-user-1" {
 				foundMAX = true
 			}
 		}

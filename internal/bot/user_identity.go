@@ -34,3 +34,12 @@ func (h *Handler) resolveMessengerUser(ctx context.Context, identity messenger.U
 	}
 	return user, true
 }
+
+func messengerKindFromIdentity(kind messenger.Kind) domain.MessengerKind {
+	switch kind {
+	case messenger.KindMAX:
+		return domain.MessengerKindMAX
+	default:
+		return domain.MessengerKindTelegram
+	}
+}

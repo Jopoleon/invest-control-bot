@@ -32,13 +32,14 @@ func (a *application) handleMockPay(w http.ResponseWriter, r *http.Request) {
 	userID := r.URL.Query().Get("user_id")
 	amount := r.URL.Query().Get("amount_rub")
 	if tgID, err := strconv.ParseInt(userID, 10, 64); err == nil && tgID > 0 {
-		if err := a.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
-			TelegramID:  tgID,
-			ConnectorID: connectorID,
-			Action:      domain.AuditActionMockCheckoutOpened,
-			Details:     "token=" + token,
-			CreatedAt:   time.Now().UTC(),
-		}); err != nil {
+		if err := a.store.SaveAuditEvent(r.Context(), buildAppMessengerTargetAuditEvent(
+			domain.MessengerKindTelegram,
+			strconv.FormatInt(tgID, 10),
+			connectorID,
+			domain.AuditActionMockCheckoutOpened,
+			"token="+token,
+			time.Now().UTC(),
+		)); err != nil {
 			logAuditError(domain.AuditActionMockCheckoutOpened, err)
 		}
 	}
@@ -72,13 +73,14 @@ func (a *application) handleMockPaySuccess(w http.ResponseWriter, r *http.Reques
 		a.activateSuccessfulPayment(r.Context(), paymentRow, "mock:"+token, now)
 	}
 	if tgID, err := strconv.ParseInt(userID, 10, 64); err == nil && tgID > 0 {
-		if err := a.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
-			TelegramID:  tgID,
-			ConnectorID: connectorID,
-			Action:      domain.AuditActionMockPaymentSuccess,
-			Details:     "token=" + token,
-			CreatedAt:   now,
-		}); err != nil {
+		if err := a.store.SaveAuditEvent(r.Context(), buildAppMessengerTargetAuditEvent(
+			domain.MessengerKindTelegram,
+			strconv.FormatInt(tgID, 10),
+			connectorID,
+			domain.AuditActionMockPaymentSuccess,
+			"token="+token,
+			now,
+		)); err != nil {
 			logAuditError(domain.AuditActionMockPaymentSuccess, err)
 		}
 	}

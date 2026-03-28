@@ -74,13 +74,15 @@ func (a *application) handlePaymentResult(w http.ResponseWriter, r *http.Request
 		return
 	}
 	a.activateSuccessfulPayment(r.Context(), paymentRow, "robokassa:"+invID, time.Now().UTC())
-	if err := a.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
-		TelegramID:  paymentRow.TelegramID,
-		ConnectorID: paymentRow.ConnectorID,
-		Action:      domain.AuditActionRobokassaResultReceived,
-		Details:     "inv_id=" + invID + ";out_sum=" + outSum,
-		CreatedAt:   time.Now().UTC(),
-	}); err != nil {
+	if err := a.store.SaveAuditEvent(r.Context(), a.buildAppTargetAuditEvent(
+		r.Context(),
+		paymentRow.UserID,
+		paymentRow.TelegramID,
+		paymentRow.ConnectorID,
+		domain.AuditActionRobokassaResultReceived,
+		"inv_id="+invID+";out_sum="+outSum,
+		time.Now().UTC(),
+	)); err != nil {
 		logAuditError(domain.AuditActionRobokassaResultReceived, err)
 	}
 	w.WriteHeader(http.StatusOK)
@@ -152,13 +154,15 @@ func (a *application) handlePaymentFail(w http.ResponseWriter, r *http.Request) 
 			if updated, err := a.store.UpdatePaymentFailed(r.Context(), paymentRow.ID, "robokassa:"+invID, time.Now().UTC()); err != nil {
 				logStoreError("mark payment failed failed", err, "payment_id", paymentRow.ID)
 			} else if updated {
-				_ = a.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
-					TelegramID:  paymentRow.TelegramID,
-					ConnectorID: paymentRow.ConnectorID,
-					Action:      domain.AuditActionPaymentFailed,
-					Details:     "payment_id=" + strconv.FormatInt(paymentRow.ID, 10),
-					CreatedAt:   time.Now().UTC(),
-				})
+				_ = a.store.SaveAuditEvent(r.Context(), a.buildAppTargetAuditEvent(
+					r.Context(),
+					paymentRow.UserID,
+					paymentRow.TelegramID,
+					paymentRow.ConnectorID,
+					domain.AuditActionPaymentFailed,
+					"payment_id="+strconv.FormatInt(paymentRow.ID, 10),
+					time.Now().UTC(),
+				))
 				a.notifyFailedRecurringPayment(r.Context(), paymentRow)
 			}
 		}
@@ -261,7 +265,7 @@ func (a *application) resolvePreferredMessengerKind(ctx context.Context, userID,
 
 	targetExternalID := strconv.FormatInt(legacyExternalID, 10)
 	for _, account := range accounts {
-		if account.ExternalUserID != targetExternalID {
+		if account.MessengerUserID != targetExternalID {
 			continue
 		}
 		if account.MessengerKind == domain.MessengerKindMAX {
@@ -301,13 +305,15 @@ func (a *application) notifyFailedRecurringPayment(ctx context.Context, paymentR
 		logWarn("failed recurring payment notify failed", "payment_id", paymentRow.ID, "user_id", paymentRow.UserID, "legacy_external_id", paymentRow.TelegramID, "error", err)
 		return
 	}
-	if err := a.store.SaveAuditEvent(ctx, domain.AuditEvent{
-		TelegramID:  paymentRow.TelegramID,
-		ConnectorID: paymentRow.ConnectorID,
-		Action:      domain.AuditActionRecurringPaymentFailedNotice,
-		Details:     "payment_id=" + strconv.FormatInt(paymentRow.ID, 10),
-		CreatedAt:   time.Now().UTC(),
-	}); err != nil {
+	if err := a.store.SaveAuditEvent(ctx, a.buildAppTargetAuditEvent(
+		ctx,
+		paymentRow.UserID,
+		paymentRow.TelegramID,
+		paymentRow.ConnectorID,
+		domain.AuditActionRecurringPaymentFailedNotice,
+		"payment_id="+strconv.FormatInt(paymentRow.ID, 10),
+		time.Now().UTC(),
+	)); err != nil {
 		logAuditError(domain.AuditActionRecurringPaymentFailedNotice, err)
 	}
 }

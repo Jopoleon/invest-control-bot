@@ -7,6 +7,7 @@ import (
 
 	"github.com/Jopoleon/invest-control-bot/internal/channelurl"
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 )
 
 func (h *Handler) sendSubscriptionOverview(ctx context.Context, chatID, telegramID int64) {
@@ -24,7 +25,7 @@ func (h *Handler) sendSubscriptionOverview(ctx context.Context, chatID, telegram
 	}
 
 	h.send(ctx, chatID, text)
-	h.logAuditEvent(ctx, telegramID, 0, domain.AuditActionMenuSubscriptionOpened, "")
+	h.logAuditEvent(ctx, messenger.UserIdentity{Kind: messenger.KindTelegram, ID: telegramID}, 0, domain.AuditActionMenuSubscriptionOpened, "")
 }
 
 func (h *Handler) buildSubscriptionOverviewText(ctx context.Context, telegramID int64, subs []domain.Subscription) (string, bool) {
@@ -70,7 +71,7 @@ func (h *Handler) sendPaymentHistory(ctx context.Context, chatID, telegramID int
 	}
 
 	h.send(ctx, chatID, text)
-	h.logAuditEvent(ctx, telegramID, 0, domain.AuditActionMenuPaymentsOpened, "")
+	h.logAuditEvent(ctx, messenger.UserIdentity{Kind: messenger.KindTelegram, ID: telegramID}, 0, domain.AuditActionMenuPaymentsOpened, "")
 }
 
 func buildPaymentHistoryText(payments []domain.Payment) (string, bool) {

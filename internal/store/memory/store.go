@@ -29,10 +29,9 @@ type Store struct {
 	userIDByTelegram       map[int64]int64
 	messengerAccounts      map[string]domain.UserMessengerAccount
 	nextUserID             int64
-	userAutoPay            map[int64]bool
 	consents               map[string]domain.Consent
 	recurringConsents      []domain.RecurringConsent
-	states                 map[int64]domain.RegistrationState
+	states                 map[string]domain.RegistrationState
 	events                 []domain.AuditEvent
 	nextEventID            int64
 	payments               map[int64]domain.Payment
@@ -58,10 +57,9 @@ func New() *Store {
 		userIDByTelegram:       make(map[int64]int64),
 		messengerAccounts:      make(map[string]domain.UserMessengerAccount),
 		nextUserID:             1,
-		userAutoPay:            make(map[int64]bool),
 		consents:               make(map[string]domain.Consent),
 		recurringConsents:      make([]domain.RecurringConsent, 0),
-		states:                 make(map[int64]domain.RegistrationState),
+		states:                 make(map[string]domain.RegistrationState),
 		events:                 make([]domain.AuditEvent, 0, 128),
 		nextEventID:            1,
 		payments:               make(map[int64]domain.Payment),
@@ -422,27 +420,27 @@ func (s *Store) SaveConsent(_ context.Context, consent domain.Consent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.consents[consentKey(consent.TelegramID, consent.ConnectorID)] = consent
+	s.consents[consentKey(consent.UserID, consent.ConnectorID)] = consent
 	return nil
 }
 
 // GetConsent returns stored consent by user and connector.
-func (s *Store) GetConsent(_ context.Context, telegramID int64, connectorID int64) (domain.Consent, bool, error) {
+func (s *Store) GetConsent(_ context.Context, userID int64, connectorID int64) (domain.Consent, bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	consent, ok := s.consents[consentKey(telegramID, connectorID)]
+	consent, ok := s.consents[consentKey(userID, connectorID)]
 	return consent, ok, nil
 }
 
-// ListConsentsByTelegram returns all consent records for a Telegram user.
-func (s *Store) ListConsentsByTelegram(_ context.Context, telegramID int64) ([]domain.Consent, error) {
+// ListConsentsByUser returns all consent records for one internal user.
+func (s *Store) ListConsentsByUser(_ context.Context, userID int64) ([]domain.Consent, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	items := make([]domain.Consent, 0)
 	for _, consent := range s.consents {
-		if consent.TelegramID != telegramID {
+		if consent.UserID != userID {
 			continue
 		}
 		items = append(items, consent)
@@ -475,14 +473,14 @@ func (s *Store) CreateRecurringConsent(_ context.Context, consent domain.Recurri
 	return nil
 }
 
-// ListRecurringConsentsByTelegram returns recurring consent history for one user.
-func (s *Store) ListRecurringConsentsByTelegram(_ context.Context, telegramID int64) ([]domain.RecurringConsent, error) {
+// ListRecurringConsentsByUser returns recurring consent history for one user.
+func (s *Store) ListRecurringConsentsByUser(_ context.Context, userID int64) ([]domain.RecurringConsent, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	items := make([]domain.RecurringConsent, 0)
 	for _, consent := range s.recurringConsents {
-		if consent.TelegramID != telegramID {
+		if consent.UserID != userID {
 			continue
 		}
 		items = append(items, consent)
@@ -520,12 +518,12 @@ func (s *Store) SaveUser(_ context.Context, user domain.User) error {
 	if user.TelegramID > 0 {
 		s.userIDByTelegram[user.TelegramID] = user.ID
 		s.upsertMessengerAccountLocked(domain.UserMessengerAccount{
-			UserID:         user.ID,
-			MessengerKind:  domain.MessengerKindTelegram,
-			ExternalUserID: strconv.FormatInt(user.TelegramID, 10),
-			Username:       user.TelegramUsername,
-			LinkedAt:       user.UpdatedAt,
-			UpdatedAt:      user.UpdatedAt,
+			UserID:          user.ID,
+			MessengerKind:   domain.MessengerKindTelegram,
+			MessengerUserID: strconv.FormatInt(user.TelegramID, 10),
+			Username:        user.TelegramUsername,
+			LinkedAt:        user.UpdatedAt,
+			UpdatedAt:       user.UpdatedAt,
 		})
 	}
 	return nil
@@ -554,18 +552,18 @@ func (s *Store) GetUser(_ context.Context, telegramID int64) (domain.User, bool,
 }
 
 // GetUserByMessenger resolves an existing user by external messenger identity without creating one.
-func (s *Store) GetUserByMessenger(_ context.Context, kind domain.MessengerKind, externalUserID string) (domain.User, bool, error) {
+func (s *Store) GetUserByMessenger(_ context.Context, kind domain.MessengerKind, messengerUserID string) (domain.User, bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	if account, ok := s.messengerAccounts[messengerAccountKey(kind, externalUserID)]; ok {
+	if account, ok := s.messengerAccounts[messengerAccountKey(kind, messengerUserID)]; ok {
 		user, found := s.users[account.UserID]
 		return user, found, nil
 	}
 	if kind != domain.MessengerKindTelegram {
 		return domain.User{}, false, nil
 	}
-	telegramID, err := strconv.ParseInt(externalUserID, 10, 64)
+	telegramID, err := strconv.ParseInt(messengerUserID, 10, 64)
 	if err != nil || telegramID <= 0 {
 		return domain.User{}, false, nil
 	}
@@ -578,11 +576,11 @@ func (s *Store) GetUserByMessenger(_ context.Context, kind domain.MessengerKind,
 }
 
 // GetOrCreateUserByMessenger resolves a user by external messenger identity or creates one if absent.
-func (s *Store) GetOrCreateUserByMessenger(_ context.Context, kind domain.MessengerKind, externalUserID, username string) (domain.User, bool, error) {
+func (s *Store) GetOrCreateUserByMessenger(_ context.Context, kind domain.MessengerKind, messengerUserID, username string) (domain.User, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	key := messengerAccountKey(kind, externalUserID)
+	key := messengerAccountKey(kind, messengerUserID)
 	if account, ok := s.messengerAccounts[key]; ok {
 		user := s.users[account.UserID]
 		if strings.TrimSpace(username) != "" && account.Username != username {
@@ -604,7 +602,7 @@ func (s *Store) GetOrCreateUserByMessenger(_ context.Context, kind domain.Messen
 	}
 	s.nextUserID++
 	if kind == domain.MessengerKindTelegram {
-		if telegramID, err := strconv.ParseInt(externalUserID, 10, 64); err == nil && telegramID > 0 {
+		if telegramID, err := strconv.ParseInt(messengerUserID, 10, 64); err == nil && telegramID > 0 {
 			user.TelegramID = telegramID
 			user.TelegramUsername = username
 			s.userIDByTelegram[telegramID] = user.ID
@@ -612,12 +610,12 @@ func (s *Store) GetOrCreateUserByMessenger(_ context.Context, kind domain.Messen
 	}
 	s.users[user.ID] = user
 	s.upsertMessengerAccountLocked(domain.UserMessengerAccount{
-		UserID:         user.ID,
-		MessengerKind:  kind,
-		ExternalUserID: externalUserID,
-		Username:       username,
-		LinkedAt:       user.UpdatedAt,
-		UpdatedAt:      user.UpdatedAt,
+		UserID:          user.ID,
+		MessengerKind:   kind,
+		MessengerUserID: messengerUserID,
+		Username:        username,
+		LinkedAt:        user.UpdatedAt,
+		UpdatedAt:       user.UpdatedAt,
 	})
 	return user, true, nil
 }
@@ -638,7 +636,7 @@ func (s *Store) ListUserMessengerAccounts(_ context.Context, userID int64) ([]do
 		if items[i].MessengerKind != items[j].MessengerKind {
 			return items[i].MessengerKind < items[j].MessengerKind
 		}
-		return items[i].ExternalUserID < items[j].ExternalUserID
+		return items[i].MessengerUserID < items[j].MessengerUserID
 	})
 	return items, nil
 }
@@ -670,7 +668,7 @@ func (s *Store) ListUsers(_ context.Context, query domain.UserListQuery) ([]doma
 				continue
 			}
 		}
-		autoPay, hasAutoPay := s.userAutoPay[user.TelegramID]
+		autoPay, hasAutoPay := s.userAutopaySummaryLocked(user.ID)
 		items = append(items, domain.UserListItem{
 			UserID:             user.ID,
 			TelegramID:         user.TelegramID,
@@ -697,20 +695,19 @@ func (s *Store) ListUsers(_ context.Context, query domain.UserListQuery) ([]doma
 	return items, nil
 }
 
-// SetUserAutoPayEnabled stores user recurring preference used for next payment link creation.
-func (s *Store) SetUserAutoPayEnabled(_ context.Context, telegramID int64, enabled bool, _ time.Time) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.userAutoPay[telegramID] = enabled
-	return nil
-}
-
-// GetUserAutoPayEnabled returns user recurring preference if explicitly set.
-func (s *Store) GetUserAutoPayEnabled(_ context.Context, telegramID int64) (bool, bool, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	enabled, ok := s.userAutoPay[telegramID]
-	return enabled, ok, nil
+func (s *Store) userAutopaySummaryLocked(userID int64) (bool, bool) {
+	hasActive := false
+	enabled := false
+	for _, sub := range s.subsByPayID {
+		if sub.UserID != userID || sub.Status != domain.SubscriptionStatusActive {
+			continue
+		}
+		hasActive = true
+		if sub.AutoPayEnabled {
+			enabled = true
+		}
+	}
+	return enabled, hasActive
 }
 
 // SaveRegistrationState stores FSM progress for user.
@@ -719,25 +716,25 @@ func (s *Store) SaveRegistrationState(_ context.Context, state domain.Registrati
 	defer s.mu.Unlock()
 
 	state.UpdatedAt = time.Now().UTC()
-	s.states[state.TelegramID] = state
+	s.states[registrationStateKey(state.MessengerKind, state.MessengerUserID)] = state
 	return nil
 }
 
 // GetRegistrationState fetches FSM progress for user.
-func (s *Store) GetRegistrationState(_ context.Context, telegramID int64) (domain.RegistrationState, bool, error) {
+func (s *Store) GetRegistrationState(_ context.Context, kind domain.MessengerKind, messengerUserID string) (domain.RegistrationState, bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	state, ok := s.states[telegramID]
+	state, ok := s.states[registrationStateKey(kind, messengerUserID)]
 	return state, ok, nil
 }
 
 // DeleteRegistrationState clears FSM state after completion/cancel.
-func (s *Store) DeleteRegistrationState(_ context.Context, telegramID int64) error {
+func (s *Store) DeleteRegistrationState(_ context.Context, kind domain.MessengerKind, messengerUserID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	delete(s.states, telegramID)
+	delete(s.states, registrationStateKey(kind, messengerUserID))
 	return nil
 }
 
@@ -769,7 +766,16 @@ func (s *Store) ListAuditEvents(_ context.Context, query domain.AuditEventListQu
 
 	filtered := make([]domain.AuditEvent, 0, len(s.events))
 	for _, event := range s.events {
-		if query.TelegramID > 0 && event.TelegramID != query.TelegramID {
+		if query.ActorType != "" && event.ActorType != query.ActorType {
+			continue
+		}
+		if query.TargetUserID > 0 && event.TargetUserID != query.TargetUserID {
+			continue
+		}
+		if query.TargetMessengerKind != "" && event.TargetMessengerKind != query.TargetMessengerKind {
+			continue
+		}
+		if query.TargetMessengerUserID != "" && event.TargetMessengerUserID != query.TargetMessengerUserID {
 			continue
 		}
 		if query.ConnectorID > 0 && event.ConnectorID != query.ConnectorID {
@@ -801,11 +807,11 @@ func (s *Store) ListAuditEvents(_ context.Context, query domain.AuditEventListQu
 
 		var cmp int
 		switch sortBy {
-		case "telegram_id":
+		case "target_messenger_user_id":
 			switch {
-			case left.TelegramID < right.TelegramID:
+			case left.TargetMessengerUserID < right.TargetMessengerUserID:
 				cmp = -1
-			case left.TelegramID > right.TelegramID:
+			case left.TargetMessengerUserID > right.TargetMessengerUserID:
 				cmp = 1
 			}
 		case "connector_id":
@@ -817,6 +823,8 @@ func (s *Store) ListAuditEvents(_ context.Context, query domain.AuditEventListQu
 			}
 		case "action":
 			cmp = strings.Compare(left.Action, right.Action)
+		case "actor_type":
+			cmp = strings.Compare(string(left.ActorType), string(right.ActorType))
 		default:
 			switch {
 			case left.CreatedAt.Before(right.CreatedAt):
@@ -1345,8 +1353,8 @@ func (s *Store) SetSubscriptionAutoPayEnabled(_ context.Context, subscriptionID 
 }
 
 // consentKey builds deterministic compound key for consent map.
-func consentKey(telegramID, connectorID int64) string {
-	return int64ToString(connectorID) + ":" + int64ToString(telegramID)
+func consentKey(userID, connectorID int64) string {
+	return int64ToString(connectorID) + ":" + int64ToString(userID)
 }
 
 // int64ToString converts int64 values for map key composition.
@@ -1354,8 +1362,12 @@ func int64ToString(v int64) string {
 	return strconv.FormatInt(v, 10)
 }
 
-func messengerAccountKey(kind domain.MessengerKind, externalUserID string) string {
-	return string(kind) + ":" + strings.TrimSpace(externalUserID)
+func registrationStateKey(kind domain.MessengerKind, messengerUserID string) string {
+	return string(kind) + ":" + strings.TrimSpace(messengerUserID)
+}
+
+func messengerAccountKey(kind domain.MessengerKind, messengerUserID string) string {
+	return string(kind) + ":" + strings.TrimSpace(messengerUserID)
 }
 
 func (s *Store) resolveUserIdentityLocked(userID, telegramID int64) (int64, int64) {
@@ -1376,7 +1388,7 @@ func (s *Store) resolveUserIdentityLocked(userID, telegramID int64) (int64, int6
 }
 
 func (s *Store) upsertMessengerAccountLocked(account domain.UserMessengerAccount) {
-	key := messengerAccountKey(account.MessengerKind, account.ExternalUserID)
+	key := messengerAccountKey(account.MessengerKind, account.MessengerUserID)
 	existing, ok := s.messengerAccounts[key]
 	if ok {
 		account.LinkedAt = existing.LinkedAt

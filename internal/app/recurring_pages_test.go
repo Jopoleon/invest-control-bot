@@ -75,9 +75,6 @@ func TestRecurringCancelPage_DisablesAutopay(t *testing.T) {
 	if err := st.SaveUser(ctx, domain.User{TelegramID: 91001, FullName: "Егор", TelegramUsername: "egor", UpdatedAt: time.Now().UTC()}); err != nil {
 		t.Fatalf("save user: %v", err)
 	}
-	if err := st.SetUserAutoPayEnabled(ctx, 91001, true, time.Now().UTC()); err != nil {
-		t.Fatalf("enable autopay: %v", err)
-	}
 	seedPayment(t, ctx, st, domain.Payment{Provider: "robokassa", Status: domain.PaymentStatusPaid, Token: "cancel-test-1", TelegramID: 91001, ConnectorID: connectorID, AmountRUB: 2322, AutoPayEnabled: true, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()})
 	paymentRow, found, err := st.GetPaymentByToken(ctx, "cancel-test-1")
 	if err != nil || !found {
@@ -114,13 +111,6 @@ func TestRecurringCancelPage_DisablesAutopay(t *testing.T) {
 		body, _ := io.ReadAll(postRR.Body)
 		t.Fatalf("post status=%d body=%q", postRR.Code, string(body))
 	}
-	enabled, _, err := st.GetUserAutoPayEnabled(ctx, 91001)
-	if err != nil {
-		t.Fatalf("get autopay after disable: %v", err)
-	}
-	if enabled {
-		t.Fatalf("autopay should be disabled after public cancel")
-	}
 	subs, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{TelegramID: 91001, Status: domain.SubscriptionStatusActive, Limit: 10})
 	if err != nil {
 		t.Fatalf("list subscriptions after disable: %v", err)
@@ -139,9 +129,6 @@ func TestRecurringCancelPage_SendsConfirmationViaMAX(t *testing.T) {
 	maxUser, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465776", "Федор Николаевич")
 	if err != nil {
 		t.Fatalf("create max user: %v", err)
-	}
-	if err := st.SetUserAutoPayEnabled(ctx, 193465776, true, time.Now().UTC()); err != nil {
-		t.Fatalf("enable autopay: %v", err)
 	}
 	seedPayment(t, ctx, st, domain.Payment{
 		Provider:       "robokassa",
