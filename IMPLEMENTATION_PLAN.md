@@ -1,7 +1,7 @@
 # План реализации сервиса (рабочий документ)
 
-Статус: v1.15 (clean migration baseline and MAX mixed-mode stabilization in progress)
-Дата обновления: 2026-03-27
+Статус: v1.16 (identity-first runtime cleanup after clean baseline)
+Дата обновления: 2026-03-29
 Основание: `tz.md`, `telegram-bot-flow.md`
 
 ## 1) Цель
@@ -32,6 +32,23 @@
   - `sendUserNotification`, `buildAppTargetAuditEvent` и выбор preferred messenger теперь принимают строковый `preferredMessengerUserID` и резолвят фактический target через `user_messenger_accounts`;
   - lifecycle revoke-from-chat теперь берет Telegram account из linked identities пользователя, а не из `subscriptions.telegram_id` как обязательного источника истины;
   - это уменьшает blast radius для следующего шага, где `Payment.TelegramID` / `Subscription.TelegramID` будут удаляться из runtime-моделей полностью.
+
+### Обновление 2026-03-29
+- `internal/bootstrap` удален:
+  - открытие store и применение миграций теперь инкапсулированы в `internal/app/store_open.go`;
+  - `cmd/server`, `cmd/max-poller` и `pkg/vercelapp` больше не зависят от отдельного bootstrap-пакета.
+- `domain.Payment` и `domain.Subscription` больше не содержат `TelegramID`:
+  - runtime-модели этих бизнес-сущностей теперь `user_id`-first;
+  - PostgreSQL store читает/пишет их по clean baseline без несуществующих `payments.telegram_id` / `subscriptions.telegram_id`.
+- Оставшиеся app/admin/bot пути, которые раньше читали `Payment.TelegramID` / `Subscription.TelegramID`, переведены на messenger identity resolution:
+  - app payment handlers, payment flow, recurring rebill, lifecycle jobs и public recurring cancel page теперь резолвят target messenger через `user_messenger_accounts`;
+  - admin billing/detail/churn/export больше не считают `payment/subscription` носителями Telegram identity;
+  - bot menu/payment-history flows перешли на `user_id`-based запросы.
+- Public recurring cancel page стала честнее в mixed-mode:
+  - token по-прежнему несет legacy messenger user id;
+  - но страница и POST-path теперь сначала пытаются резолвить пользователя через linked identities (`telegram` -> `max`), а уже затем используют fallback bridge.
+- Полный regression pass после этих правок:
+  - `GOCACHE=/tmp/go-build go test ./...` проходит.
 
 ## 2) Зафиксированные решения
 - Админка на первом этапе: встроенные server-rendered HTML-страницы на Go.
@@ -498,6 +515,9 @@
 - `2026-03-26` Payment/subscription слой переведен на следующий additive шаг multi-messenger migration: добавлена миграция `0014_payments_subscriptions_user_id.sql`, `payments` и `subscriptions` теперь сохраняют `user_id` параллельно с legacy `telegram_id`, а write/read paths и store-фильтры начали реально использовать обе модели.
 - `2026-03-28` `users` runtime/store выровнен с clean baseline: доменная модель пользователя теперь хранит только канонический профиль (`id/full_name/phone/email/timestamps`), Telegram username/id читаются через `user_messenger_accounts`, а bot registration/admin user resolution/public recurring cancel перестали зависеть от колонок `users.telegram_id` и `users.telegram_username`.
 - `2026-03-28` Postgres store для `payments` и `subscriptions` выровнен с clean baseline схемой: SQL write paths больше не пишут в несуществующие `telegram_id` колонки, а read/filter paths продолжают отдавать legacy `TelegramID` как derived runtime projection через join к `user_messenger_accounts` для Telegram identity. Это сохранило текущие bot/app/admin сценарии без отдельного compatibility столбца в БД.
+- `2026-03-29` `PaymentListQuery` и `SubscriptionListQuery` переведены на `user_id`-first контракт: admin billing/exports и public recurring cancel page больше не фильтруют платежи и подписки по `telegram_id`, а Postgres/memory list methods больше не тащат derived Telegram column в SQL/runtime для этих списков.
+- `2026-03-29` `UserListQuery` и admin screens `users/churn` начали принимать `user_id` как основной filter key, а recurring cancel token model получил messenger-neutral naming (`messenger_user_id` вместо Telegram-specific payload field), чтобы убрать еще один misleading identity слой из runtime.
+- `2026-03-29` Дочищены Telegram-biased runtime хвосты вокруг checkout/cancel: `internal/payment.Request` больше не тащит лишний `UserTelegramID`, mock checkout flow опирается на payment token вместо декоративного user query param, а recurring cancel page внутри app-layer переименована в messenger-neutral термины без misleading `legacyExternalID`/`subscriptionMatchesLegacyTelegramID`.
 - `2026-03-26` Для MAX добавлен первый рабочий local-dev transport: `cmd/max-poller` поднимает long polling через `GET /updates`, пакет `internal/max` покрыт client/poller/adapter unit-тестами, а mapper `message_created` выровнен под documented payload (`message.sender`, `message.recipient`, `message.body.mid`) и теперь логирует raw update при очередном несовпадении формы события.
 - `2026-03-27` На живом MAX E2E подтверждены `/menu`, `/start <payload>`, регистрация, `accept_terms`, `payconsent` и генерация Robokassa checkout link. App-level post-payment notification path переведен с Telegram-only отправки на messenger-aware notifier, чтобы успешная оплата и ошибки recurring могли уведомлять пользователя в MAX-чате.
 - `2026-03-27` Отдельно зафиксирован следующий инфраструктурный этап по БД: после стабилизации multi-messenger behavior нужен clean-schema pass с полной пересборкой миграций под чистую накатку, удобным финальным порядком полей и удалением временных compatibility-слоев там, где они больше не нужны.

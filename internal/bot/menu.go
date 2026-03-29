@@ -86,9 +86,13 @@ func handleMenuSelection(ctx context.Context, h *Handler, chatID int64, cb messe
 }
 
 func queryActiveSubscriptions(ctx context.Context, h *Handler, telegramID int64) ([]domain.Subscription, error) {
+	user, resolved := h.resolveMessengerUser(ctx, messenger.UserIdentity{Kind: messenger.KindTelegram, ID: telegramID})
+	if !resolved {
+		return nil, nil
+	}
 	return h.store.ListSubscriptions(ctx, domain.SubscriptionListQuery{
-		TelegramID: telegramID,
-		Status:     domain.SubscriptionStatusActive,
-		Limit:      20,
+		UserID: user.ID,
+		Status: domain.SubscriptionStatusActive,
+		Limit:  20,
 	})
 }

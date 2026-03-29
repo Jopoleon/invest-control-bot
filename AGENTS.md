@@ -95,6 +95,8 @@ Current direction:
 - postgres `payments` / `subscriptions` writes now align with the clean baseline schema; legacy `telegram_id` is treated as a derived runtime projection resolved through linked Telegram identity
 - `GetLatestSubscriptionByUserConnector` and `DisableAutoPayForActiveSubscriptions` are now `user_id`-first store APIs; bot/app runtime paths should prefer resolved internal users over Telegram IDs for ownership and recurring-state changes
 - app-level notification/audit helpers now resolve messenger targets through linked accounts by `user_id`; temporary preferred messenger ids may still be passed from mixed-mode records, but the helper contract is no longer built around `legacyExternalID`
+- `domain.Payment` and `domain.Subscription` no longer expose `TelegramID`; any caller that needs Telegram projection must resolve it through linked messenger identities
+- `internal/bootstrap` has been removed; store opening/migration bootstrap now lives directly in `internal/app/store_open.go`
 
 When changing code:
 1. Prefer using store methods that resolve users through messenger identity.
@@ -133,6 +135,7 @@ Comments are required where intent is not obvious:
 - tricky recurring/autopay rules
 - identity resolution logic
 - non-obvious invariants
+- package-level `doc.go` comments for the main `internal/*` packages must be kept in sync with the actual role and boundaries of each package
 
 Do not add noise comments for trivial assignments.
 When logic changes, comments must be updated in the same change.
@@ -199,6 +202,7 @@ If continuing implementation from current state, the next sensible sequence is:
 - `internal/store/postgres/users.go`
 - `internal/store/memory/store.go`
 - `migrations/0001_init.sql`
+- `internal/app/store_open.go`
 - `IMPLEMENTATION_PLAN.md`
 - `docs/MAX_IMPLEMENTATION_PLAN.md`
 - `docs/REFACTORING_AND_TEST_PLAN.md`

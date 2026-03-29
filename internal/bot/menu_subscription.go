@@ -54,9 +54,14 @@ func (h *Handler) buildSubscriptionOverviewText(ctx context.Context, telegramID 
 }
 
 func (h *Handler) sendPaymentHistory(ctx context.Context, chatID, telegramID int64) {
+	user, resolved := h.resolveMessengerUser(ctx, messenger.UserIdentity{Kind: messenger.KindTelegram, ID: telegramID})
+	if !resolved {
+		h.send(ctx, chatID, botMsgPaymentsLoadFailed)
+		return
+	}
 	payments, err := h.store.ListPayments(ctx, domain.PaymentListQuery{
-		TelegramID: telegramID,
-		Limit:      5,
+		UserID: user.ID,
+		Limit:  5,
 	})
 	if err != nil {
 		slog.Error("list payments for menu failed", "error", err, "telegram_id", telegramID)

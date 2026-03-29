@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -20,12 +19,11 @@ func (s *Store) UpsertSubscriptionByPayment(ctx context.Context, sub domain.Subs
 	if sub.UpdatedAt.IsZero() {
 		sub.UpdatedAt = now
 	}
-	resolvedUserID, resolvedTelegramID, err := s.resolveUserIdentity(ctx, sub.UserID, sub.TelegramID)
+	resolvedUserID, _, err := s.resolveUserIdentity(ctx, sub.UserID, 0)
 	if err != nil {
 		return err
 	}
 	sub.UserID = resolvedUserID
-	sub.TelegramID = resolvedTelegramID
 	if sub.UserID <= 0 {
 		return errors.New("subscription user is required")
 	}
@@ -63,12 +61,9 @@ func (s *Store) UpsertSubscriptionByPayment(ctx context.Context, sub domain.Subs
 func (s *Store) GetSubscriptionByID(ctx context.Context, subscriptionID int64) (domain.Subscription, bool, error) {
 	item, err := scanSubscription(s.db.QueryRowContext(ctx, `
 		SELECT s.id, COALESCE(s.user_id, 0),
-		       COALESCE(NULLIF(ta.messenger_user_id, ''), '0')::BIGINT AS telegram_id,
 		       s.connector_id, s.payment_id, s.status, s.auto_pay_enabled, s.starts_at, s.ends_at,
 		       s.reminder_sent_at, s.expiry_notice_sent_at, s.created_at, s.updated_at
 		FROM subscriptions s
-		LEFT JOIN user_messenger_accounts ta
-		       ON ta.user_id = s.user_id AND ta.messenger_kind = 'telegram'
 		WHERE s.id = $1
 	`, subscriptionID))
 	if err == sql.ErrNoRows {
@@ -84,12 +79,9 @@ func (s *Store) GetSubscriptionByID(ctx context.Context, subscriptionID int64) (
 func (s *Store) GetLatestSubscriptionByUserConnector(ctx context.Context, userID, connectorID int64) (domain.Subscription, bool, error) {
 	item, err := scanSubscription(s.db.QueryRowContext(ctx, `
 		SELECT s.id, COALESCE(s.user_id, 0),
-		       COALESCE(NULLIF(ta.messenger_user_id, ''), '0')::BIGINT AS telegram_id,
 		       s.connector_id, s.payment_id, s.status, s.auto_pay_enabled, s.starts_at, s.ends_at,
 		       s.reminder_sent_at, s.expiry_notice_sent_at, s.created_at, s.updated_at
 		FROM subscriptions s
-		LEFT JOIN user_messenger_accounts ta
-		       ON ta.user_id = s.user_id AND ta.messenger_kind = 'telegram'
 		WHERE s.user_id = $1 AND s.connector_id = $2
 		ORDER BY s.ends_at DESC, s.id DESC
 		LIMIT 1
@@ -120,9 +112,6 @@ func (s *Store) ListPayments(ctx context.Context, query domain.PaymentListQuery)
 		args = append(args, v)
 		return fmt.Sprintf("$%d", len(args))
 	}
-	if query.TelegramID > 0 {
-		where = append(where, "ta.messenger_user_id = "+addArg(strconv.FormatInt(query.TelegramID, 10)))
-	}
 	if query.UserID > 0 {
 		where = append(where, "p.user_id = "+addArg(query.UserID))
 	}
@@ -141,12 +130,9 @@ func (s *Store) ListPayments(ctx context.Context, query domain.PaymentListQuery)
 	whereClause := strings.Join(where, " AND ")
 	sqlText := fmt.Sprintf(`
 		SELECT p.id, p.provider, p.provider_payment_id, p.status, p.token, COALESCE(p.user_id, 0),
-		       COALESCE(NULLIF(ta.messenger_user_id, ''), '0')::BIGINT AS telegram_id,
 		       p.connector_id, p.subscription_id, p.parent_payment_id,
 		       p.auto_pay_enabled, p.amount_rub, p.checkout_url, p.created_at, p.paid_at, p.updated_at
 		FROM payments p
-		LEFT JOIN user_messenger_accounts ta
-		       ON ta.user_id = p.user_id AND ta.messenger_kind = 'telegram'
 		WHERE %s
 		ORDER BY p.created_at DESC, p.id DESC
 		LIMIT %s
@@ -186,9 +172,6 @@ func (s *Store) ListSubscriptions(ctx context.Context, query domain.Subscription
 		args = append(args, v)
 		return fmt.Sprintf("$%d", len(args))
 	}
-	if query.TelegramID > 0 {
-		where = append(where, "ta.messenger_user_id = "+addArg(strconv.FormatInt(query.TelegramID, 10)))
-	}
 	if query.UserID > 0 {
 		where = append(where, "s.user_id = "+addArg(query.UserID))
 	}
@@ -207,12 +190,9 @@ func (s *Store) ListSubscriptions(ctx context.Context, query domain.Subscription
 	whereClause := strings.Join(where, " AND ")
 	sqlText := fmt.Sprintf(`
 		SELECT s.id, COALESCE(s.user_id, 0),
-		       COALESCE(NULLIF(ta.messenger_user_id, ''), '0')::BIGINT AS telegram_id,
 		       s.connector_id, s.payment_id, s.status, s.auto_pay_enabled, s.starts_at, s.ends_at,
 		       s.reminder_sent_at, s.expiry_notice_sent_at, s.created_at, s.updated_at
 		FROM subscriptions s
-		LEFT JOIN user_messenger_accounts ta
-		       ON ta.user_id = s.user_id AND ta.messenger_kind = 'telegram'
 		WHERE %s
 		ORDER BY s.created_at DESC, s.id DESC
 		LIMIT %s
@@ -246,12 +226,9 @@ func (s *Store) ListSubscriptionsForReminder(ctx context.Context, remindBefore t
 	now := time.Now().UTC()
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT s.id, COALESCE(s.user_id, 0),
-		       COALESCE(NULLIF(ta.messenger_user_id, ''), '0')::BIGINT AS telegram_id,
 		       s.connector_id, s.payment_id, s.status, s.auto_pay_enabled, s.starts_at, s.ends_at,
 		       s.reminder_sent_at, s.expiry_notice_sent_at, s.created_at, s.updated_at
 		FROM subscriptions s
-		LEFT JOIN user_messenger_accounts ta
-		       ON ta.user_id = s.user_id AND ta.messenger_kind = 'telegram'
 		WHERE s.status = $1
 		  AND s.reminder_sent_at IS NULL
 		  AND s.ends_at > $2
@@ -309,12 +286,9 @@ func (s *Store) ListSubscriptionsForExpiryNotice(ctx context.Context, noticeBefo
 	now := time.Now().UTC()
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT s.id, COALESCE(s.user_id, 0),
-		       COALESCE(NULLIF(ta.messenger_user_id, ''), '0')::BIGINT AS telegram_id,
 		       s.connector_id, s.payment_id, s.status, s.auto_pay_enabled, s.starts_at, s.ends_at,
 		       s.reminder_sent_at, s.expiry_notice_sent_at, s.created_at, s.updated_at
 		FROM subscriptions s
-		LEFT JOIN user_messenger_accounts ta
-		       ON ta.user_id = s.user_id AND ta.messenger_kind = 'telegram'
 		WHERE s.status = $1
 		  AND s.expiry_notice_sent_at IS NULL
 		  AND s.ends_at > $2
@@ -374,12 +348,9 @@ func (s *Store) ListExpiredActiveSubscriptions(ctx context.Context, now time.Tim
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT s.id, COALESCE(s.user_id, 0),
-		       COALESCE(NULLIF(ta.messenger_user_id, ''), '0')::BIGINT AS telegram_id,
 		       s.connector_id, s.payment_id, s.status, s.auto_pay_enabled, s.starts_at, s.ends_at,
 		       s.reminder_sent_at, s.expiry_notice_sent_at, s.created_at, s.updated_at
 		FROM subscriptions s
-		LEFT JOIN user_messenger_accounts ta
-		       ON ta.user_id = s.user_id AND ta.messenger_kind = 'telegram'
 		WHERE s.status = $1
 		  AND s.ends_at <= $2
 		ORDER BY s.ends_at ASC

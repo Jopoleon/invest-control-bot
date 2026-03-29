@@ -1,4 +1,4 @@
-package bootstrap
+package app
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// OpenStore initializes storage backend from runtime config.
+// OpenStore initializes the configured storage backend for app/server entrypoints.
 func OpenStore(cfg config.Config) (store.Store, func(), error) {
 	switch cfg.Postgres.Driver {
 	case "memory":

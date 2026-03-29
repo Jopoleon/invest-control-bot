@@ -193,7 +193,7 @@ func TestProcessSubscriptionReminders_SkipsWhenConnectorMissing(t *testing.T) {
 		Provider:    "robokassa",
 		Status:      domain.PaymentStatusPaid,
 		Token:       "sub-missing-connector",
-		TelegramID:  880101,
+		UserID:      seedTelegramUser(t, ctx, st, 880101),
 		ConnectorID: 999999,
 		AmountRUB:   2322,
 		CreatedAt:   now.Add(-24 * time.Hour),
@@ -206,7 +206,7 @@ func TestProcessSubscriptionReminders_SkipsWhenConnectorMissing(t *testing.T) {
 		t.Fatalf("get payment by token: found=%v err=%v", found, err)
 	}
 	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
-		TelegramID:  paymentRow.TelegramID,
+		UserID:      paymentRow.UserID,
 		ConnectorID: 999999,
 		PaymentID:   paymentRow.ID,
 		Status:      domain.SubscriptionStatusActive,
@@ -319,6 +319,9 @@ func seedActiveSubscription(t *testing.T, ctx context.Context, st store.Store, c
 
 func seedActiveSubscriptionForUser(t *testing.T, ctx context.Context, st store.Store, connectorID, userID, telegramID int64, paymentToken string, endsAt time.Time) int64 {
 	t.Helper()
+	if userID <= 0 && telegramID > 0 {
+		userID = seedTelegramUser(t, ctx, st, telegramID)
+	}
 
 	now := time.Now().UTC()
 	seedPayment(t, ctx, st, domain.Payment{
@@ -326,7 +329,6 @@ func seedActiveSubscriptionForUser(t *testing.T, ctx context.Context, st store.S
 		Status:         domain.PaymentStatusPaid,
 		Token:          paymentToken,
 		UserID:         userID,
-		TelegramID:     telegramID,
 		ConnectorID:    connectorID,
 		AmountRUB:      2322,
 		AutoPayEnabled: false,
@@ -346,7 +348,6 @@ func seedActiveSubscriptionForUser(t *testing.T, ctx context.Context, st store.S
 	startsAt := endsAt.Add(-30 * 24 * time.Hour)
 	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
 		UserID:         userID,
-		TelegramID:     telegramID,
 		ConnectorID:    connectorID,
 		PaymentID:      paymentRow.ID,
 		Status:         domain.SubscriptionStatusActive,

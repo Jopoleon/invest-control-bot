@@ -203,6 +203,11 @@ func (s *Store) ListUsers(ctx context.Context, query domain.UserListQuery) ([]do
 	args := make([]any, 0, 4)
 	argPos := 1
 
+	if query.UserID > 0 {
+		where = append(where, fmt.Sprintf("u.id = $%d", argPos))
+		args = append(args, query.UserID)
+		argPos++
+	}
 	if query.TelegramID > 0 {
 		where = append(where, fmt.Sprintf("ta.messenger_user_id = $%d", argPos))
 		args = append(args, strconv.FormatInt(query.TelegramID, 10))

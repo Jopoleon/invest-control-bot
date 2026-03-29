@@ -17,12 +17,11 @@ func (s *Store) CreatePayment(ctx context.Context, payment domain.Payment) error
 	if payment.UpdatedAt.IsZero() {
 		payment.UpdatedAt = now
 	}
-	resolvedUserID, resolvedTelegramID, err := s.resolveUserIdentity(ctx, payment.UserID, payment.TelegramID)
+	resolvedUserID, _, err := s.resolveUserIdentity(ctx, payment.UserID, 0)
 	if err != nil {
 		return err
 	}
 	payment.UserID = resolvedUserID
-	payment.TelegramID = resolvedTelegramID
 	if payment.UserID <= 0 {
 		return errors.New("payment user is required")
 	}
@@ -54,12 +53,9 @@ func (s *Store) CreatePayment(ctx context.Context, payment domain.Payment) error
 func (s *Store) GetPaymentByToken(ctx context.Context, token string) (domain.Payment, bool, error) {
 	payment, err := scanPayment(s.db.QueryRowContext(ctx, `
 		SELECT p.id, p.provider, p.provider_payment_id, p.status, p.token, COALESCE(p.user_id, 0),
-		       COALESCE(NULLIF(ta.messenger_user_id, ''), '0')::BIGINT AS telegram_id,
 		       p.connector_id, p.subscription_id, p.parent_payment_id,
 		       p.auto_pay_enabled, p.amount_rub, p.checkout_url, p.created_at, p.paid_at, p.updated_at
 		FROM payments p
-		LEFT JOIN user_messenger_accounts ta
-		       ON ta.user_id = p.user_id AND ta.messenger_kind = 'telegram'
 		WHERE p.token = $1
 	`, token))
 	if err == sql.ErrNoRows {
@@ -75,12 +71,9 @@ func (s *Store) GetPaymentByToken(ctx context.Context, token string) (domain.Pay
 func (s *Store) GetPaymentByID(ctx context.Context, paymentID int64) (domain.Payment, bool, error) {
 	payment, err := scanPayment(s.db.QueryRowContext(ctx, `
 		SELECT p.id, p.provider, p.provider_payment_id, p.status, p.token, COALESCE(p.user_id, 0),
-		       COALESCE(NULLIF(ta.messenger_user_id, ''), '0')::BIGINT AS telegram_id,
 		       p.connector_id, p.subscription_id, p.parent_payment_id,
 		       p.auto_pay_enabled, p.amount_rub, p.checkout_url, p.created_at, p.paid_at, p.updated_at
 		FROM payments p
-		LEFT JOIN user_messenger_accounts ta
-		       ON ta.user_id = p.user_id AND ta.messenger_kind = 'telegram'
 		WHERE p.id = $1
 	`, paymentID))
 	if err == sql.ErrNoRows {
@@ -99,12 +92,9 @@ func (s *Store) GetPendingRebillPaymentBySubscription(ctx context.Context, subsc
 	}
 	payment, err := scanPayment(s.db.QueryRowContext(ctx, `
 		SELECT p.id, p.provider, p.provider_payment_id, p.status, p.token, COALESCE(p.user_id, 0),
-		       COALESCE(NULLIF(ta.messenger_user_id, ''), '0')::BIGINT AS telegram_id,
 		       p.connector_id, p.subscription_id, p.parent_payment_id,
 		       p.auto_pay_enabled, p.amount_rub, p.checkout_url, p.created_at, p.paid_at, p.updated_at
 		FROM payments p
-		LEFT JOIN user_messenger_accounts ta
-		       ON ta.user_id = p.user_id AND ta.messenger_kind = 'telegram'
 		WHERE p.subscription_id = $1
 		  AND p.status = $2
 		ORDER BY p.created_at DESC, p.id DESC

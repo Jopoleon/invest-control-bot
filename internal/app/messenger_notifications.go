@@ -104,6 +104,18 @@ func (a *application) resolveTelegramMessengerAccount(ctx context.Context, userI
 	return domain.UserMessengerAccount{}, false, nil
 }
 
+func (a *application) resolveTelegramMessengerUserID(ctx context.Context, userID int64) (int64, bool, error) {
+	account, found, err := a.resolveTelegramMessengerAccount(ctx, userID)
+	if err != nil || !found {
+		return 0, false, err
+	}
+	telegramID, parseErr := strconv.ParseInt(strings.TrimSpace(account.MessengerUserID), 10, 64)
+	if parseErr != nil || telegramID <= 0 {
+		return 0, false, nil
+	}
+	return telegramID, true, nil
+}
+
 func (a *application) loadUserMessengerAccounts(ctx context.Context, userID int64) ([]domain.UserMessengerAccount, error) {
 	if userID <= 0 {
 		return nil, nil

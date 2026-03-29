@@ -268,7 +268,14 @@ func TestHandlePay_DisablesRecurringWhenCapabilityOff(t *testing.T) {
 
 	h.handlePay(ctx, testAction("cb-3", 1003, "", "pay:"+int64ToString(connectorID)))
 
-	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{TelegramID: 1003, Limit: 10})
+	user, found, err := st.GetUser(ctx, 1003)
+	if err != nil {
+		t.Fatalf("get user: %v", err)
+	}
+	if !found {
+		t.Fatalf("user not found")
+	}
+	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{UserID: user.ID, Limit: 10})
 	if err != nil {
 		t.Fatalf("list payments: %v", err)
 	}
@@ -306,7 +313,14 @@ func TestHandlePay_WithExplicitRecurringOptInCreatesRecurringConsent(t *testing.
 
 	h.handlePay(ctx, testAction("cb-4", 1004, "", "pay:"+int64ToString(connectorID)+":1"))
 
-	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{TelegramID: 1004, Limit: 10})
+	user, found, err := st.GetUser(ctx, 1004)
+	if err != nil {
+		t.Fatalf("get user: %v", err)
+	}
+	if !found {
+		t.Fatalf("user not found")
+	}
+	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{UserID: user.ID, Limit: 10})
 	if err != nil {
 		t.Fatalf("list payments: %v", err)
 	}
@@ -320,13 +334,6 @@ func TestHandlePay_WithExplicitRecurringOptInCreatesRecurringConsent(t *testing.
 		t.Fatalf("checkout URL should contain recurring flag: %s", payments[0].CheckoutURL)
 	}
 
-	user, found, err := st.GetUser(ctx, 1004)
-	if err != nil {
-		t.Fatalf("get user: %v", err)
-	}
-	if !found {
-		t.Fatalf("user not found")
-	}
 	consents, err := st.ListRecurringConsentsByUser(ctx, user.ID)
 	if err != nil {
 		t.Fatalf("list recurring consents: %v", err)
@@ -362,7 +369,14 @@ func TestHandlePay_WithExplicitManualModeOverridesStoredAutopay(t *testing.T) {
 
 	h.handlePay(ctx, testAction("cb-5", 1005, "", "pay:"+int64ToString(connectorID)+":0"))
 
-	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{TelegramID: 1005, Limit: 10})
+	user, found, err := st.GetUser(ctx, 1005)
+	if err != nil {
+		t.Fatalf("get user: %v", err)
+	}
+	if !found {
+		t.Fatalf("user not found")
+	}
+	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{UserID: user.ID, Limit: 10})
 	if err != nil {
 		t.Fatalf("list payments: %v", err)
 	}
@@ -376,13 +390,6 @@ func TestHandlePay_WithExplicitManualModeOverridesStoredAutopay(t *testing.T) {
 		t.Fatalf("checkout URL should not contain recurring flag: %s", payments[0].CheckoutURL)
 	}
 
-	user, found, err := st.GetUser(ctx, 1005)
-	if err != nil {
-		t.Fatalf("get user: %v", err)
-	}
-	if !found {
-		t.Fatalf("user not found")
-	}
 	consents, err := st.ListRecurringConsentsByUser(ctx, user.ID)
 	if err != nil {
 		t.Fatalf("list recurring consents: %v", err)

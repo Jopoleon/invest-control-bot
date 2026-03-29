@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/Jopoleon/invest-control-bot/internal/app"
-	"github.com/Jopoleon/invest-control-bot/internal/bootstrap"
 	"github.com/Jopoleon/invest-control-bot/internal/config"
 	"github.com/Jopoleon/invest-control-bot/internal/logger"
 )
@@ -51,7 +50,7 @@ func getHandler() (http.Handler, error) {
 			handlerErr = err
 			return
 		}
-		st, _, err := bootstrap.OpenStore(cfg)
+		st, _, err := app.OpenStore(cfg)
 		if err != nil {
 			handlerErr = err
 			return

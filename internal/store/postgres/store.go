@@ -33,7 +33,6 @@ func scanPayment(scanner rowScanner) (domain.Payment, error) {
 		&status,
 		&payment.Token,
 		&payment.UserID,
-		&payment.TelegramID,
 		&payment.ConnectorID,
 		&payment.SubscriptionID,
 		&payment.ParentPaymentID,
@@ -59,7 +58,6 @@ func scanSubscription(scanner rowScanner) (domain.Subscription, error) {
 	err := scanner.Scan(
 		&item.ID,
 		&item.UserID,
-		&item.TelegramID,
 		&item.ConnectorID,
 		&item.PaymentID,
 		&status,

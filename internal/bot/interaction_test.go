@@ -58,11 +58,11 @@ func TestReactivateAutopayForSubscription_ReenablesWithoutNewPayment(t *testing.
 		t.Fatalf("subscription autopay = false, want true")
 	}
 
-	user, found, err := st.GetUser(ctx, 7001)
+	user, foundUser, err := st.GetUser(ctx, 7001)
 	if err != nil {
 		t.Fatalf("get user: %v", err)
 	}
-	if !found {
+	if !foundUser {
 		t.Fatalf("user not found")
 	}
 	consents, err := st.ListRecurringConsentsByUser(ctx, user.ID)
@@ -79,8 +79,7 @@ func TestReactivateAutopayForSubscription_ReenablesWithoutNewPayment(t *testing.
 	if !strings.Contains(sender.edited[0].msg.Text, "снова включен") {
 		t.Fatalf("edited text = %q", sender.edited[0].msg.Text)
 	}
-
-	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{TelegramID: 7001, Limit: 10})
+	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{UserID: user.ID, Limit: 10})
 	if err != nil {
 		t.Fatalf("list payments: %v", err)
 	}
@@ -179,7 +178,6 @@ func seedPayment(t *testing.T, ctx context.Context, st *memory.Store, telegramID
 		Status:         domain.PaymentStatusPaid,
 		Token:          "token-" + int64ToString(telegramID) + "-" + int64ToString(connectorID) + "-" + boolSuffix(autopay),
 		UserID:         user.ID,
-		TelegramID:     telegramID,
 		ConnectorID:    connectorID,
 		AmountRUB:      2300,
 		AutoPayEnabled: autopay,
@@ -189,7 +187,7 @@ func seedPayment(t *testing.T, ctx context.Context, st *memory.Store, telegramID
 	if err != nil {
 		t.Fatalf("create payment: %v", err)
 	}
-	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{TelegramID: telegramID, ConnectorID: connectorID, Limit: 10})
+	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{UserID: user.ID, ConnectorID: connectorID, Limit: 10})
 	if err != nil {
 		t.Fatalf("list payments: %v", err)
 	}
@@ -209,7 +207,6 @@ func seedSubscription(t *testing.T, ctx context.Context, st *memory.Store, teleg
 
 	err = st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
 		UserID:         user.ID,
-		TelegramID:     telegramID,
 		ConnectorID:    connectorID,
 		PaymentID:      paymentID,
 		Status:         domain.SubscriptionStatusActive,

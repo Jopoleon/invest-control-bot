@@ -97,7 +97,7 @@ func (a *application) triggerRebill(ctx context.Context, subscriptionID int64, s
 		_ = a.store.SaveAuditEvent(ctx, a.buildAppTargetAuditEvent(
 			ctx,
 			subscription.UserID,
-			formatPreferredMessengerUserID(subscription.TelegramID),
+			"",
 			subscription.ConnectorID,
 			domain.AuditActionRebillRequestFailed,
 			"subscription_id="+strconv.FormatInt(subscription.ID, 10)+";invoice_id="+invoiceID+";source="+source+";error="+err.Error(),
@@ -109,7 +109,7 @@ func (a *application) triggerRebill(ctx context.Context, subscriptionID int64, s
 	if err := a.store.SaveAuditEvent(ctx, a.buildAppTargetAuditEvent(
 		ctx,
 		subscription.UserID,
-		formatPreferredMessengerUserID(subscription.TelegramID),
+		"",
 		subscription.ConnectorID,
 		domain.AuditActionRebillRequested,
 		"subscription_id="+strconv.FormatInt(subscription.ID, 10)+";invoice_id="+invoiceID+";parent="+parentPayment.Token+";source="+source,

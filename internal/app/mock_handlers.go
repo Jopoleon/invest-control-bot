@@ -11,7 +11,6 @@ import (
 type mockCheckoutPageData struct {
 	Token       string
 	ConnectorID int64
-	UserID      string
 	Amount      string
 	SuccessURL  string
 }
@@ -29,12 +28,16 @@ func (a *application) handleMockPay(w http.ResponseWriter, r *http.Request) {
 	if parsed, err := strconv.ParseInt(connectorIDRaw, 10, 64); err == nil && parsed > 0 {
 		connectorID = parsed
 	}
-	userID := r.URL.Query().Get("user_id")
 	amount := r.URL.Query().Get("amount_rub")
-	if tgID, err := strconv.ParseInt(userID, 10, 64); err == nil && tgID > 0 {
-		if err := a.store.SaveAuditEvent(r.Context(), buildAppMessengerTargetAuditEvent(
-			domain.MessengerKindTelegram,
-			strconv.FormatInt(tgID, 10),
+	paymentRow, found, err := a.store.GetPaymentByToken(r.Context(), token)
+	if err != nil {
+		logStoreError("load payment by token for mock checkout failed", err, "token", token)
+	}
+	if found {
+		if err := a.store.SaveAuditEvent(r.Context(), a.buildAppTargetAuditEvent(
+			r.Context(),
+			paymentRow.UserID,
+			"",
 			connectorID,
 			domain.AuditActionMockCheckoutOpened,
 			"token="+token,
@@ -43,11 +46,10 @@ func (a *application) handleMockPay(w http.ResponseWriter, r *http.Request) {
 			logAuditError(domain.AuditActionMockCheckoutOpened, err)
 		}
 	}
-	successURL := "/mock/pay/success?token=" + token + "&connector_id=" + strconv.FormatInt(connectorID, 10) + "&user_id=" + userID
+	successURL := "/mock/pay/success?token=" + token + "&connector_id=" + strconv.FormatInt(connectorID, 10)
 	renderAppTemplate(w, "mock_pay.html", mockCheckoutPageData{
 		Token:       token,
 		ConnectorID: connectorID,
-		UserID:      userID,
 		Amount:      amount,
 		SuccessURL:  successURL,
 	})
@@ -61,7 +63,6 @@ func (a *application) handleMockPaySuccess(w http.ResponseWriter, r *http.Reques
 	if parsed, err := strconv.ParseInt(connectorIDRaw, 10, 64); err == nil && parsed > 0 {
 		connectorID = parsed
 	}
-	userID := r.URL.Query().Get("user_id")
 	now := time.Now().UTC()
 	paymentRow, ok, err := a.store.GetPaymentByToken(r.Context(), token)
 	if err != nil {
@@ -69,13 +70,13 @@ func (a *application) handleMockPaySuccess(w http.ResponseWriter, r *http.Reques
 	}
 	if ok {
 		connectorID = paymentRow.ConnectorID
-		userID = strconv.FormatInt(paymentRow.TelegramID, 10)
 		a.activateSuccessfulPayment(r.Context(), paymentRow, "mock:"+token, now)
 	}
-	if tgID, err := strconv.ParseInt(userID, 10, 64); err == nil && tgID > 0 {
-		if err := a.store.SaveAuditEvent(r.Context(), buildAppMessengerTargetAuditEvent(
-			domain.MessengerKindTelegram,
-			strconv.FormatInt(tgID, 10),
+	if ok {
+		if err := a.store.SaveAuditEvent(r.Context(), a.buildAppTargetAuditEvent(
+			r.Context(),
+			paymentRow.UserID,
+			"",
 			connectorID,
 			domain.AuditActionMockPaymentSuccess,
 			"token="+token,

@@ -39,7 +39,6 @@ func (m *MockService) CreateCheckoutURL(_ context.Context, req Request) (string,
 	q := url.Values{}
 	q.Set("token", token)
 	q.Set("connector_id", fmt.Sprintf("%d", req.ConnectorID))
-	q.Set("user_id", fmt.Sprintf("%d", req.UserTelegramID))
 	q.Set("amount_rub", fmt.Sprintf("%d", req.AmountRUB))
 	return m.baseURL + "/mock/pay?" + q.Encode(), nil
 }

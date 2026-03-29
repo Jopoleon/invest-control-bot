@@ -22,7 +22,7 @@ func TestShouldTriggerScheduledRebill_FirstAttemptWindow(t *testing.T) {
 		Provider:       "robokassa",
 		Status:         domain.PaymentStatusPaid,
 		Token:          parentInv,
-		TelegramID:     990001,
+		UserID:         seedTelegramUser(t, ctx, st, 990001),
 		ConnectorID:    connectorID,
 		AmountRUB:      2322,
 		AutoPayEnabled: true,
@@ -34,7 +34,7 @@ func TestShouldTriggerScheduledRebill_FirstAttemptWindow(t *testing.T) {
 		t.Fatalf("parent payment not found: found=%v err=%v", found, err)
 	}
 	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
-		TelegramID:     parentPayment.TelegramID,
+		UserID:         parentPayment.UserID,
 		ConnectorID:    parentPayment.ConnectorID,
 		PaymentID:      parentPayment.ID,
 		Status:         domain.SubscriptionStatusActive,
@@ -46,7 +46,7 @@ func TestShouldTriggerScheduledRebill_FirstAttemptWindow(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed subscription: %v", err)
 	}
-	subs, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{TelegramID: parentPayment.TelegramID, Limit: 10})
+	subs, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{UserID: parentPayment.UserID, Limit: 10})
 	if err != nil || len(subs) != 1 {
 		t.Fatalf("subscriptions len=%d err=%v", len(subs), err)
 	}
@@ -71,7 +71,7 @@ func TestShouldTriggerScheduledRebill_SkipsWhenPendingExists(t *testing.T) {
 		Provider:       "robokassa",
 		Status:         domain.PaymentStatusPaid,
 		Token:          parentInv,
-		TelegramID:     990002,
+		UserID:         seedTelegramUser(t, ctx, st, 990002),
 		ConnectorID:    connectorID,
 		AmountRUB:      2322,
 		AutoPayEnabled: true,
@@ -83,7 +83,7 @@ func TestShouldTriggerScheduledRebill_SkipsWhenPendingExists(t *testing.T) {
 		t.Fatalf("parent payment not found: found=%v err=%v", found, err)
 	}
 	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
-		TelegramID:     parentPayment.TelegramID,
+		UserID:         parentPayment.UserID,
 		ConnectorID:    parentPayment.ConnectorID,
 		PaymentID:      parentPayment.ID,
 		Status:         domain.SubscriptionStatusActive,
@@ -95,7 +95,7 @@ func TestShouldTriggerScheduledRebill_SkipsWhenPendingExists(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed subscription: %v", err)
 	}
-	subs, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{TelegramID: parentPayment.TelegramID, Limit: 10})
+	subs, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{UserID: parentPayment.UserID, Limit: 10})
 	if err != nil || len(subs) != 1 {
 		t.Fatalf("subscriptions len=%d err=%v", len(subs), err)
 	}
@@ -105,7 +105,7 @@ func TestShouldTriggerScheduledRebill_SkipsWhenPendingExists(t *testing.T) {
 		ProviderPaymentID: "rebill_parent:" + parentInv,
 		Status:            domain.PaymentStatusPending,
 		Token:             "rebill-pending-1",
-		TelegramID:        parentPayment.TelegramID,
+		UserID:            parentPayment.UserID,
 		ConnectorID:       connectorID,
 		SubscriptionID:    subs[0].ID,
 		ParentPaymentID:   parentPayment.ID,
@@ -135,7 +135,7 @@ func TestShouldTriggerScheduledRebill_SecondAttemptWindowAfterOneFailure(t *test
 		Provider:       "robokassa",
 		Status:         domain.PaymentStatusPaid,
 		Token:          parentInv,
-		TelegramID:     990003,
+		UserID:         seedTelegramUser(t, ctx, st, 990003),
 		ConnectorID:    connectorID,
 		AmountRUB:      2322,
 		AutoPayEnabled: true,
@@ -147,7 +147,7 @@ func TestShouldTriggerScheduledRebill_SecondAttemptWindowAfterOneFailure(t *test
 		t.Fatalf("parent payment not found: found=%v err=%v", found, err)
 	}
 	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
-		TelegramID:     parentPayment.TelegramID,
+		UserID:         parentPayment.UserID,
 		ConnectorID:    parentPayment.ConnectorID,
 		PaymentID:      parentPayment.ID,
 		Status:         domain.SubscriptionStatusActive,
@@ -159,7 +159,7 @@ func TestShouldTriggerScheduledRebill_SecondAttemptWindowAfterOneFailure(t *test
 	}); err != nil {
 		t.Fatalf("seed subscription: %v", err)
 	}
-	subs, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{TelegramID: parentPayment.TelegramID, Limit: 10})
+	subs, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{UserID: parentPayment.UserID, Limit: 10})
 	if err != nil || len(subs) != 1 {
 		t.Fatalf("subscriptions len=%d err=%v", len(subs), err)
 	}
@@ -169,7 +169,7 @@ func TestShouldTriggerScheduledRebill_SecondAttemptWindowAfterOneFailure(t *test
 		ProviderPaymentID: "rebill_parent:" + parentInv,
 		Status:            domain.PaymentStatusFailed,
 		Token:             "rebill-failed-1",
-		TelegramID:        parentPayment.TelegramID,
+		UserID:            parentPayment.UserID,
 		ConnectorID:       connectorID,
 		SubscriptionID:    subs[0].ID,
 		ParentPaymentID:   parentPayment.ID,
@@ -199,7 +199,7 @@ func TestShouldTriggerScheduledRebill_ThirdAttemptWindowAfterTwoFailures(t *test
 		Provider:       "robokassa",
 		Status:         domain.PaymentStatusPaid,
 		Token:          parentInv,
-		TelegramID:     990004,
+		UserID:         seedTelegramUser(t, ctx, st, 990004),
 		ConnectorID:    connectorID,
 		AmountRUB:      2322,
 		AutoPayEnabled: true,
@@ -211,7 +211,7 @@ func TestShouldTriggerScheduledRebill_ThirdAttemptWindowAfterTwoFailures(t *test
 		t.Fatalf("parent payment not found: found=%v err=%v", found, err)
 	}
 	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
-		TelegramID:     parentPayment.TelegramID,
+		UserID:         parentPayment.UserID,
 		ConnectorID:    parentPayment.ConnectorID,
 		PaymentID:      parentPayment.ID,
 		Status:         domain.SubscriptionStatusActive,
@@ -223,7 +223,7 @@ func TestShouldTriggerScheduledRebill_ThirdAttemptWindowAfterTwoFailures(t *test
 	}); err != nil {
 		t.Fatalf("seed subscription: %v", err)
 	}
-	subs, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{TelegramID: parentPayment.TelegramID, Limit: 10})
+	subs, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{UserID: parentPayment.UserID, Limit: 10})
 	if err != nil || len(subs) != 1 {
 		t.Fatalf("subscriptions len=%d err=%v", len(subs), err)
 	}
@@ -234,7 +234,7 @@ func TestShouldTriggerScheduledRebill_ThirdAttemptWindowAfterTwoFailures(t *test
 			ProviderPaymentID: "rebill_parent:" + parentInv,
 			Status:            domain.PaymentStatusFailed,
 			Token:             "rebill-failed-third-" + string(rune('0'+idx)),
-			TelegramID:        parentPayment.TelegramID,
+			UserID:            parentPayment.UserID,
 			ConnectorID:       connectorID,
 			SubscriptionID:    subs[0].ID,
 			ParentPaymentID:   parentPayment.ID,
@@ -265,7 +265,7 @@ func TestShouldTriggerScheduledRebill_DoesNotTriggerAfterThreeFailures(t *testin
 		Provider:       "robokassa",
 		Status:         domain.PaymentStatusPaid,
 		Token:          parentInv,
-		TelegramID:     990005,
+		UserID:         seedTelegramUser(t, ctx, st, 990005),
 		ConnectorID:    connectorID,
 		AmountRUB:      2322,
 		AutoPayEnabled: true,
@@ -277,7 +277,7 @@ func TestShouldTriggerScheduledRebill_DoesNotTriggerAfterThreeFailures(t *testin
 		t.Fatalf("parent payment not found: found=%v err=%v", found, err)
 	}
 	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
-		TelegramID:     parentPayment.TelegramID,
+		UserID:         parentPayment.UserID,
 		ConnectorID:    parentPayment.ConnectorID,
 		PaymentID:      parentPayment.ID,
 		Status:         domain.SubscriptionStatusActive,
@@ -289,7 +289,7 @@ func TestShouldTriggerScheduledRebill_DoesNotTriggerAfterThreeFailures(t *testin
 	}); err != nil {
 		t.Fatalf("seed subscription: %v", err)
 	}
-	subs, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{TelegramID: parentPayment.TelegramID, Limit: 10})
+	subs, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{UserID: parentPayment.UserID, Limit: 10})
 	if err != nil || len(subs) != 1 {
 		t.Fatalf("subscriptions len=%d err=%v", len(subs), err)
 	}
@@ -300,7 +300,7 @@ func TestShouldTriggerScheduledRebill_DoesNotTriggerAfterThreeFailures(t *testin
 			ProviderPaymentID: "rebill_parent:" + parentInv,
 			Status:            domain.PaymentStatusFailed,
 			Token:             "rebill-failed-stop-" + string(rune('0'+idx)),
-			TelegramID:        parentPayment.TelegramID,
+			UserID:            parentPayment.UserID,
 			ConnectorID:       connectorID,
 			SubscriptionID:    subs[0].ID,
 			ParentPaymentID:   parentPayment.ID,
@@ -331,7 +331,7 @@ func TestProcessRecurringRebills_TriggersScheduledAttempt(t *testing.T) {
 		Provider:       "robokassa",
 		Status:         domain.PaymentStatusPaid,
 		Token:          parentInv,
-		TelegramID:     990006,
+		UserID:         seedTelegramUser(t, ctx, st, 990006),
 		ConnectorID:    connectorID,
 		AmountRUB:      2322,
 		AutoPayEnabled: true,
@@ -343,7 +343,7 @@ func TestProcessRecurringRebills_TriggersScheduledAttempt(t *testing.T) {
 		t.Fatalf("parent payment not found: found=%v err=%v", found, err)
 	}
 	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
-		TelegramID:     parentPayment.TelegramID,
+		UserID:         parentPayment.UserID,
 		ConnectorID:    parentPayment.ConnectorID,
 		PaymentID:      parentPayment.ID,
 		Status:         domain.SubscriptionStatusActive,
@@ -374,7 +374,7 @@ func TestProcessRecurringRebills_TriggersScheduledAttempt(t *testing.T) {
 	if rebillCalls != 1 {
 		t.Fatalf("rebill provider calls=%d want=1", rebillCalls)
 	}
-	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{TelegramID: parentPayment.TelegramID, Limit: 20})
+	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{UserID: parentPayment.UserID, Limit: 20})
 	if err != nil {
 		t.Fatalf("list payments: %v", err)
 	}

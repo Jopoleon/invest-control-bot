@@ -62,15 +62,14 @@ func (h *Handler) churnPage(w http.ResponseWriter, r *http.Request) {
 		ExportURL:   buildExportURL("/admin/churn/export.csv", r.URL.Query(), lang),
 	}
 
-	if telegramID, err := h.resolveFilterTelegramID(r.Context(), r.URL.Query().Get("user_id"), data.TelegramID); err == nil && telegramID > 0 {
-		data.TelegramID = strconv.FormatInt(telegramID, 10)
-	} else if err != nil {
+	userFilterID, err := h.resolveFilterUserID(r.Context(), r.URL.Query().Get("user_id"), data.TelegramID)
+	if err != nil {
 		data.Notice = err.Error()
 		h.renderer.render(w, "churn.html", data)
 		return
 	}
 
-	issues, err := h.buildChurnIssues(r.Context(), lang, data.TelegramID, data.ConnectorID, data.Search, data.IssueType, data.AutoPay, data.RetryState)
+	issues, err := h.buildChurnIssues(r.Context(), lang, userFilterID, data.TelegramID, data.ConnectorID, data.Search, data.IssueType, data.AutoPay, data.RetryState)
 	if err != nil {
 		data.Notice = err.Error()
 		h.renderer.render(w, "churn.html", data)
@@ -80,7 +79,7 @@ func (h *Handler) churnPage(w http.ResponseWriter, r *http.Request) {
 	h.renderer.render(w, "churn.html", data)
 }
 
-func (h *Handler) buildChurnIssues(ctx context.Context, lang, telegramIDRaw, connectorIDRaw, searchRaw, issueTypeRaw, autoPayRaw, retryStateRaw string) ([]churnIssueView, error) {
+func (h *Handler) buildChurnIssues(ctx context.Context, lang string, userFilterID int64, telegramIDRaw, connectorIDRaw, searchRaw, issueTypeRaw, autoPayRaw, retryStateRaw string) ([]churnIssueView, error) {
 	users, err := h.store.ListUsers(ctx, domain.UserListQuery{Limit: 5000})
 	if err != nil {
 		return nil, err
@@ -94,19 +93,20 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang, telegramIDRaw, con
 		return nil, err
 	}
 	connectorNames := h.loadConnectorNames(ctx)
+	resolveTelegramIdentity := h.buildTelegramIdentityLookup(ctx)
 
 	userMap := make(map[int64]domain.UserListItem, len(users))
 	for _, user := range users {
-		userMap[user.TelegramID] = user
+		userMap[user.UserID] = user
 	}
 
 	type key struct {
-		telegramID  int64
+		userID      int64
 		connectorID int64
 	}
 	latestPayment := make(map[key]domain.Payment)
 	for _, payment := range payments {
-		k := key{telegramID: payment.TelegramID, connectorID: payment.ConnectorID}
+		k := key{userID: payment.UserID, connectorID: payment.ConnectorID}
 		prev, ok := latestPayment[k]
 		if !ok || payment.CreatedAt.After(prev.CreatedAt) || (payment.CreatedAt.Equal(prev.CreatedAt) && payment.ID > prev.ID) {
 			latestPayment[k] = payment
@@ -115,7 +115,7 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang, telegramIDRaw, con
 
 	latestSub := make(map[key]domain.Subscription)
 	for _, sub := range subs {
-		k := key{telegramID: sub.TelegramID, connectorID: sub.ConnectorID}
+		k := key{userID: sub.UserID, connectorID: sub.ConnectorID}
 		prev, ok := latestSub[k]
 		if !ok || sub.UpdatedAt.After(prev.UpdatedAt) || (sub.UpdatedAt.Equal(prev.UpdatedAt) && sub.ID > prev.ID) {
 			latestSub[k] = sub
@@ -139,7 +139,14 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang, telegramIDRaw, con
 
 	records := make([]churnIssueRecord, 0, len(allKeys))
 	for k := range allKeys {
-		if telegramFilter > 0 && k.telegramID != telegramFilter {
+		if userFilterID > 0 && k.userID != userFilterID {
+			continue
+		}
+		resolvedTelegramID, telegramUsername, _, err := resolveTelegramIdentity(k.userID)
+		if err != nil {
+			return nil, err
+		}
+		if telegramFilter > 0 && resolvedTelegramID != telegramFilter {
 			continue
 		}
 		if connectorFilter > 0 && k.connectorID != connectorFilter {
@@ -166,7 +173,7 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang, telegramIDRaw, con
 			continue
 		}
 
-		user := userMap[k.telegramID]
+		user := userMap[k.userID]
 		connector := connectorDisplayName(connectorNames, k.connectorID)
 		autoPayEnabled := hasSub && sub.AutoPayEnabled
 		hasAutoPaySettings := hasSub
@@ -179,8 +186,8 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang, telegramIDRaw, con
 		}
 		if search != "" {
 			haystack := strings.ToLower(strings.Join([]string{
-				strconv.FormatInt(k.telegramID, 10),
-				user.TelegramUsername,
+				strconv.FormatInt(resolvedTelegramID, 10),
+				telegramUsername,
 				user.FullName,
 				user.Email,
 				user.Phone,
@@ -201,8 +208,8 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang, telegramIDRaw, con
 
 		records = append(records, churnIssueRecord{
 			userID:             user.UserID,
-			telegramID:         k.telegramID,
-			telegramUsername:   user.TelegramUsername,
+			telegramID:         resolvedTelegramID,
+			telegramUsername:   telegramUsername,
 			fullName:           user.FullName,
 			email:              user.Email,
 			phone:              user.Phone,

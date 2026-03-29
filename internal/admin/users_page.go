@@ -28,14 +28,14 @@ func (h *Handler) usersPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := domain.UserListQuery{Limit: 300, Search: data.Search}
-	telegramID, err := h.resolveFilterTelegramID(r.Context(), r.URL.Query().Get("user_id"), data.TelegramID)
+	userID, err := h.resolveFilterUserID(r.Context(), r.URL.Query().Get("user_id"), data.TelegramID)
 	if err != nil {
 		data.Notice = t(lang, "users.load_error")
 		h.renderer.render(w, "users.html", data)
 		return
 	}
-	if telegramID > 0 {
-		query.TelegramID = telegramID
+	if userID > 0 {
+		query.UserID = userID
 	}
 
 	users, err := h.store.ListUsers(r.Context(), query)

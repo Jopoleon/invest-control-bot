@@ -81,11 +81,11 @@ func (h *Handler) exportUsersCSV(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	query := parseUsersQuery(r.URL.Query())
-	if telegramID, err := h.resolveFilterTelegramID(r.Context(), r.URL.Query().Get("user_id"), r.URL.Query().Get("telegram_id")); err != nil {
+	if userID, err := h.resolveFilterUserID(r.Context(), r.URL.Query().Get("user_id"), r.URL.Query().Get("telegram_id")); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
-	} else if telegramID > 0 {
-		query.TelegramID = telegramID
+	} else if userID > 0 {
+		query.UserID = userID
 	}
 	rows, err := h.store.ListUsers(r.Context(), query)
 	if err != nil {
@@ -150,11 +150,11 @@ func (h *Handler) exportPaymentsCSV(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	paymentQuery, _ := parseBillingQueries(r.URL.Query())
-	if telegramID, err := h.resolveFilterTelegramID(r.Context(), r.URL.Query().Get("user_id"), r.URL.Query().Get("telegram_id")); err != nil {
+	if userID, err := h.resolveFilterUserID(r.Context(), r.URL.Query().Get("user_id"), r.URL.Query().Get("telegram_id")); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
-	} else if telegramID > 0 {
-		paymentQuery.TelegramID = telegramID
+	} else if userID > 0 {
+		paymentQuery.UserID = userID
 	}
 	rows, err := h.store.ListPayments(r.Context(), paymentQuery)
 	if err != nil {
@@ -162,6 +162,7 @@ func (h *Handler) exportPaymentsCSV(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	connectorNames := h.loadConnectorNames(r.Context())
+	resolveTelegramIdentity := h.buildTelegramIdentityLookup(r.Context())
 
 	records := make([][]string, 0, len(rows)+1)
 	records = append(records, []string{
@@ -170,6 +171,11 @@ func (h *Handler) exportPaymentsCSV(w http.ResponseWriter, r *http.Request) {
 		"checkout_url", "created_at", "paid_at", "updated_at",
 	})
 	for _, payment := range rows {
+		telegramID, _, _, err := resolveTelegramIdentity(payment.UserID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		paidAt := ""
 		if payment.PaidAt != nil {
 			paidAt = payment.PaidAt.In(time.Local).Format(time.RFC3339)
@@ -180,7 +186,7 @@ func (h *Handler) exportPaymentsCSV(w http.ResponseWriter, r *http.Request) {
 			payment.ProviderPaymentID,
 			string(payment.Status),
 			payment.Token,
-			strconv.FormatInt(payment.TelegramID, 10),
+			strconv.FormatInt(telegramID, 10),
 			strconv.FormatInt(payment.ConnectorID, 10),
 			connectorDisplayName(connectorNames, payment.ConnectorID),
 			strconv.FormatInt(payment.SubscriptionID, 10),
@@ -201,11 +207,11 @@ func (h *Handler) exportSubscriptionsCSV(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	_, subQuery := parseBillingQueries(r.URL.Query())
-	if telegramID, err := h.resolveFilterTelegramID(r.Context(), r.URL.Query().Get("user_id"), r.URL.Query().Get("telegram_id")); err != nil {
+	if userID, err := h.resolveFilterUserID(r.Context(), r.URL.Query().Get("user_id"), r.URL.Query().Get("telegram_id")); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
-	} else if telegramID > 0 {
-		subQuery.TelegramID = telegramID
+	} else if userID > 0 {
+		subQuery.UserID = userID
 	}
 	rows, err := h.store.ListSubscriptions(r.Context(), subQuery)
 	if err != nil {
@@ -213,6 +219,7 @@ func (h *Handler) exportSubscriptionsCSV(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	connectorNames := h.loadConnectorNames(r.Context())
+	resolveTelegramIdentity := h.buildTelegramIdentityLookup(r.Context())
 
 	records := make([][]string, 0, len(rows)+1)
 	records = append(records, []string{
@@ -221,9 +228,14 @@ func (h *Handler) exportSubscriptionsCSV(w http.ResponseWriter, r *http.Request)
 		"expiry_notice_sent_at", "created_at", "updated_at",
 	})
 	for _, sub := range rows {
+		telegramID, _, _, err := resolveTelegramIdentity(sub.UserID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		records = append(records, []string{
 			strconv.FormatInt(sub.ID, 10),
-			strconv.FormatInt(sub.TelegramID, 10),
+			strconv.FormatInt(telegramID, 10),
 			strconv.FormatInt(sub.ConnectorID, 10),
 			connectorDisplayName(connectorNames, sub.ConnectorID),
 			strconv.FormatInt(sub.PaymentID, 10),
@@ -246,15 +258,15 @@ func (h *Handler) exportChurnCSV(w http.ResponseWriter, r *http.Request) {
 	}
 	lang := h.resolveLang(w, r)
 	telegramIDRaw := strings.TrimSpace(r.URL.Query().Get("telegram_id"))
-	if telegramID, err := h.resolveFilterTelegramID(r.Context(), r.URL.Query().Get("user_id"), telegramIDRaw); err == nil && telegramID > 0 {
-		telegramIDRaw = strconv.FormatInt(telegramID, 10)
-	} else if err != nil {
+	userFilterID, err := h.resolveFilterUserID(r.Context(), r.URL.Query().Get("user_id"), telegramIDRaw)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	rows, err := h.buildChurnIssues(
 		r.Context(),
 		lang,
+		userFilterID,
 		telegramIDRaw,
 		strings.TrimSpace(r.URL.Query().Get("connector_id")),
 		strings.TrimSpace(r.URL.Query().Get("search")),
@@ -302,6 +314,9 @@ func parseUsersQuery(params url.Values) domain.UserListQuery {
 		Limit:  exportLimit,
 		Search: strings.TrimSpace(params.Get("search")),
 	}
+	if id, err := strconv.ParseInt(strings.TrimSpace(params.Get("user_id")), 10, 64); err == nil && id > 0 {
+		query.UserID = id
+	}
 	if id, err := strconv.ParseInt(strings.TrimSpace(params.Get("telegram_id")), 10, 64); err == nil && id > 0 {
 		query.TelegramID = id
 	}
@@ -312,9 +327,9 @@ func parseBillingQueries(params url.Values) (domain.PaymentListQuery, domain.Sub
 	paymentQuery := domain.PaymentListQuery{Limit: exportLimit}
 	subQuery := domain.SubscriptionListQuery{Limit: exportLimit}
 
-	if id, err := strconv.ParseInt(strings.TrimSpace(params.Get("telegram_id")), 10, 64); err == nil && id > 0 {
-		paymentQuery.TelegramID = id
-		subQuery.TelegramID = id
+	if id, err := strconv.ParseInt(strings.TrimSpace(params.Get("user_id")), 10, 64); err == nil && id > 0 {
+		paymentQuery.UserID = id
+		subQuery.UserID = id
 	}
 	if id, err := strconv.ParseInt(strings.TrimSpace(params.Get("connector_id")), 10, 64); err == nil && id > 0 {
 		paymentQuery.ConnectorID = id

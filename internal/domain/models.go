@@ -61,6 +61,7 @@ type UserListItem struct {
 
 // UserListQuery describes admin filters for user list.
 type UserListQuery struct {
+	UserID     int64  `json:"user_id"`
 	TelegramID int64  `json:"telegram_id"`
 	Search     string `json:"search"`
 	Limit      int    `json:"limit"`
@@ -212,7 +213,6 @@ type Payment struct {
 	Status            PaymentStatus `db:"status" json:"status"`
 	Token             string        `db:"token" json:"token"`
 	UserID            int64         `db:"user_id" json:"user_id"`
-	TelegramID        int64         `db:"telegram_id" json:"telegram_id"`
 	ConnectorID       int64         `db:"connector_id" json:"connector_id"`
 	SubscriptionID    int64         `db:"subscription_id" json:"subscription_id"`
 	ParentPaymentID   int64         `db:"parent_payment_id" json:"parent_payment_id"`
@@ -237,7 +237,6 @@ const (
 type Subscription struct {
 	ID                 int64              `db:"id" json:"id"`
 	UserID             int64              `db:"user_id" json:"user_id"`
-	TelegramID         int64              `db:"telegram_id" json:"telegram_id"`
 	ConnectorID        int64              `db:"connector_id" json:"connector_id"`
 	PaymentID          int64              `db:"payment_id" json:"payment_id"`
 	Status             SubscriptionStatus `db:"status" json:"status"`
@@ -252,8 +251,7 @@ type Subscription struct {
 
 // PaymentListQuery describes admin filters for payment list.
 type PaymentListQuery struct {
-	UserID     int64 `json:"user_id"`
-	TelegramID int64 `json:"telegram_id"`
+	UserID int64 `json:"user_id"`
 
 	ConnectorID int64         `json:"connector_id"`
 	Status      PaymentStatus `json:"status"`
@@ -266,8 +264,7 @@ type PaymentListQuery struct {
 
 // SubscriptionListQuery describes admin filters for subscription list.
 type SubscriptionListQuery struct {
-	UserID     int64 `json:"user_id"`
-	TelegramID int64 `json:"telegram_id"`
+	UserID int64 `json:"user_id"`
 
 	ConnectorID int64              `json:"connector_id"`
 	Status      SubscriptionStatus `json:"status"`

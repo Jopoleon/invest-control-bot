@@ -19,18 +19,18 @@ var (
 )
 
 type cancelTokenPayload struct {
-	TelegramID int64 `json:"t"`
-	ExpiresAt  int64 `json:"e"`
+	MessengerUserID int64 `json:"m"`
+	ExpiresAt       int64 `json:"e"`
 }
 
-func BuildCancelToken(secret string, telegramID int64, expiresAt time.Time) (string, error) {
+func BuildCancelToken(secret string, messengerUserID int64, expiresAt time.Time) (string, error) {
 	secret = strings.TrimSpace(secret)
-	if secret == "" || telegramID <= 0 || expiresAt.IsZero() {
+	if secret == "" || messengerUserID <= 0 || expiresAt.IsZero() {
 		return "", ErrInvalidToken
 	}
 	payload, err := json.Marshal(cancelTokenPayload{
-		TelegramID: telegramID,
-		ExpiresAt:  expiresAt.UTC().Unix(),
+		MessengerUserID: messengerUserID,
+		ExpiresAt:       expiresAt.UTC().Unix(),
 	})
 	if err != nil {
 		return "", fmt.Errorf("marshal cancel token payload: %w", err)
@@ -62,14 +62,14 @@ func ParseCancelToken(secret, token string, now time.Time) (int64, time.Time, er
 	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
 		return 0, time.Time{}, ErrInvalidToken
 	}
-	if payload.TelegramID <= 0 || payload.ExpiresAt <= 0 {
+	if payload.MessengerUserID <= 0 || payload.ExpiresAt <= 0 {
 		return 0, time.Time{}, ErrInvalidToken
 	}
 	expiresAt := time.Unix(payload.ExpiresAt, 0).UTC()
 	if !now.IsZero() && now.UTC().After(expiresAt) {
 		return 0, expiresAt, ErrExpiredToken
 	}
-	return payload.TelegramID, expiresAt, nil
+	return payload.MessengerUserID, expiresAt, nil
 }
 
 func sign(secret, value string) string {

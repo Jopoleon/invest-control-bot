@@ -139,7 +139,7 @@ func processSubscriptionReminders(ctx context.Context, appCtx *application) {
 		}
 
 		text := appSubscriptionReminderMessage(sub.EndsAt)
-		preferredMessengerUserID := formatPreferredMessengerUserID(sub.TelegramID)
+		preferredMessengerUserID := ""
 		msg := appCtx.buildRenewalNotification(ctx, sub.UserID, preferredMessengerUserID, connector.StartPayload, text)
 		if err := appCtx.sendUserNotification(ctx, sub.UserID, preferredMessengerUserID, msg); err != nil {
 			slog.Error("send subscription reminder failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "preferred_messenger_user_id", preferredMessengerUserID)
@@ -171,7 +171,7 @@ func processSubscriptionExpiryNotices(ctx context.Context, appCtx *application) 
 		}
 
 		text := appSubscriptionExpiryNoticeMessage(sub.EndsAt)
-		preferredMessengerUserID := formatPreferredMessengerUserID(sub.TelegramID)
+		preferredMessengerUserID := ""
 		msg := appCtx.buildRenewalNotification(ctx, sub.UserID, preferredMessengerUserID, connector.StartPayload, text)
 		if err := appCtx.sendUserNotification(ctx, sub.UserID, preferredMessengerUserID, msg); err != nil {
 			slog.Error("send subscription expiry notice failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "preferred_messenger_user_id", preferredMessengerUserID)
@@ -204,7 +204,7 @@ func processExpiredSubscriptions(ctx context.Context, appCtx *application) {
 		}
 
 		// Best-effort revoke from chat when chat_id is configured and bot has rights.
-		preferredMessengerUserID := formatPreferredMessengerUserID(sub.TelegramID)
+		preferredMessengerUserID := ""
 		if connectorFound && appCtx.resolvePreferredMessengerKind(ctx, sub.UserID, preferredMessengerUserID) == messenger.KindTelegram {
 			if chatID, ok := normalizeTelegramChatID(connector.ChatID); ok {
 				account, found, err := appCtx.resolveTelegramMessengerAccount(ctx, sub.UserID)

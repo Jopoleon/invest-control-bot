@@ -49,7 +49,6 @@ func (h *Handler) handlePay(ctx context.Context, cb messenger.IncomingAction) {
 	invoiceID := generateInvoiceID()
 
 	checkoutURL, err := h.payment.CreateCheckoutURL(ctx, payment.Request{
-		UserTelegramID:  cb.User.ID,
 		ConnectorID:     connectorID,
 		AmountRUB:       connector.PriceRUB,
 		InvoiceID:       invoiceID,

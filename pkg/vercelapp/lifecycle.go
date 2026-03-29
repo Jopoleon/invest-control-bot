@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/Jopoleon/invest-control-bot/internal/app"
-	"github.com/Jopoleon/invest-control-bot/internal/bootstrap"
 	"github.com/Jopoleon/invest-control-bot/internal/config"
 	"github.com/Jopoleon/invest-control-bot/internal/logger"
 )
@@ -39,7 +38,7 @@ func LifecycleHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("init logger: %v", err), http.StatusInternalServerError)
 		return
 	}
-	st, cleanup, err := bootstrap.OpenStore(cfg)
+	st, cleanup, err := app.OpenStore(cfg)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("open store: %v", err), http.StatusInternalServerError)
 		return

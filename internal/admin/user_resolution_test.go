@@ -44,6 +44,28 @@ func TestResolveFilterTelegramID_UsesUserID(t *testing.T) {
 	}
 }
 
+func TestResolveFilterUserID_UsesTelegramID(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	h := NewHandler(st, "test-admin-token", "test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil)
+
+	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, "264704572", "emiloserdov")
+	if err != nil {
+		t.Fatalf("GetOrCreateUserByMessenger: %v", err)
+	}
+	if err := st.SaveUser(ctx, user); err != nil {
+		t.Fatalf("SaveUser: %v", err)
+	}
+
+	userID, err := h.resolveFilterUserID(ctx, "", "264704572")
+	if err != nil {
+		t.Fatalf("resolveFilterUserID: %v", err)
+	}
+	if userID != user.ID {
+		t.Fatalf("userID = %d, want %d", userID, user.ID)
+	}
+}
+
 func TestUsersPage_FiltersByUserID(t *testing.T) {
 	ctx := context.Background()
 	st := memory.New()

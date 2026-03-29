@@ -16,3 +16,14 @@ func (a *application) resolveTelegramUser(ctx context.Context, telegramID int64)
 	}
 	return a.store.GetUserByMessenger(ctx, domain.MessengerKindTelegram, strconv.FormatInt(telegramID, 10))
 }
+
+func (a *application) resolveUserByMessengerUserID(ctx context.Context, messengerUserID int64) (domain.User, bool, error) {
+	if messengerUserID <= 0 {
+		return domain.User{}, false, nil
+	}
+	raw := strconv.FormatInt(messengerUserID, 10)
+	if user, found, err := a.store.GetUserByMessenger(ctx, domain.MessengerKindTelegram, raw); err != nil || found {
+		return user, found, err
+	}
+	return a.store.GetUserByMessenger(ctx, domain.MessengerKindMAX, raw)
+}

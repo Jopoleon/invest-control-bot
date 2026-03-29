@@ -617,6 +617,9 @@ func (s *Store) ListUsers(_ context.Context, query domain.UserListQuery) ([]doma
 	items := make([]domain.UserListItem, 0, len(s.users))
 	for _, user := range s.users {
 		telegramID, telegramUsername := s.telegramIdentityLocked(user.ID)
+		if query.UserID > 0 && user.ID != query.UserID {
+			continue
+		}
 		if query.TelegramID > 0 && telegramID != query.TelegramID {
 			continue
 		}
@@ -844,7 +847,7 @@ func (s *Store) CreatePayment(_ context.Context, payment domain.Payment) error {
 	if payment.CreatedAt.IsZero() {
 		payment.CreatedAt = now
 	}
-	payment.UserID, payment.TelegramID = s.resolveUserIdentityLocked(payment.UserID, payment.TelegramID)
+	payment.UserID, _ = s.resolveUserIdentityLocked(payment.UserID, 0)
 	payment.ID = s.nextPaymentID
 	s.nextPaymentID++
 	payment.UpdatedAt = now
@@ -959,7 +962,7 @@ func (s *Store) UpsertSubscriptionByPayment(_ context.Context, sub domain.Subscr
 	if sub.CreatedAt.IsZero() {
 		sub.CreatedAt = now
 	}
-	sub.UserID, sub.TelegramID = s.resolveUserIdentityLocked(sub.UserID, sub.TelegramID)
+	sub.UserID, _ = s.resolveUserIdentityLocked(sub.UserID, 0)
 	// Re-activation means reminder should be sent again for the new period.
 	sub.ReminderSentAt = nil
 	sub.ExpiryNoticeSentAt = nil
@@ -1025,9 +1028,6 @@ func (s *Store) ListPayments(_ context.Context, query domain.PaymentListQuery) (
 		if query.UserID > 0 && item.UserID != query.UserID {
 			continue
 		}
-		if query.TelegramID > 0 && item.TelegramID != query.TelegramID {
-			continue
-		}
 		if query.ConnectorID > 0 && item.ConnectorID != query.ConnectorID {
 			continue
 		}
@@ -1070,9 +1070,6 @@ func (s *Store) ListSubscriptions(_ context.Context, query domain.SubscriptionLi
 	filtered := make([]domain.Subscription, 0, len(s.subsByPayID))
 	for _, item := range s.subsByPayID {
 		if query.UserID > 0 && item.UserID != query.UserID {
-			continue
-		}
-		if query.TelegramID > 0 && item.TelegramID != query.TelegramID {
 			continue
 		}
 		if query.ConnectorID > 0 && item.ConnectorID != query.ConnectorID {

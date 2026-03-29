@@ -112,7 +112,7 @@ func (h *Handler) sendUserPaymentLink(w http.ResponseWriter, r *http.Request) {
 	)
 	if subID > 0 {
 		sub, ok, err = h.store.GetSubscriptionByID(r.Context(), subID)
-		if err != nil || !ok || sub.TelegramID != telegramID {
+		if err != nil || !ok || sub.UserID != user.ID {
 			h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.revoke.not_found"))
 			return
 		}
@@ -191,7 +191,7 @@ func (h *Handler) revokeSubscription(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sub, ok, err := h.store.GetSubscriptionByID(r.Context(), subID)
-	if err != nil || !ok || sub.TelegramID != telegramID {
+	if err != nil || !ok || sub.UserID != user.ID {
 		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.revoke.not_found"))
 		return
 	}
@@ -286,7 +286,7 @@ func (h *Handler) triggerSubscriptionRebill(w http.ResponseWriter, r *http.Reque
 	}
 
 	sub, ok, err := h.store.GetSubscriptionByID(r.Context(), subID)
-	if err != nil || !ok || sub.TelegramID != telegramID {
+	if err != nil || !ok || sub.UserID != user.ID {
 		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.revoke.not_found"))
 		return
 	}

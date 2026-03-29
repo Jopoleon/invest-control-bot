@@ -70,7 +70,7 @@ func (a *application) activateSuccessfulPayment(ctx context.Context, paymentRow 
 	if err := a.store.SaveAuditEvent(ctx, a.buildAppTargetAuditEvent(
 		ctx,
 		paymentRow.UserID,
-		formatPreferredMessengerUserID(paymentRow.TelegramID),
+		"",
 		paymentRow.ConnectorID,
 		domain.AuditActionSubscriptionActivated,
 		"payment_id="+strconv.FormatInt(paymentRow.ID, 10),
@@ -101,11 +101,10 @@ func (a *application) activateSuccessfulPayment(ctx context.Context, paymentRow 
 			{{Text: appPaymentActionMySubscription, Action: "menu:subscription"}},
 		}
 	}
-	if err := a.sendUserNotification(ctx, paymentRow.UserID, formatPreferredMessengerUserID(paymentRow.TelegramID), message); err != nil {
+	if err := a.sendUserNotification(ctx, paymentRow.UserID, "", message); err != nil {
 		slog.Error("send payment success message failed",
 			"error", err,
 			"user_id", paymentRow.UserID,
-			"preferred_messenger_user_id", paymentRow.TelegramID,
 			"payment_id", paymentRow.ID,
 		)
 		return
@@ -113,7 +112,7 @@ func (a *application) activateSuccessfulPayment(ctx context.Context, paymentRow 
 	if err := a.store.SaveAuditEvent(ctx, a.buildAppTargetAuditEvent(
 		ctx,
 		paymentRow.UserID,
-		formatPreferredMessengerUserID(paymentRow.TelegramID),
+		"",
 		paymentRow.ConnectorID,
 		domain.AuditActionPaymentSuccessNotified,
 		"payment_id="+strconv.FormatInt(paymentRow.ID, 10),

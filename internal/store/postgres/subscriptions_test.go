@@ -19,15 +19,23 @@ func TestUpsertSubscriptionByPaymentResolvesAndStoresUserID(t *testing.T) {
 	endsAt := now.Add(30 * 24 * time.Hour)
 
 	mock.ExpectQuery(regexp.QuoteMeta(`
-		SELECT u.id, u.full_name, u.phone, u.email, u.created_at, u.updated_at
-		FROM user_messenger_accounts a
-		JOIN users u ON u.id = a.user_id
-		WHERE a.messenger_kind = $1 AND a.messenger_user_id = $2
+		SELECT id, full_name, phone, email, created_at, updated_at
+		FROM users
+		WHERE id = $1
 	`)).
-		WithArgs(string(domain.MessengerKindTelegram), "264704572").
+		WithArgs(int64(17)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "full_name", "phone", "email", "created_at", "updated_at",
 		}).AddRow(17, "Egor", "", "", now.Add(-time.Hour), now))
+	mock.ExpectQuery(regexp.QuoteMeta(`
+		SELECT user_id, messenger_kind, messenger_user_id, username, linked_at, updated_at
+		FROM user_messenger_accounts
+		WHERE user_id = $1 AND messenger_kind = $2
+	`)).
+		WithArgs(int64(17), string(domain.MessengerKindTelegram)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"user_id", "messenger_kind", "messenger_user_id", "username", "linked_at", "updated_at",
+		}))
 
 	mock.ExpectExec(regexp.QuoteMeta(`
 		INSERT INTO subscriptions (
@@ -60,7 +68,7 @@ func TestUpsertSubscriptionByPaymentResolvesAndStoresUserID(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	err := store.UpsertSubscriptionByPayment(context.Background(), domain.Subscription{
-		TelegramID:     264704572,
+		UserID:         17,
 		ConnectorID:    11,
 		PaymentID:      9,
 		Status:         domain.SubscriptionStatusActive,

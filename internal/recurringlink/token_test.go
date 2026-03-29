@@ -12,12 +12,12 @@ func TestBuildAndParseCancelToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build token: %v", err)
 	}
-	telegramID, gotExpiresAt, err := ParseCancelToken("test-secret-123456789012345678901234", token, expiresAt.Add(-time.Minute))
+	messengerUserID, gotExpiresAt, err := ParseCancelToken("test-secret-123456789012345678901234", token, expiresAt.Add(-time.Minute))
 	if err != nil {
 		t.Fatalf("parse token: %v", err)
 	}
-	if telegramID != 42 {
-		t.Fatalf("telegram id = %d, want 42", telegramID)
+	if messengerUserID != 42 {
+		t.Fatalf("messenger user id = %d, want 42", messengerUserID)
 	}
 	if !gotExpiresAt.Equal(expiresAt) {
 		t.Fatalf("expiresAt = %s, want %s", gotExpiresAt, expiresAt)

@@ -42,6 +42,29 @@ func (h *Handler) resolveTelegramIdentity(ctx context.Context, userID int64) (in
 	return 0, "", false, nil
 }
 
+func (h *Handler) buildTelegramIdentityLookup(ctx context.Context) func(userID int64) (int64, string, bool, error) {
+	type cachedIdentity struct {
+		telegramID int64
+		username   string
+		found      bool
+		err        error
+	}
+	cache := make(map[int64]cachedIdentity)
+	return func(userID int64) (int64, string, bool, error) {
+		if cached, ok := cache[userID]; ok {
+			return cached.telegramID, cached.username, cached.found, cached.err
+		}
+		telegramID, username, found, err := h.resolveTelegramIdentity(ctx, userID)
+		cache[userID] = cachedIdentity{
+			telegramID: telegramID,
+			username:   username,
+			found:      found,
+			err:        err,
+		}
+		return telegramID, username, found, err
+	}
+}
+
 func parseUserDetailParams(rawUserID, rawTelegramID string) (int64, int64) {
 	return parseInt64Default(strings.TrimSpace(rawUserID)), parseInt64Default(strings.TrimSpace(rawTelegramID))
 }
@@ -81,4 +104,31 @@ func (h *Handler) resolveFilterTelegramID(ctx context.Context, rawUserID, rawTel
 		return 0, nil
 	}
 	return resolvedTelegramID, nil
+}
+
+// resolveFilterUserID lets admin list/report pages accept either internal user_id
+// or the legacy telegram_id filter while query contracts move to user_id-first.
+func (h *Handler) resolveFilterUserID(ctx context.Context, rawUserID, rawTelegramID string) (int64, error) {
+	userID, telegramID := parseUserDetailParams(rawUserID, rawTelegramID)
+	if userID > 0 {
+		_, found, err := h.resolveUser(ctx, userID, 0)
+		if err != nil {
+			return 0, err
+		}
+		if !found {
+			return 0, nil
+		}
+		return userID, nil
+	}
+	if telegramID <= 0 {
+		return 0, nil
+	}
+	user, found, err := h.resolveUser(ctx, 0, telegramID)
+	if err != nil {
+		return 0, err
+	}
+	if !found {
+		return 0, nil
+	}
+	return user.ID, nil
 }

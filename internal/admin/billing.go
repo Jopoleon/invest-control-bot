@@ -38,15 +38,15 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 	paymentQuery := domain.PaymentListQuery{Limit: 1000}
 	subQuery := domain.SubscriptionListQuery{Limit: 1000}
 
-	telegramID, err := h.resolveFilterTelegramID(r.Context(), r.URL.Query().Get("user_id"), data.TelegramID)
+	userID, err := h.resolveFilterUserID(r.Context(), r.URL.Query().Get("user_id"), data.TelegramID)
 	if err != nil {
 		data.Notice = t(lang, "billing.load_error")
 		h.renderer.render(w, "billing.html", data)
 		return
 	}
-	if telegramID > 0 {
-		paymentQuery.TelegramID = telegramID
-		subQuery.TelegramID = telegramID
+	if userID > 0 {
+		paymentQuery.UserID = userID
+		subQuery.UserID = userID
 	}
 	if data.ConnectorID != "" {
 		if id, err := strconv.ParseInt(data.ConnectorID, 10, 64); err == nil && id > 0 {
@@ -86,9 +86,16 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	connectorNames := h.loadConnectorNames(r.Context())
+	resolveTelegramIdentity := h.buildTelegramIdentityLookup(r.Context())
 
 	data.Payments = make([]paymentView, 0, len(payments))
 	for _, p := range payments {
+		telegramID, _, _, err := resolveTelegramIdentity(p.UserID)
+		if err != nil {
+			data.Notice = t(lang, "billing.load_error")
+			h.renderer.render(w, "billing.html", data)
+			return
+		}
 		paidAt := ""
 		if p.PaidAt != nil {
 			paidAt = p.PaidAt.In(time.Local).Format("2006-01-02 15:04:05")
@@ -105,7 +112,7 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 			AutoPayEnabled:    p.AutoPayEnabled,
 			AutoPayLabel:      autoPayLabel,
 			AutoPayClass:      autoPayClass,
-			TelegramID:        p.TelegramID,
+			TelegramID:        telegramID,
 			ConnectorID:       p.ConnectorID,
 			Connector:         connectorDisplayName(connectorNames, p.ConnectorID),
 			AmountRUB:         p.AmountRUB,
@@ -116,6 +123,12 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 
 	data.Subscriptions = make([]subscriptionView, 0, len(subs))
 	for _, s := range subs {
+		telegramID, _, _, err := resolveTelegramIdentity(s.UserID)
+		if err != nil {
+			data.Notice = t(lang, "billing.load_error")
+			h.renderer.render(w, "billing.html", data)
+			return
+		}
 		statusLabel, statusClass := subscriptionStatusBadge(lang, s.Status)
 		autoPayLabel, autoPayClass := autoPayBadge(lang, s.AutoPayEnabled, true)
 		data.Subscriptions = append(data.Subscriptions, subscriptionView{
@@ -126,7 +139,7 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 			AutoPayEnabled: s.AutoPayEnabled,
 			AutoPayLabel:   autoPayLabel,
 			AutoPayClass:   autoPayClass,
-			TelegramID:     s.TelegramID,
+			TelegramID:     telegramID,
 			ConnectorID:    s.ConnectorID,
 			Connector:      connectorDisplayName(connectorNames, s.ConnectorID),
 			PaymentID:      s.PaymentID,

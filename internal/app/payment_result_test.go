@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -58,7 +59,7 @@ func TestPaymentResult_SuccessAndIdempotency(t *testing.T) {
 		Provider:    "robokassa",
 		Status:      domain.PaymentStatusPending,
 		Token:       invID,
-		TelegramID:  777001,
+		UserID:      seedTelegramUser(t, ctx, st, 777001),
 		ConnectorID: connectorID,
 		AmountRUB:   2322,
 		CreatedAt:   time.Now().UTC(),
@@ -98,9 +99,9 @@ func TestPaymentResult_SuccessAndIdempotency(t *testing.T) {
 	}
 
 	subs, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{
-		TelegramID: paymentRow.TelegramID,
-		Status:     domain.SubscriptionStatusActive,
-		Limit:      20,
+		UserID: paymentRow.UserID,
+		Status: domain.SubscriptionStatusActive,
+		Limit:  20,
 	})
 	if err != nil {
 		t.Fatalf("list subscriptions: %v", err)
@@ -145,7 +146,6 @@ func TestActivateSuccessfulPayment_SendsSuccessMessageViaMAXAccount(t *testing.T
 		Status:         domain.PaymentStatusPending,
 		Token:          "max-success-1",
 		UserID:         maxUser.ID,
-		TelegramID:     193465776,
 		ConnectorID:    connectorID,
 		AmountRUB:      2322,
 		AutoPayEnabled: true,
@@ -207,7 +207,7 @@ func TestActivateSuccessfulPayment_ExtendsFromCurrentSubscriptionEnd(t *testing.
 		Provider:    "robokassa",
 		Status:      domain.PaymentStatusPending,
 		Token:       "extend-current-period-1",
-		TelegramID:  777777,
+		UserID:      seedTelegramUser(t, ctx, st, 777777),
 		ConnectorID: connectorID,
 		AmountRUB:   2322,
 		CreatedAt:   now,
@@ -220,7 +220,7 @@ func TestActivateSuccessfulPayment_ExtendsFromCurrentSubscriptionEnd(t *testing.
 	}
 
 	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
-		TelegramID:  paymentRow.TelegramID,
+		UserID:      paymentRow.UserID,
 		ConnectorID: paymentRow.ConnectorID,
 		PaymentID:   999999,
 		Status:      domain.SubscriptionStatusActive,
@@ -272,8 +272,7 @@ func TestActivateSuccessfulPayment_DoesNotSendDuplicateSuccessNotificationForAlr
 		Provider:       "robokassa",
 		Status:         domain.PaymentStatusPaid,
 		Token:          "already-paid-1",
-		UserID:         44,
-		TelegramID:     193465776,
+		UserID:         seedTelegramUser(t, ctx, st, 193465776),
 		ConnectorID:    connectorID,
 		AmountRUB:      2322,
 		AutoPayEnabled: true,
@@ -320,8 +319,7 @@ func TestBuildPaymentPageActions_SelectsMessengerSpecificActions(t *testing.T) {
 	appCtx := &application{store: st}
 
 	maxActions := appCtx.buildPaymentPageActions(ctx, domain.Payment{
-		UserID:     maxUser.ID,
-		TelegramID: 193465776,
+		UserID: maxUser.ID,
 	}, "https://web.max.ru/-72598909498032", true)
 	if len(maxActions) != 2 {
 		t.Fatalf("max actions len=%d want=2", len(maxActions))
@@ -334,8 +332,7 @@ func TestBuildPaymentPageActions_SelectsMessengerSpecificActions(t *testing.T) {
 	}
 
 	tgActions := appCtx.buildPaymentPageActions(ctx, domain.Payment{
-		UserID:     0,
-		TelegramID: 777123,
+		UserID: seedTelegramUser(t, ctx, st, 777123),
 	}, "https://t.me/example_channel", false)
 	if len(tgActions) != 3 {
 		t.Fatalf("telegram actions len=%d want=3", len(tgActions))
@@ -380,7 +377,6 @@ func TestNotifyFailedRecurringPayment_SendsMAXNotification(t *testing.T) {
 	appCtx.notifyFailedRecurringPayment(ctx, domain.Payment{
 		ID:             90,
 		UserID:         maxUser.ID,
-		TelegramID:     193465776,
 		ConnectorID:    connectorID,
 		SubscriptionID: 12,
 		AutoPayEnabled: true,
@@ -431,7 +427,6 @@ func TestPaymentSuccessPage_MAXActionsUseMAXLinks(t *testing.T) {
 		Status:      domain.PaymentStatusPaid,
 		Token:       "max-page-success-1",
 		UserID:      maxUser.ID,
-		TelegramID:  193465776,
 		ConnectorID: connector.ID,
 		AmountRUB:   2322,
 		CreatedAt:   time.Now().UTC(),
@@ -474,7 +469,7 @@ func TestPaymentResult_RejectsOutSumMismatch(t *testing.T) {
 		Provider:    "robokassa",
 		Status:      domain.PaymentStatusPending,
 		Token:       invID,
-		TelegramID:  777002,
+		UserID:      seedTelegramUser(t, ctx, st, 777002),
 		ConnectorID: connectorID,
 		AmountRUB:   2322,
 		CreatedAt:   time.Now().UTC(),
@@ -502,8 +497,8 @@ func TestPaymentResult_RejectsOutSumMismatch(t *testing.T) {
 	}
 
 	subs, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{
-		TelegramID: paymentRow.TelegramID,
-		Limit:      20,
+		UserID: paymentRow.UserID,
+		Limit:  20,
 	})
 	if err != nil {
 		t.Fatalf("list subscriptions: %v", err)
@@ -528,7 +523,7 @@ func TestPaymentResult_RejectsInvalidResultSignature(t *testing.T) {
 		Provider:    "robokassa",
 		Status:      domain.PaymentStatusPending,
 		Token:       invID,
-		TelegramID:  777003,
+		UserID:      seedTelegramUser(t, ctx, st, 777003),
 		ConnectorID: connectorID,
 		AmountRUB:   2322,
 		CreatedAt:   time.Now().UTC(),
@@ -560,7 +555,7 @@ func TestPaymentSuccessPage_RejectsInvalidSuccessSignature(t *testing.T) {
 		Provider:    "robokassa",
 		Status:      domain.PaymentStatusPending,
 		Token:       "success-bad-signature-1",
-		TelegramID:  777004,
+		UserID:      seedTelegramUser(t, ctx, st, 777004),
 		ConnectorID: connectorID,
 		AmountRUB:   2322,
 		CreatedAt:   time.Now().UTC(),
@@ -608,7 +603,6 @@ func TestPaymentFailPage_MAXActionsUseMAXLinks(t *testing.T) {
 		Status:      domain.PaymentStatusPending,
 		Token:       "max-page-fail-1",
 		UserID:      maxUser.ID,
-		TelegramID:  193465776,
 		ConnectorID: connector.ID,
 		AmountRUB:   2322,
 		CreatedAt:   time.Now().UTC(),
@@ -653,7 +647,7 @@ func TestPaymentRebill_CreatesPendingRecurringPayment(t *testing.T) {
 		Provider:       "robokassa",
 		Status:         domain.PaymentStatusPaid,
 		Token:          parentInv,
-		TelegramID:     778001,
+		UserID:         seedTelegramUser(t, ctx, st, 778001),
 		ConnectorID:    connectorID,
 		AmountRUB:      2322,
 		AutoPayEnabled: true,
@@ -665,7 +659,7 @@ func TestPaymentRebill_CreatesPendingRecurringPayment(t *testing.T) {
 		t.Fatalf("parent payment not found: found=%v err=%v", found, err)
 	}
 	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
-		TelegramID:     parentPayment.TelegramID,
+		UserID:         parentPayment.UserID,
 		ConnectorID:    parentPayment.ConnectorID,
 		PaymentID:      parentPayment.ID,
 		Status:         domain.SubscriptionStatusActive,
@@ -678,8 +672,8 @@ func TestPaymentRebill_CreatesPendingRecurringPayment(t *testing.T) {
 		t.Fatalf("seed subscription: %v", err)
 	}
 	subscriptions, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{
-		TelegramID: parentPayment.TelegramID,
-		Limit:      20,
+		UserID: parentPayment.UserID,
+		Limit:  20,
 	})
 	if err != nil || len(subscriptions) != 1 {
 		t.Fatalf("expected one subscription, got=%d err=%v", len(subscriptions), err)
@@ -780,7 +774,7 @@ func TestPaymentRebill_ReturnsExistingPendingPayment(t *testing.T) {
 		Provider:       "robokassa",
 		Status:         domain.PaymentStatusPaid,
 		Token:          parentInv,
-		TelegramID:     778002,
+		UserID:         seedTelegramUser(t, ctx, st, 778002),
 		ConnectorID:    connectorID,
 		AmountRUB:      2322,
 		AutoPayEnabled: true,
@@ -792,7 +786,7 @@ func TestPaymentRebill_ReturnsExistingPendingPayment(t *testing.T) {
 		t.Fatalf("parent payment not found: found=%v err=%v", found, err)
 	}
 	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
-		TelegramID:     parentPayment.TelegramID,
+		UserID:         parentPayment.UserID,
 		ConnectorID:    parentPayment.ConnectorID,
 		PaymentID:      parentPayment.ID,
 		Status:         domain.SubscriptionStatusActive,
@@ -804,7 +798,7 @@ func TestPaymentRebill_ReturnsExistingPendingPayment(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed subscription: %v", err)
 	}
-	subscriptions, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{TelegramID: parentPayment.TelegramID, Limit: 20})
+	subscriptions, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{UserID: parentPayment.UserID, Limit: 20})
 	if err != nil || len(subscriptions) != 1 {
 		t.Fatalf("expected one subscription, got=%d err=%v", len(subscriptions), err)
 	}
@@ -814,7 +808,7 @@ func TestPaymentRebill_ReturnsExistingPendingPayment(t *testing.T) {
 		Provider:          "robokassa",
 		Status:            domain.PaymentStatusPending,
 		Token:             existingInvoice,
-		TelegramID:        parentPayment.TelegramID,
+		UserID:            parentPayment.UserID,
 		ConnectorID:       parentPayment.ConnectorID,
 		SubscriptionID:    subscriptions[0].ID,
 		ParentPaymentID:   parentPayment.ID,
@@ -895,7 +889,7 @@ func TestPaymentRebill_MarksPaymentFailedWhenProviderFails(t *testing.T) {
 		Provider:       "robokassa",
 		Status:         domain.PaymentStatusPaid,
 		Token:          parentInv,
-		TelegramID:     778010,
+		UserID:         seedTelegramUser(t, ctx, st, 778010),
 		ConnectorID:    connectorID,
 		AmountRUB:      2322,
 		AutoPayEnabled: true,
@@ -907,7 +901,7 @@ func TestPaymentRebill_MarksPaymentFailedWhenProviderFails(t *testing.T) {
 		t.Fatalf("parent payment not found: found=%v err=%v", found, err)
 	}
 	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
-		TelegramID:     parentPayment.TelegramID,
+		UserID:         parentPayment.UserID,
 		ConnectorID:    parentPayment.ConnectorID,
 		PaymentID:      parentPayment.ID,
 		Status:         domain.SubscriptionStatusActive,
@@ -919,7 +913,7 @@ func TestPaymentRebill_MarksPaymentFailedWhenProviderFails(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed subscription: %v", err)
 	}
-	subscriptions, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{TelegramID: parentPayment.TelegramID, Limit: 20})
+	subscriptions, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{UserID: parentPayment.UserID, Limit: 20})
 	if err != nil || len(subscriptions) != 1 {
 		t.Fatalf("expected one subscription, got=%d err=%v", len(subscriptions), err)
 	}
@@ -960,7 +954,7 @@ func TestPaymentRebill_MarksPaymentFailedWhenProviderFails(t *testing.T) {
 		t.Fatalf("rebill status=%d body=%q", rr.Code, string(body))
 	}
 
-	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{TelegramID: parentPayment.TelegramID, Limit: 20})
+	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{UserID: parentPayment.UserID, Limit: 20})
 	if err != nil {
 		t.Fatalf("list payments: %v", err)
 	}
@@ -1048,16 +1042,41 @@ func seedConnector(t *testing.T, ctx context.Context, st store.Store, payload st
 
 func seedPayment(t *testing.T, ctx context.Context, st store.Store, payment domain.Payment) {
 	t.Helper()
-	if payment.UserID <= 0 && payment.TelegramID > 0 {
-		user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, fmt.Sprintf("%d", payment.TelegramID), "")
-		if err != nil {
-			t.Fatalf("get or create user by messenger: %v", err)
-		}
-		payment.UserID = user.ID
+	if payment.UserID <= 0 {
+		t.Fatalf("seed payment requires user_id")
 	}
 	if err := st.CreatePayment(ctx, payment); err != nil {
 		t.Fatalf("create payment: %v", err)
 	}
+}
+
+func seedTelegramUser(t *testing.T, ctx context.Context, st store.Store, telegramID int64) int64 {
+	t.Helper()
+	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, fmt.Sprintf("%d", telegramID), "")
+	if err != nil {
+		t.Fatalf("get or create telegram user: %v", err)
+	}
+	return user.ID
+}
+
+func requireTelegramUserID(t *testing.T, ctx context.Context, st store.Store, userID int64) int64 {
+	t.Helper()
+	accounts, err := st.ListUserMessengerAccounts(ctx, userID)
+	if err != nil {
+		t.Fatalf("list user messenger accounts: %v", err)
+	}
+	for _, account := range accounts {
+		if account.MessengerKind != domain.MessengerKindTelegram {
+			continue
+		}
+		telegramID, parseErr := strconv.ParseInt(account.MessengerUserID, 10, 64)
+		if parseErr != nil || telegramID <= 0 {
+			t.Fatalf("invalid telegram messenger user id %q", account.MessengerUserID)
+		}
+		return telegramID
+	}
+	t.Fatalf("telegram account not found for user_id=%d", userID)
+	return 0
 }
 
 func postPaymentResult(t *testing.T, handler http.Handler, outSum, invID, signature string) (int, string) {

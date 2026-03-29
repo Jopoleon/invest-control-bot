@@ -9,7 +9,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/Jopoleon/invest-control-bot/internal/bootstrap"
+	"github.com/Jopoleon/invest-control-bot/internal/app"
 	"github.com/Jopoleon/invest-control-bot/internal/bot"
 	"github.com/Jopoleon/invest-control-bot/internal/config"
 	"github.com/Jopoleon/invest-control-bot/internal/logger"
@@ -40,7 +40,7 @@ func main() {
 	}
 	slog.Info("config loaded", "effective_log_level", effectiveLevel, "log_file_path", cfg.Logging.FilePath)
 
-	st, cleanup, err := bootstrap.OpenStore(cfg)
+	st, cleanup, err := app.OpenStore(cfg)
 	if err != nil {
 		slog.Error("init store failed", "error", err)
 		os.Exit(1)
