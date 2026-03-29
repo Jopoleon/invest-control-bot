@@ -72,7 +72,13 @@ func TestRecurringCancelPage_DisablesAutopay(t *testing.T) {
 	ctx := context.Background()
 	st := memory.New()
 	connectorID := seedConnector(t, ctx, st, "in-cancel-recurring")
-	if err := st.SaveUser(ctx, domain.User{TelegramID: 91001, FullName: "Егор", TelegramUsername: "egor", UpdatedAt: time.Now().UTC()}); err != nil {
+	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, "91001", "egor")
+	if err != nil {
+		t.Fatalf("GetOrCreateUserByMessenger: %v", err)
+	}
+	user.FullName = "Егор"
+	user.UpdatedAt = time.Now().UTC()
+	if err := st.SaveUser(ctx, user); err != nil {
 		t.Fatalf("save user: %v", err)
 	}
 	seedPayment(t, ctx, st, domain.Payment{Provider: "robokassa", Status: domain.PaymentStatusPaid, Token: "cancel-test-1", TelegramID: 91001, ConnectorID: connectorID, AmountRUB: 2322, AutoPayEnabled: true, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()})
@@ -160,7 +166,11 @@ func TestRecurringCancelPage_SendsConfirmationViaMAX(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create subscription: %v", err)
 	}
-	sub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, 193465776, connectorID)
+	subscriptions, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{TelegramID: 193465776, Limit: 10})
+	if err != nil || len(subscriptions) == 0 {
+		t.Fatalf("list subscriptions: len=%d err=%v", len(subscriptions), err)
+	}
+	sub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, subscriptions[0].UserID, connectorID)
 	if err != nil || !found {
 		t.Fatalf("get latest subscription: found=%v err=%v", found, err)
 	}

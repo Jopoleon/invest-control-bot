@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 	"regexp"
 	"testing"
 	"time"
@@ -17,28 +16,28 @@ func TestCreatePaymentResolvesAndStoresUserID(t *testing.T) {
 
 	now := time.Date(2026, 3, 26, 14, 0, 0, 0, time.UTC)
 	mock.ExpectQuery(regexp.QuoteMeta(`
-		SELECT id, COALESCE(telegram_id, 0), telegram_username, full_name, phone, email, updated_at
-		FROM users
-		WHERE telegram_id = $1
+		SELECT u.id, u.full_name, u.phone, u.email, u.created_at, u.updated_at
+		FROM user_messenger_accounts a
+		JOIN users u ON u.id = a.user_id
+		WHERE a.messenger_kind = $1 AND a.messenger_user_id = $2
 	`)).
-		WithArgs(int64(264704572)).
+		WithArgs(string(domain.MessengerKindTelegram), "264704572").
 		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "telegram_id", "telegram_username", "full_name", "phone", "email", "updated_at",
-		}).AddRow(17, 264704572, "emiloserdov", "Egor", "", "", now))
+			"id", "full_name", "phone", "email", "created_at", "updated_at",
+		}).AddRow(17, "Egor", "", "", now.Add(-time.Hour), now))
 
 	mock.ExpectExec(regexp.QuoteMeta(`
 		INSERT INTO payments (
-			provider, provider_payment_id, status, token, user_id, telegram_id, connector_id, subscription_id, parent_payment_id,
+			provider, provider_payment_id, status, token, user_id, connector_id, subscription_id, parent_payment_id,
 			auto_pay_enabled, amount_rub, checkout_url, created_at, paid_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 	`)).
 		WithArgs(
 			"robokassa",
 			"",
 			"pending",
 			"inv-1",
-			sql.NullInt64{Int64: 17, Valid: true},
-			int64(264704572),
+			int64(17),
 			int64(11),
 			int64(0),
 			int64(0),

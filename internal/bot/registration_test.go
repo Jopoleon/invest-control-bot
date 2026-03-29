@@ -26,14 +26,15 @@ func TestHandleCallback_ReusesExistingCompletedProfile(t *testing.T) {
 	h := NewHandler(st, tg, payment.NewMockService("http://localhost:8080"), false, "http://localhost:8080", "test-encryption-key-123456789012345")
 
 	connectorID := seedBotConnector(t, ctx, st, "in-existing-user")
-	if err := st.SaveUser(ctx, domain.User{
-		TelegramID:       1001,
-		TelegramUsername: "existing_user",
-		FullName:         "Existing User",
-		Phone:            "+79990001122",
-		Email:            "existing@example.com",
-		UpdatedAt:        time.Now().UTC(),
-	}); err != nil {
+	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, "1001", "existing_user")
+	if err != nil {
+		t.Fatalf("GetOrCreateUserByMessenger: %v", err)
+	}
+	user.FullName = "Existing User"
+	user.Phone = "+79990001122"
+	user.Email = "existing@example.com"
+	user.UpdatedAt = time.Now().UTC()
+	if err := st.SaveUser(ctx, user); err != nil {
 		t.Fatalf("save user: %v", err)
 	}
 
@@ -58,13 +59,14 @@ func TestHandleCallback_RequestsOnlyMissingField(t *testing.T) {
 	h := NewHandler(st, tg, payment.NewMockService("http://localhost:8080"), false, "http://localhost:8080", "test-encryption-key-123456789012345")
 
 	connectorID := seedBotConnector(t, ctx, st, "in-partial-user")
-	if err := st.SaveUser(ctx, domain.User{
-		TelegramID:       1002,
-		TelegramUsername: "partial_user",
-		FullName:         "Partial User",
-		Email:            "partial@example.com",
-		UpdatedAt:        time.Now().UTC(),
-	}); err != nil {
+	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, "1002", "partial_user")
+	if err != nil {
+		t.Fatalf("GetOrCreateUserByMessenger: %v", err)
+	}
+	user.FullName = "Partial User"
+	user.Email = "partial@example.com"
+	user.UpdatedAt = time.Now().UTC()
+	if err := st.SaveUser(ctx, user); err != nil {
 		t.Fatalf("save user: %v", err)
 	}
 
@@ -229,13 +231,12 @@ func TestHandleCallback_CreatesInternalUserAndTelegramAccount(t *testing.T) {
 	if user.ID == 0 {
 		t.Fatalf("user id = 0")
 	}
-	if user.TelegramUsername != "linked_user" {
-		t.Fatalf("telegram username = %q", user.TelegramUsername)
-	}
-
 	accounts, err := st.ListUserMessengerAccounts(ctx, user.ID)
 	if err != nil {
-		t.Fatalf("list messenger accounts: %v", err)
+		t.Fatalf("ListUserMessengerAccounts: %v", err)
+	}
+	if len(accounts) == 0 || accounts[0].Username != "linked_user" {
+		t.Fatalf("linked messenger username missing: %+v", accounts)
 	}
 	if len(accounts) != 1 {
 		t.Fatalf("accounts len = %d, want 1", len(accounts))

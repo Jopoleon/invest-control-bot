@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 	"regexp"
 	"testing"
 	"time"
@@ -20,19 +19,20 @@ func TestUpsertSubscriptionByPaymentResolvesAndStoresUserID(t *testing.T) {
 	endsAt := now.Add(30 * 24 * time.Hour)
 
 	mock.ExpectQuery(regexp.QuoteMeta(`
-		SELECT id, COALESCE(telegram_id, 0), telegram_username, full_name, phone, email, updated_at
-		FROM users
-		WHERE telegram_id = $1
+		SELECT u.id, u.full_name, u.phone, u.email, u.created_at, u.updated_at
+		FROM user_messenger_accounts a
+		JOIN users u ON u.id = a.user_id
+		WHERE a.messenger_kind = $1 AND a.messenger_user_id = $2
 	`)).
-		WithArgs(int64(264704572)).
+		WithArgs(string(domain.MessengerKindTelegram), "264704572").
 		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "telegram_id", "telegram_username", "full_name", "phone", "email", "updated_at",
-		}).AddRow(17, 264704572, "emiloserdov", "Egor", "", "", now))
+			"id", "full_name", "phone", "email", "created_at", "updated_at",
+		}).AddRow(17, "Egor", "", "", now.Add(-time.Hour), now))
 
 	mock.ExpectExec(regexp.QuoteMeta(`
 		INSERT INTO subscriptions (
-			user_id, telegram_id, connector_id, payment_id, status, auto_pay_enabled, starts_at, ends_at, reminder_sent_at, expiry_notice_sent_at, created_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+			user_id, connector_id, payment_id, status, auto_pay_enabled, starts_at, ends_at, reminder_sent_at, expiry_notice_sent_at, created_at, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 		ON CONFLICT (payment_id)
 		DO UPDATE SET
 			user_id = EXCLUDED.user_id,
@@ -45,8 +45,7 @@ func TestUpsertSubscriptionByPaymentResolvesAndStoresUserID(t *testing.T) {
 			updated_at = EXCLUDED.updated_at
 	`)).
 		WithArgs(
-			sql.NullInt64{Int64: 17, Valid: true},
-			int64(264704572),
+			int64(17),
 			int64(11),
 			int64(9),
 			"active",
@@ -109,14 +108,14 @@ func TestDisableAutoPayForActiveSubscriptions(t *testing.T) {
 	mock.ExpectExec(regexp.QuoteMeta(`
 		UPDATE subscriptions
 		SET auto_pay_enabled = false, updated_at = $2
-		WHERE telegram_id = $1
+		WHERE user_id = $1
 		  AND status = $3
 		  AND auto_pay_enabled = true
 	`)).
-		WithArgs(int64(264704572), updatedAt, "active").
+		WithArgs(int64(17), updatedAt, "active").
 		WillReturnResult(sqlmock.NewResult(0, 2))
 
-	if err := store.DisableAutoPayForActiveSubscriptions(context.Background(), 264704572, updatedAt); err != nil {
+	if err := store.DisableAutoPayForActiveSubscriptions(context.Background(), 17, updatedAt); err != nil {
 		t.Fatalf("DisableAutoPayForActiveSubscriptions: %v", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {

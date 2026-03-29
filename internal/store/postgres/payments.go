@@ -23,18 +23,20 @@ func (s *Store) CreatePayment(ctx context.Context, payment domain.Payment) error
 	}
 	payment.UserID = resolvedUserID
 	payment.TelegramID = resolvedTelegramID
+	if payment.UserID <= 0 {
+		return errors.New("payment user is required")
+	}
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO payments (
-			provider, provider_payment_id, status, token, user_id, telegram_id, connector_id, subscription_id, parent_payment_id,
+			provider, provider_payment_id, status, token, user_id, connector_id, subscription_id, parent_payment_id,
 			auto_pay_enabled, amount_rub, checkout_url, created_at, paid_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 	`,
 		payment.Provider,
 		payment.ProviderPaymentID,
 		string(payment.Status),
 		payment.Token,
-		nullableInt64(payment.UserID),
-		payment.TelegramID,
+		payment.UserID,
 		payment.ConnectorID,
 		payment.SubscriptionID,
 		payment.ParentPaymentID,
@@ -51,10 +53,14 @@ func (s *Store) CreatePayment(ctx context.Context, payment domain.Payment) error
 // GetPaymentByToken returns payment by externally visible checkout token.
 func (s *Store) GetPaymentByToken(ctx context.Context, token string) (domain.Payment, bool, error) {
 	payment, err := scanPayment(s.db.QueryRowContext(ctx, `
-		SELECT id, provider, provider_payment_id, status, token, COALESCE(user_id, 0), telegram_id, connector_id, subscription_id, parent_payment_id,
-		       auto_pay_enabled, amount_rub, checkout_url, created_at, paid_at, updated_at
-		FROM payments
-		WHERE token = $1
+		SELECT p.id, p.provider, p.provider_payment_id, p.status, p.token, COALESCE(p.user_id, 0),
+		       COALESCE(NULLIF(ta.messenger_user_id, ''), '0')::BIGINT AS telegram_id,
+		       p.connector_id, p.subscription_id, p.parent_payment_id,
+		       p.auto_pay_enabled, p.amount_rub, p.checkout_url, p.created_at, p.paid_at, p.updated_at
+		FROM payments p
+		LEFT JOIN user_messenger_accounts ta
+		       ON ta.user_id = p.user_id AND ta.messenger_kind = 'telegram'
+		WHERE p.token = $1
 	`, token))
 	if err == sql.ErrNoRows {
 		return domain.Payment{}, false, nil
@@ -68,10 +74,14 @@ func (s *Store) GetPaymentByToken(ctx context.Context, token string) (domain.Pay
 // GetPaymentByID returns payment by internal identifier.
 func (s *Store) GetPaymentByID(ctx context.Context, paymentID int64) (domain.Payment, bool, error) {
 	payment, err := scanPayment(s.db.QueryRowContext(ctx, `
-		SELECT id, provider, provider_payment_id, status, token, COALESCE(user_id, 0), telegram_id, connector_id, subscription_id, parent_payment_id,
-		       auto_pay_enabled, amount_rub, checkout_url, created_at, paid_at, updated_at
-		FROM payments
-		WHERE id = $1
+		SELECT p.id, p.provider, p.provider_payment_id, p.status, p.token, COALESCE(p.user_id, 0),
+		       COALESCE(NULLIF(ta.messenger_user_id, ''), '0')::BIGINT AS telegram_id,
+		       p.connector_id, p.subscription_id, p.parent_payment_id,
+		       p.auto_pay_enabled, p.amount_rub, p.checkout_url, p.created_at, p.paid_at, p.updated_at
+		FROM payments p
+		LEFT JOIN user_messenger_accounts ta
+		       ON ta.user_id = p.user_id AND ta.messenger_kind = 'telegram'
+		WHERE p.id = $1
 	`, paymentID))
 	if err == sql.ErrNoRows {
 		return domain.Payment{}, false, nil
@@ -88,12 +98,16 @@ func (s *Store) GetPendingRebillPaymentBySubscription(ctx context.Context, subsc
 		return domain.Payment{}, false, nil
 	}
 	payment, err := scanPayment(s.db.QueryRowContext(ctx, `
-		SELECT id, provider, provider_payment_id, status, token, COALESCE(user_id, 0), telegram_id, connector_id, subscription_id, parent_payment_id,
-		       auto_pay_enabled, amount_rub, checkout_url, created_at, paid_at, updated_at
-		FROM payments
-		WHERE subscription_id = $1
-		  AND status = $2
-		ORDER BY created_at DESC, id DESC
+		SELECT p.id, p.provider, p.provider_payment_id, p.status, p.token, COALESCE(p.user_id, 0),
+		       COALESCE(NULLIF(ta.messenger_user_id, ''), '0')::BIGINT AS telegram_id,
+		       p.connector_id, p.subscription_id, p.parent_payment_id,
+		       p.auto_pay_enabled, p.amount_rub, p.checkout_url, p.created_at, p.paid_at, p.updated_at
+		FROM payments p
+		LEFT JOIN user_messenger_accounts ta
+		       ON ta.user_id = p.user_id AND ta.messenger_kind = 'telegram'
+		WHERE p.subscription_id = $1
+		  AND p.status = $2
+		ORDER BY p.created_at DESC, p.id DESC
 		LIMIT 1
 	`, subscriptionID, string(domain.PaymentStatusPending)))
 	if err == sql.ErrNoRows {

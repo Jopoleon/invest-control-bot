@@ -218,7 +218,7 @@ func TestProcessSubscriptionReminders_SkipsWhenConnectorMissing(t *testing.T) {
 		t.Fatalf("upsert subscription: %v", err)
 	}
 
-	sub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, paymentRow.TelegramID, 999999)
+	sub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, paymentRow.UserID, 999999)
 	if err != nil || !found {
 		t.Fatalf("get latest subscription: found=%v err=%v", found, err)
 	}
@@ -303,7 +303,7 @@ func TestBuildRenewalNotification_WithoutPayloadLeavesPlainText(t *testing.T) {
 		},
 	}
 
-	msg := appCtx.buildRenewalNotification(context.Background(), 0, 880555, "", "test reminder")
+	msg := appCtx.buildRenewalNotification(context.Background(), 0, "880555", "", "test reminder")
 	if msg.Text != "test reminder" {
 		t.Fatalf("text = %q, want plain reminder text", msg.Text)
 	}
@@ -359,7 +359,7 @@ func seedActiveSubscriptionForUser(t *testing.T, ctx context.Context, st store.S
 		t.Fatalf("upsert subscription: %v", err)
 	}
 
-	sub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, telegramID, connectorID)
+	sub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, paymentRow.UserID, connectorID)
 	if err != nil {
 		t.Fatalf("get latest subscription: %v", err)
 	}

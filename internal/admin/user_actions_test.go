@@ -24,12 +24,13 @@ func TestSendUserMessage_AllowsUserIDResolution(t *testing.T) {
 	}
 	h := NewHandler(st, "test-admin-token", "test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", tg, nil)
 
-	if err := st.SaveUser(ctx, domain.User{
-		TelegramID:       264704572,
-		TelegramUsername: "emiloserdov",
-		FullName:         "Egor Miloserdov",
-		UpdatedAt:        time.Now().UTC(),
-	}); err != nil {
+	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, "264704572", "emiloserdov")
+	if err != nil {
+		t.Fatalf("GetOrCreateUserByMessenger: %v", err)
+	}
+	user.FullName = "Egor Miloserdov"
+	user.UpdatedAt = time.Now().UTC()
+	if err := st.SaveUser(ctx, user); err != nil {
 		t.Fatalf("SaveUser: %v", err)
 	}
 	user, found, err := st.GetUser(ctx, 264704572)

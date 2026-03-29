@@ -95,14 +95,14 @@ type PaymentStore interface {
 type SubscriptionStore interface {
 	UpsertSubscriptionByPayment(ctx context.Context, sub domain.Subscription) error
 	GetSubscriptionByID(ctx context.Context, subscriptionID int64) (domain.Subscription, bool, error)
-	GetLatestSubscriptionByUserConnector(ctx context.Context, telegramID, connectorID int64) (domain.Subscription, bool, error)
+	GetLatestSubscriptionByUserConnector(ctx context.Context, userID, connectorID int64) (domain.Subscription, bool, error)
 	ListSubscriptions(ctx context.Context, query domain.SubscriptionListQuery) ([]domain.Subscription, error)
 	ListSubscriptionsForReminder(ctx context.Context, remindBefore time.Time, limit int) ([]domain.Subscription, error)
 	MarkSubscriptionReminderSent(ctx context.Context, subscriptionID int64, sentAt time.Time) error
 	ListSubscriptionsForExpiryNotice(ctx context.Context, noticeBefore time.Time, limit int) ([]domain.Subscription, error)
 	MarkSubscriptionExpiryNoticeSent(ctx context.Context, subscriptionID int64, sentAt time.Time) error
 	ListExpiredActiveSubscriptions(ctx context.Context, now time.Time, limit int) ([]domain.Subscription, error)
-	DisableAutoPayForActiveSubscriptions(ctx context.Context, telegramID int64, updatedAt time.Time) error
+	DisableAutoPayForActiveSubscriptions(ctx context.Context, userID int64, updatedAt time.Time) error
 	SetSubscriptionAutoPayEnabled(ctx context.Context, subscriptionID int64, enabled bool, updatedAt time.Time) error
 	UpdateSubscriptionStatus(ctx context.Context, subscriptionID int64, status domain.SubscriptionStatus, updatedAt time.Time) error
 }

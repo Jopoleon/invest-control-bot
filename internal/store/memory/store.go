@@ -500,32 +500,18 @@ func (s *Store) SaveUser(_ context.Context, user domain.User) error {
 	defer s.mu.Unlock()
 
 	user.UpdatedAt = time.Now().UTC()
-	if user.ID > 0 {
-		if existing, ok := s.users[user.ID]; ok && existing.TelegramID > 0 && existing.TelegramID != user.TelegramID {
-			delete(s.userIDByTelegram, existing.TelegramID)
-		}
-	} else if user.TelegramID > 0 {
-		if existingID, ok := s.userIDByTelegram[user.TelegramID]; ok {
-			user.ID = existingID
-		}
-	}
 	if user.ID <= 0 {
 		user.ID = s.nextUserID
 		s.nextUserID++
 	}
+	if existing, ok := s.users[user.ID]; ok && !existing.CreatedAt.IsZero() {
+		user.CreatedAt = existing.CreatedAt
+	}
+	if user.CreatedAt.IsZero() {
+		user.CreatedAt = user.UpdatedAt
+	}
 
 	s.users[user.ID] = user
-	if user.TelegramID > 0 {
-		s.userIDByTelegram[user.TelegramID] = user.ID
-		s.upsertMessengerAccountLocked(domain.UserMessengerAccount{
-			UserID:          user.ID,
-			MessengerKind:   domain.MessengerKindTelegram,
-			MessengerUserID: strconv.FormatInt(user.TelegramID, 10),
-			Username:        user.TelegramUsername,
-			LinkedAt:        user.UpdatedAt,
-			UpdatedAt:       user.UpdatedAt,
-		})
-	}
 	return nil
 }
 
@@ -560,19 +546,7 @@ func (s *Store) GetUserByMessenger(_ context.Context, kind domain.MessengerKind,
 		user, found := s.users[account.UserID]
 		return user, found, nil
 	}
-	if kind != domain.MessengerKindTelegram {
-		return domain.User{}, false, nil
-	}
-	telegramID, err := strconv.ParseInt(messengerUserID, 10, 64)
-	if err != nil || telegramID <= 0 {
-		return domain.User{}, false, nil
-	}
-	userID, ok := s.userIDByTelegram[telegramID]
-	if !ok {
-		return domain.User{}, false, nil
-	}
-	user, found := s.users[userID]
-	return user, found, nil
+	return domain.User{}, false, nil
 }
 
 // GetOrCreateUserByMessenger resolves a user by external messenger identity or creates one if absent.
@@ -587,27 +561,16 @@ func (s *Store) GetOrCreateUserByMessenger(_ context.Context, kind domain.Messen
 			account.Username = username
 			account.UpdatedAt = time.Now().UTC()
 			s.messengerAccounts[key] = account
-			if kind == domain.MessengerKindTelegram && user.TelegramUsername != username {
-				user.TelegramUsername = username
-				user.UpdatedAt = account.UpdatedAt
-				s.users[user.ID] = user
-			}
 		}
 		return user, false, nil
 	}
 
 	user := domain.User{
 		ID:        s.nextUserID,
+		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	}
 	s.nextUserID++
-	if kind == domain.MessengerKindTelegram {
-		if telegramID, err := strconv.ParseInt(messengerUserID, 10, 64); err == nil && telegramID > 0 {
-			user.TelegramID = telegramID
-			user.TelegramUsername = username
-			s.userIDByTelegram[telegramID] = user.ID
-		}
-	}
 	s.users[user.ID] = user
 	s.upsertMessengerAccountLocked(domain.UserMessengerAccount{
 		UserID:          user.ID,
@@ -653,13 +616,14 @@ func (s *Store) ListUsers(_ context.Context, query domain.UserListQuery) ([]doma
 
 	items := make([]domain.UserListItem, 0, len(s.users))
 	for _, user := range s.users {
-		if query.TelegramID > 0 && user.TelegramID != query.TelegramID {
+		telegramID, telegramUsername := s.telegramIdentityLocked(user.ID)
+		if query.TelegramID > 0 && telegramID != query.TelegramID {
 			continue
 		}
 		if search != "" {
 			haystack := strings.ToLower(strings.Join([]string{
-				strconv.FormatInt(user.TelegramID, 10),
-				user.TelegramUsername,
+				strconv.FormatInt(telegramID, 10),
+				telegramUsername,
 				user.FullName,
 				user.Phone,
 				user.Email,
@@ -671,8 +635,8 @@ func (s *Store) ListUsers(_ context.Context, query domain.UserListQuery) ([]doma
 		autoPay, hasAutoPay := s.userAutopaySummaryLocked(user.ID)
 		items = append(items, domain.UserListItem{
 			UserID:             user.ID,
-			TelegramID:         user.TelegramID,
-			TelegramUsername:   user.TelegramUsername,
+			TelegramID:         telegramID,
+			TelegramUsername:   telegramUsername,
 			FullName:           user.FullName,
 			Phone:              user.Phone,
 			Email:              user.Email,
@@ -1021,7 +985,7 @@ func (s *Store) GetSubscriptionByID(_ context.Context, subscriptionID int64) (do
 }
 
 // GetLatestSubscriptionByUserConnector returns latest subscription by ends_at for pair.
-func (s *Store) GetLatestSubscriptionByUserConnector(_ context.Context, telegramID, connectorID int64) (domain.Subscription, bool, error) {
+func (s *Store) GetLatestSubscriptionByUserConnector(_ context.Context, userID, connectorID int64) (domain.Subscription, bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	var (
@@ -1029,7 +993,7 @@ func (s *Store) GetLatestSubscriptionByUserConnector(_ context.Context, telegram
 		found bool
 	)
 	for _, sub := range s.subsByPayID {
-		if sub.TelegramID != telegramID || sub.ConnectorID != connectorID {
+		if sub.UserID != userID || sub.ConnectorID != connectorID {
 			continue
 		}
 		if !found || sub.EndsAt.After(best.EndsAt) {
@@ -1314,7 +1278,7 @@ func (s *Store) UpdateSubscriptionStatus(_ context.Context, subscriptionID int64
 }
 
 // DisableAutoPayForActiveSubscriptions clears recurring flag for all active subscriptions of one user.
-func (s *Store) DisableAutoPayForActiveSubscriptions(_ context.Context, telegramID int64, updatedAt time.Time) error {
+func (s *Store) DisableAutoPayForActiveSubscriptions(_ context.Context, userID int64, updatedAt time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -1322,7 +1286,7 @@ func (s *Store) DisableAutoPayForActiveSubscriptions(_ context.Context, telegram
 		updatedAt = time.Now().UTC()
 	}
 	for paymentID, sub := range s.subsByPayID {
-		if sub.TelegramID != telegramID || sub.Status != domain.SubscriptionStatusActive || !sub.AutoPayEnabled {
+		if sub.UserID != userID || sub.Status != domain.SubscriptionStatusActive || !sub.AutoPayEnabled {
 			continue
 		}
 		sub.AutoPayEnabled = false
@@ -1372,11 +1336,11 @@ func messengerAccountKey(kind domain.MessengerKind, messengerUserID string) stri
 
 func (s *Store) resolveUserIdentityLocked(userID, telegramID int64) (int64, int64) {
 	if userID > 0 {
-		if user, ok := s.users[userID]; ok {
+		if _, ok := s.users[userID]; ok {
 			if telegramID <= 0 {
-				telegramID = user.TelegramID
+				telegramID, _ = s.telegramIdentityLocked(userID)
 			}
-			return user.ID, telegramID
+			return userID, telegramID
 		}
 	}
 	if telegramID > 0 {
@@ -1402,4 +1366,23 @@ func (s *Store) upsertMessengerAccountLocked(account domain.UserMessengerAccount
 		account.UpdatedAt = account.LinkedAt
 	}
 	s.messengerAccounts[key] = account
+	if account.MessengerKind == domain.MessengerKindTelegram {
+		if telegramID, err := strconv.ParseInt(account.MessengerUserID, 10, 64); err == nil && telegramID > 0 {
+			s.userIDByTelegram[telegramID] = account.UserID
+		}
+	}
+}
+
+func (s *Store) telegramIdentityLocked(userID int64) (int64, string) {
+	for _, account := range s.messengerAccounts {
+		if account.UserID != userID || account.MessengerKind != domain.MessengerKindTelegram {
+			continue
+		}
+		telegramID, err := strconv.ParseInt(account.MessengerUserID, 10, 64)
+		if err != nil || telegramID <= 0 {
+			return 0, account.Username
+		}
+		return telegramID, account.Username
+	}
+	return 0, ""
 }

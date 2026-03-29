@@ -238,7 +238,7 @@ func TestActivateSuccessfulPayment_ExtendsFromCurrentSubscriptionEnd(t *testing.
 	}
 	appCtx.activateSuccessfulPayment(ctx, paymentRow, "robokassa:extend-current-period-1", now)
 
-	latestSub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, paymentRow.TelegramID, paymentRow.ConnectorID)
+	latestSub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, paymentRow.UserID, paymentRow.ConnectorID)
 	if err != nil || !found {
 		t.Fatalf("get latest subscription: found=%v err=%v", found, err)
 	}
@@ -1048,6 +1048,13 @@ func seedConnector(t *testing.T, ctx context.Context, st store.Store, payload st
 
 func seedPayment(t *testing.T, ctx context.Context, st store.Store, payment domain.Payment) {
 	t.Helper()
+	if payment.UserID <= 0 && payment.TelegramID > 0 {
+		user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, fmt.Sprintf("%d", payment.TelegramID), "")
+		if err != nil {
+			t.Fatalf("get or create user by messenger: %v", err)
+		}
+		payment.UserID = user.ID
+	}
 	if err := st.CreatePayment(ctx, payment); err != nil {
 		t.Fatalf("create payment: %v", err)
 	}

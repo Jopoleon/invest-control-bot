@@ -21,9 +21,6 @@ func TestGetOrCreateUserByMessengerCreatesTelegramUserAndAccount(t *testing.T) {
 	if user.ID == 0 {
 		t.Fatalf("user ID = 0")
 	}
-	if user.TelegramID != 264704572 {
-		t.Fatalf("telegram id = %d", user.TelegramID)
-	}
 
 	gotByTelegram, found, err := st.GetUser(ctx, 264704572)
 	if err != nil {
@@ -37,7 +34,7 @@ func TestGetOrCreateUserByMessengerCreatesTelegramUserAndAccount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetUserByID: %v", err)
 	}
-	if !found || gotByID.TelegramID != 264704572 {
+	if !found || gotByID.ID != user.ID {
 		t.Fatalf("GetUserByID returned %+v, found=%v", gotByID, found)
 	}
 

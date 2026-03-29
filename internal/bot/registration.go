@@ -23,7 +23,6 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg messenger.Inco
 	if !ok {
 		return
 	}
-	applyCurrentTelegramUsername(&user, msg.User.Username)
 
 	switch state.Step {
 	case domain.StepFullName:
@@ -46,7 +45,16 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg messenger.Inco
 		h.logAuditEvent(ctx, msg.User, state.ConnectorID, domain.AuditActionRegistrationEmailSaved, "")
 	case domain.StepUsername:
 		if text != "-" {
-			user.TelegramUsername = normalizeTelegramUsername(text)
+			state.Username = normalizeMessengerUsername(text)
+			if _, _, err := h.store.GetOrCreateUserByMessenger(
+				ctx,
+				messengerKindFromIdentity(msg.User.Kind),
+				strconv.FormatInt(msg.User.ID, 10),
+				state.Username,
+			); err != nil {
+				slog.Error("refresh messenger username failed", "error", err, "messenger_kind", msg.User.Kind, "messenger_user_id", msg.User.ID)
+				return
+			}
 		}
 	default:
 		return
@@ -57,7 +65,7 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg messenger.Inco
 		return
 	}
 
-	state.Step = nextRegistrationStep(user)
+	state.Step = nextRegistrationStep(user, state.Username)
 	if state.Step == domain.StepDone {
 		if err := h.store.DeleteRegistrationState(ctx, messengerKindFromIdentity(msg.User.Kind), strconv.FormatInt(msg.User.ID, 10)); err != nil {
 			slog.Error("delete registration state failed", "error", err, "telegram_id", msg.User.ID)

@@ -61,13 +61,17 @@ func (h *Handler) renderUserDetailPage(ctx context.Context, w http.ResponseWrite
 }
 
 func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.ResponseWriter, r *http.Request, lang string, item domain.User, notice string) {
-	telegramID := item.TelegramID
-	payments, err := h.store.ListPayments(ctx, domain.PaymentListQuery{TelegramID: telegramID, Limit: 200})
+	telegramID, telegramUsername, hasTelegramIdentity, err := h.resolveTelegramIdentity(ctx, item.ID)
 	if err != nil {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
 		return
 	}
-	subs, err := h.store.ListSubscriptions(ctx, domain.SubscriptionListQuery{TelegramID: telegramID, Limit: 200})
+	payments, err := h.store.ListPayments(ctx, domain.PaymentListQuery{UserID: item.ID, TelegramID: telegramID, Limit: 200})
+	if err != nil {
+		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
+		return
+	}
+	subs, err := h.store.ListSubscriptions(ctx, domain.SubscriptionListQuery{UserID: item.ID, TelegramID: telegramID, Limit: 200})
 	if err != nil {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
 		return
@@ -107,11 +111,11 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 		Notice:           notice,
 		BackURL:          "/admin/users?lang=" + lang,
 		MessageActionURL: "/admin/users/message?lang=" + lang,
-		AutopayCancelURL: h.buildAutopayCancelURL(item.TelegramID),
+		AutopayCancelURL: h.buildAutopayCancelURL(telegramID),
 		User: userView{
 			UserID:           item.ID,
-			TelegramID:       item.TelegramID,
-			TelegramUsername: item.TelegramUsername,
+			TelegramID:       telegramID,
+			TelegramUsername: telegramUsername,
 			FullName:         item.FullName,
 			Phone:            item.Phone,
 			Email:            item.Email,
@@ -216,6 +220,9 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 			Action:                event.Action,
 			Details:               event.Details,
 		})
+	}
+	if !hasTelegramIdentity {
+		data.AutopayCancelURL = ""
 	}
 
 	h.renderer.render(w, "user_detail.html", data)

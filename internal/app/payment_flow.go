@@ -45,15 +45,14 @@ func (a *application) activateSuccessfulPayment(ctx context.Context, paymentRow 
 	}
 
 	startAt := effectivePaidAt
-	if latestSub, found, err := a.store.GetLatestSubscriptionByUserConnector(ctx, paymentRow.TelegramID, paymentRow.ConnectorID); err != nil {
-		slog.Error("load latest subscription failed", "error", err, "telegram_id", paymentRow.TelegramID, "connector_id", paymentRow.ConnectorID)
+	if latestSub, found, err := a.store.GetLatestSubscriptionByUserConnector(ctx, paymentRow.UserID, paymentRow.ConnectorID); err != nil {
+		slog.Error("load latest subscription failed", "error", err, "user_id", paymentRow.UserID, "connector_id", paymentRow.ConnectorID)
 	} else if found && latestSub.Status == domain.SubscriptionStatusActive && latestSub.EndsAt.After(startAt) {
 		startAt = latestSub.EndsAt
 	}
 	endsAt := startAt.AddDate(0, 0, periodDays)
 	if err := a.store.UpsertSubscriptionByPayment(ctx, domain.Subscription{
 		UserID:         paymentRow.UserID,
-		TelegramID:     paymentRow.TelegramID,
 		ConnectorID:    paymentRow.ConnectorID,
 		PaymentID:      paymentRow.ID,
 		Status:         domain.SubscriptionStatusActive,
@@ -67,11 +66,11 @@ func (a *application) activateSuccessfulPayment(ctx context.Context, paymentRow 
 		return
 	}
 
-	slog.Info("subscription activated", "payment_id", paymentRow.ID, "telegram_id", paymentRow.TelegramID, "connector_id", paymentRow.ConnectorID, "starts_at", startAt, "ends_at", endsAt)
+	slog.Info("subscription activated", "payment_id", paymentRow.ID, "user_id", paymentRow.UserID, "connector_id", paymentRow.ConnectorID, "starts_at", startAt, "ends_at", endsAt)
 	if err := a.store.SaveAuditEvent(ctx, a.buildAppTargetAuditEvent(
 		ctx,
 		paymentRow.UserID,
-		paymentRow.TelegramID,
+		formatPreferredMessengerUserID(paymentRow.TelegramID),
 		paymentRow.ConnectorID,
 		domain.AuditActionSubscriptionActivated,
 		"payment_id="+strconv.FormatInt(paymentRow.ID, 10),
@@ -102,11 +101,11 @@ func (a *application) activateSuccessfulPayment(ctx context.Context, paymentRow 
 			{{Text: appPaymentActionMySubscription, Action: "menu:subscription"}},
 		}
 	}
-	if err := a.sendUserNotification(ctx, paymentRow.UserID, paymentRow.TelegramID, message); err != nil {
+	if err := a.sendUserNotification(ctx, paymentRow.UserID, formatPreferredMessengerUserID(paymentRow.TelegramID), message); err != nil {
 		slog.Error("send payment success message failed",
 			"error", err,
 			"user_id", paymentRow.UserID,
-			"legacy_external_id", paymentRow.TelegramID,
+			"preferred_messenger_user_id", paymentRow.TelegramID,
 			"payment_id", paymentRow.ID,
 		)
 		return
@@ -114,7 +113,7 @@ func (a *application) activateSuccessfulPayment(ctx context.Context, paymentRow 
 	if err := a.store.SaveAuditEvent(ctx, a.buildAppTargetAuditEvent(
 		ctx,
 		paymentRow.UserID,
-		paymentRow.TelegramID,
+		formatPreferredMessengerUserID(paymentRow.TelegramID),
 		paymentRow.ConnectorID,
 		domain.AuditActionPaymentSuccessNotified,
 		"payment_id="+strconv.FormatInt(paymentRow.ID, 10),

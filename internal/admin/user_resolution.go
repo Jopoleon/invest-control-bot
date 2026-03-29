@@ -21,6 +21,27 @@ func (h *Handler) resolveUser(ctx context.Context, userID, telegramID int64) (do
 	return h.store.GetUserByMessenger(ctx, domain.MessengerKindTelegram, strconv.FormatInt(telegramID, 10))
 }
 
+func (h *Handler) resolveTelegramIdentity(ctx context.Context, userID int64) (int64, string, bool, error) {
+	if userID <= 0 {
+		return 0, "", false, nil
+	}
+	accounts, err := h.store.ListUserMessengerAccounts(ctx, userID)
+	if err != nil {
+		return 0, "", false, err
+	}
+	for _, account := range accounts {
+		if account.MessengerKind != domain.MessengerKindTelegram {
+			continue
+		}
+		telegramID, err := strconv.ParseInt(strings.TrimSpace(account.MessengerUserID), 10, 64)
+		if err != nil || telegramID <= 0 {
+			return 0, account.Username, false, nil
+		}
+		return telegramID, account.Username, true, nil
+	}
+	return 0, "", false, nil
+}
+
 func parseUserDetailParams(rawUserID, rawTelegramID string) (int64, int64) {
 	return parseInt64Default(strings.TrimSpace(rawUserID)), parseInt64Default(strings.TrimSpace(rawTelegramID))
 }
@@ -45,12 +66,19 @@ func (h *Handler) resolveFilterTelegramID(ctx context.Context, rawUserID, rawTel
 	if userID <= 0 {
 		return telegramID, nil
 	}
-	user, found, err := h.resolveUser(ctx, userID, 0)
+	_, found, err := h.resolveUser(ctx, userID, 0)
 	if err != nil {
 		return 0, err
 	}
 	if !found {
 		return 0, nil
 	}
-	return user.TelegramID, nil
+	resolvedTelegramID, _, found, err := h.resolveTelegramIdentity(ctx, userID)
+	if err != nil {
+		return 0, err
+	}
+	if !found {
+		return 0, nil
+	}
+	return resolvedTelegramID, nil
 }

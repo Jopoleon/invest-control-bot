@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,10 +26,13 @@ func (s *Store) UpsertSubscriptionByPayment(ctx context.Context, sub domain.Subs
 	}
 	sub.UserID = resolvedUserID
 	sub.TelegramID = resolvedTelegramID
+	if sub.UserID <= 0 {
+		return errors.New("subscription user is required")
+	}
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO subscriptions (
-			user_id, telegram_id, connector_id, payment_id, status, auto_pay_enabled, starts_at, ends_at, reminder_sent_at, expiry_notice_sent_at, created_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+			user_id, connector_id, payment_id, status, auto_pay_enabled, starts_at, ends_at, reminder_sent_at, expiry_notice_sent_at, created_at, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 		ON CONFLICT (payment_id)
 		DO UPDATE SET
 			user_id = EXCLUDED.user_id,
@@ -40,8 +44,7 @@ func (s *Store) UpsertSubscriptionByPayment(ctx context.Context, sub domain.Subs
 			expiry_notice_sent_at = EXCLUDED.expiry_notice_sent_at,
 			updated_at = EXCLUDED.updated_at
 	`,
-		nullableInt64(sub.UserID),
-		sub.TelegramID,
+		sub.UserID,
 		sub.ConnectorID,
 		sub.PaymentID,
 		string(sub.Status),
@@ -59,9 +62,14 @@ func (s *Store) UpsertSubscriptionByPayment(ctx context.Context, sub domain.Subs
 // GetSubscriptionByID fetches subscription by internal identifier.
 func (s *Store) GetSubscriptionByID(ctx context.Context, subscriptionID int64) (domain.Subscription, bool, error) {
 	item, err := scanSubscription(s.db.QueryRowContext(ctx, `
-		SELECT id, COALESCE(user_id, 0), telegram_id, connector_id, payment_id, status, auto_pay_enabled, starts_at, ends_at, reminder_sent_at, expiry_notice_sent_at, created_at, updated_at
-		FROM subscriptions
-		WHERE id = $1
+		SELECT s.id, COALESCE(s.user_id, 0),
+		       COALESCE(NULLIF(ta.messenger_user_id, ''), '0')::BIGINT AS telegram_id,
+		       s.connector_id, s.payment_id, s.status, s.auto_pay_enabled, s.starts_at, s.ends_at,
+		       s.reminder_sent_at, s.expiry_notice_sent_at, s.created_at, s.updated_at
+		FROM subscriptions s
+		LEFT JOIN user_messenger_accounts ta
+		       ON ta.user_id = s.user_id AND ta.messenger_kind = 'telegram'
+		WHERE s.id = $1
 	`, subscriptionID))
 	if err == sql.ErrNoRows {
 		return domain.Subscription{}, false, nil
@@ -73,14 +81,19 @@ func (s *Store) GetSubscriptionByID(ctx context.Context, subscriptionID int64) (
 }
 
 // GetLatestSubscriptionByUserConnector returns latest subscription by ends_at for user/connector pair.
-func (s *Store) GetLatestSubscriptionByUserConnector(ctx context.Context, telegramID, connectorID int64) (domain.Subscription, bool, error) {
+func (s *Store) GetLatestSubscriptionByUserConnector(ctx context.Context, userID, connectorID int64) (domain.Subscription, bool, error) {
 	item, err := scanSubscription(s.db.QueryRowContext(ctx, `
-		SELECT id, COALESCE(user_id, 0), telegram_id, connector_id, payment_id, status, auto_pay_enabled, starts_at, ends_at, reminder_sent_at, expiry_notice_sent_at, created_at, updated_at
-		FROM subscriptions
-		WHERE telegram_id = $1 AND connector_id = $2
-		ORDER BY ends_at DESC, id DESC
+		SELECT s.id, COALESCE(s.user_id, 0),
+		       COALESCE(NULLIF(ta.messenger_user_id, ''), '0')::BIGINT AS telegram_id,
+		       s.connector_id, s.payment_id, s.status, s.auto_pay_enabled, s.starts_at, s.ends_at,
+		       s.reminder_sent_at, s.expiry_notice_sent_at, s.created_at, s.updated_at
+		FROM subscriptions s
+		LEFT JOIN user_messenger_accounts ta
+		       ON ta.user_id = s.user_id AND ta.messenger_kind = 'telegram'
+		WHERE s.user_id = $1 AND s.connector_id = $2
+		ORDER BY s.ends_at DESC, s.id DESC
 		LIMIT 1
-	`, telegramID, connectorID))
+	`, userID, connectorID))
 	if err == sql.ErrNoRows {
 		return domain.Subscription{}, false, nil
 	}
@@ -108,30 +121,34 @@ func (s *Store) ListPayments(ctx context.Context, query domain.PaymentListQuery)
 		return fmt.Sprintf("$%d", len(args))
 	}
 	if query.TelegramID > 0 {
-		where = append(where, "telegram_id = "+addArg(query.TelegramID))
+		where = append(where, "ta.messenger_user_id = "+addArg(strconv.FormatInt(query.TelegramID, 10)))
 	}
 	if query.UserID > 0 {
-		where = append(where, "user_id = "+addArg(query.UserID))
+		where = append(where, "p.user_id = "+addArg(query.UserID))
 	}
 	if query.ConnectorID > 0 {
-		where = append(where, "connector_id = "+addArg(query.ConnectorID))
+		where = append(where, "p.connector_id = "+addArg(query.ConnectorID))
 	}
 	if query.Status != "" {
-		where = append(where, "status = "+addArg(string(query.Status)))
+		where = append(where, "p.status = "+addArg(string(query.Status)))
 	}
 	if query.CreatedFrom != nil {
-		where = append(where, "created_at >= "+addArg(*query.CreatedFrom))
+		where = append(where, "p.created_at >= "+addArg(*query.CreatedFrom))
 	}
 	if query.CreatedToExclude != nil {
-		where = append(where, "created_at < "+addArg(*query.CreatedToExclude))
+		where = append(where, "p.created_at < "+addArg(*query.CreatedToExclude))
 	}
 	whereClause := strings.Join(where, " AND ")
 	sqlText := fmt.Sprintf(`
-		SELECT id, provider, provider_payment_id, status, token, COALESCE(user_id, 0), telegram_id, connector_id, subscription_id, parent_payment_id,
-		       auto_pay_enabled, amount_rub, checkout_url, created_at, paid_at, updated_at
-		FROM payments
+		SELECT p.id, p.provider, p.provider_payment_id, p.status, p.token, COALESCE(p.user_id, 0),
+		       COALESCE(NULLIF(ta.messenger_user_id, ''), '0')::BIGINT AS telegram_id,
+		       p.connector_id, p.subscription_id, p.parent_payment_id,
+		       p.auto_pay_enabled, p.amount_rub, p.checkout_url, p.created_at, p.paid_at, p.updated_at
+		FROM payments p
+		LEFT JOIN user_messenger_accounts ta
+		       ON ta.user_id = p.user_id AND ta.messenger_kind = 'telegram'
 		WHERE %s
-		ORDER BY created_at DESC, id DESC
+		ORDER BY p.created_at DESC, p.id DESC
 		LIMIT %s
 	`, whereClause, addArg(limit))
 
@@ -170,29 +187,34 @@ func (s *Store) ListSubscriptions(ctx context.Context, query domain.Subscription
 		return fmt.Sprintf("$%d", len(args))
 	}
 	if query.TelegramID > 0 {
-		where = append(where, "telegram_id = "+addArg(query.TelegramID))
+		where = append(where, "ta.messenger_user_id = "+addArg(strconv.FormatInt(query.TelegramID, 10)))
 	}
 	if query.UserID > 0 {
-		where = append(where, "user_id = "+addArg(query.UserID))
+		where = append(where, "s.user_id = "+addArg(query.UserID))
 	}
 	if query.ConnectorID > 0 {
-		where = append(where, "connector_id = "+addArg(query.ConnectorID))
+		where = append(where, "s.connector_id = "+addArg(query.ConnectorID))
 	}
 	if query.Status != "" {
-		where = append(where, "status = "+addArg(string(query.Status)))
+		where = append(where, "s.status = "+addArg(string(query.Status)))
 	}
 	if query.CreatedFrom != nil {
-		where = append(where, "created_at >= "+addArg(*query.CreatedFrom))
+		where = append(where, "s.created_at >= "+addArg(*query.CreatedFrom))
 	}
 	if query.CreatedToExclude != nil {
-		where = append(where, "created_at < "+addArg(*query.CreatedToExclude))
+		where = append(where, "s.created_at < "+addArg(*query.CreatedToExclude))
 	}
 	whereClause := strings.Join(where, " AND ")
 	sqlText := fmt.Sprintf(`
-		SELECT id, COALESCE(user_id, 0), telegram_id, connector_id, payment_id, status, auto_pay_enabled, starts_at, ends_at, reminder_sent_at, expiry_notice_sent_at, created_at, updated_at
-		FROM subscriptions
+		SELECT s.id, COALESCE(s.user_id, 0),
+		       COALESCE(NULLIF(ta.messenger_user_id, ''), '0')::BIGINT AS telegram_id,
+		       s.connector_id, s.payment_id, s.status, s.auto_pay_enabled, s.starts_at, s.ends_at,
+		       s.reminder_sent_at, s.expiry_notice_sent_at, s.created_at, s.updated_at
+		FROM subscriptions s
+		LEFT JOIN user_messenger_accounts ta
+		       ON ta.user_id = s.user_id AND ta.messenger_kind = 'telegram'
 		WHERE %s
-		ORDER BY created_at DESC, id DESC
+		ORDER BY s.created_at DESC, s.id DESC
 		LIMIT %s
 	`, whereClause, addArg(limit))
 
@@ -223,13 +245,18 @@ func (s *Store) ListSubscriptionsForReminder(ctx context.Context, remindBefore t
 	}
 	now := time.Now().UTC()
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, COALESCE(user_id, 0), telegram_id, connector_id, payment_id, status, auto_pay_enabled, starts_at, ends_at, reminder_sent_at, expiry_notice_sent_at, created_at, updated_at
-		FROM subscriptions
-		WHERE status = $1
-		  AND reminder_sent_at IS NULL
-		  AND ends_at > $2
-		  AND ends_at <= $3
-		ORDER BY ends_at ASC
+		SELECT s.id, COALESCE(s.user_id, 0),
+		       COALESCE(NULLIF(ta.messenger_user_id, ''), '0')::BIGINT AS telegram_id,
+		       s.connector_id, s.payment_id, s.status, s.auto_pay_enabled, s.starts_at, s.ends_at,
+		       s.reminder_sent_at, s.expiry_notice_sent_at, s.created_at, s.updated_at
+		FROM subscriptions s
+		LEFT JOIN user_messenger_accounts ta
+		       ON ta.user_id = s.user_id AND ta.messenger_kind = 'telegram'
+		WHERE s.status = $1
+		  AND s.reminder_sent_at IS NULL
+		  AND s.ends_at > $2
+		  AND s.ends_at <= $3
+		ORDER BY s.ends_at ASC
 		LIMIT $4
 	`, string(domain.SubscriptionStatusActive), now, remindBefore, limit)
 	if err != nil {
@@ -281,13 +308,18 @@ func (s *Store) ListSubscriptionsForExpiryNotice(ctx context.Context, noticeBefo
 	}
 	now := time.Now().UTC()
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, COALESCE(user_id, 0), telegram_id, connector_id, payment_id, status, auto_pay_enabled, starts_at, ends_at, reminder_sent_at, expiry_notice_sent_at, created_at, updated_at
-		FROM subscriptions
-		WHERE status = $1
-		  AND expiry_notice_sent_at IS NULL
-		  AND ends_at > $2
-		  AND ends_at <= $3
-		ORDER BY ends_at ASC
+		SELECT s.id, COALESCE(s.user_id, 0),
+		       COALESCE(NULLIF(ta.messenger_user_id, ''), '0')::BIGINT AS telegram_id,
+		       s.connector_id, s.payment_id, s.status, s.auto_pay_enabled, s.starts_at, s.ends_at,
+		       s.reminder_sent_at, s.expiry_notice_sent_at, s.created_at, s.updated_at
+		FROM subscriptions s
+		LEFT JOIN user_messenger_accounts ta
+		       ON ta.user_id = s.user_id AND ta.messenger_kind = 'telegram'
+		WHERE s.status = $1
+		  AND s.expiry_notice_sent_at IS NULL
+		  AND s.ends_at > $2
+		  AND s.ends_at <= $3
+		ORDER BY s.ends_at ASC
 		LIMIT $4
 	`, string(domain.SubscriptionStatusActive), now, noticeBefore, limit)
 	if err != nil {
@@ -341,11 +373,16 @@ func (s *Store) ListExpiredActiveSubscriptions(ctx context.Context, now time.Tim
 		now = time.Now().UTC()
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, COALESCE(user_id, 0), telegram_id, connector_id, payment_id, status, auto_pay_enabled, starts_at, ends_at, reminder_sent_at, expiry_notice_sent_at, created_at, updated_at
-		FROM subscriptions
-		WHERE status = $1
-		  AND ends_at <= $2
-		ORDER BY ends_at ASC
+		SELECT s.id, COALESCE(s.user_id, 0),
+		       COALESCE(NULLIF(ta.messenger_user_id, ''), '0')::BIGINT AS telegram_id,
+		       s.connector_id, s.payment_id, s.status, s.auto_pay_enabled, s.starts_at, s.ends_at,
+		       s.reminder_sent_at, s.expiry_notice_sent_at, s.created_at, s.updated_at
+		FROM subscriptions s
+		LEFT JOIN user_messenger_accounts ta
+		       ON ta.user_id = s.user_id AND ta.messenger_kind = 'telegram'
+		WHERE s.status = $1
+		  AND s.ends_at <= $2
+		ORDER BY s.ends_at ASC
 		LIMIT $3
 	`, string(domain.SubscriptionStatusActive), now, limit)
 	if err != nil {
@@ -388,17 +425,17 @@ func (s *Store) UpdateSubscriptionStatus(ctx context.Context, subscriptionID int
 }
 
 // DisableAutoPayForActiveSubscriptions clears recurring flag for all active subscriptions of one user.
-func (s *Store) DisableAutoPayForActiveSubscriptions(ctx context.Context, telegramID int64, updatedAt time.Time) error {
+func (s *Store) DisableAutoPayForActiveSubscriptions(ctx context.Context, userID int64, updatedAt time.Time) error {
 	if updatedAt.IsZero() {
 		updatedAt = time.Now().UTC()
 	}
 	_, err := s.db.ExecContext(ctx, `
 		UPDATE subscriptions
 		SET auto_pay_enabled = false, updated_at = $2
-		WHERE telegram_id = $1
+		WHERE user_id = $1
 		  AND status = $3
 		  AND auto_pay_enabled = true
-	`, telegramID, updatedAt, string(domain.SubscriptionStatusActive))
+	`, userID, updatedAt, string(domain.SubscriptionStatusActive))
 	return err
 }
 

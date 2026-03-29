@@ -84,9 +84,9 @@ func (h *Handler) logAdminTargetAudit(r *http.Request, user domain.User, connect
 		Details:      details,
 		CreatedAt:    time.Now().UTC(),
 	}
-	if user.TelegramID > 0 {
+	if telegramID, _, found, err := h.resolveTelegramIdentity(r.Context(), user.ID); err == nil && found {
 		event.TargetMessengerKind = domain.MessengerKindTelegram
-		event.TargetMessengerUserID = strconv.FormatInt(user.TelegramID, 10)
+		event.TargetMessengerUserID = strconv.FormatInt(telegramID, 10)
 	}
 	_ = h.store.SaveAuditEvent(r.Context(), event)
 }

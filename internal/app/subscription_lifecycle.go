@@ -139,15 +139,16 @@ func processSubscriptionReminders(ctx context.Context, appCtx *application) {
 		}
 
 		text := appSubscriptionReminderMessage(sub.EndsAt)
-		msg := appCtx.buildRenewalNotification(ctx, sub.UserID, sub.TelegramID, connector.StartPayload, text)
-		if err := appCtx.sendUserNotification(ctx, sub.UserID, sub.TelegramID, msg); err != nil {
-			slog.Error("send subscription reminder failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "legacy_external_id", sub.TelegramID)
+		preferredMessengerUserID := formatPreferredMessengerUserID(sub.TelegramID)
+		msg := appCtx.buildRenewalNotification(ctx, sub.UserID, preferredMessengerUserID, connector.StartPayload, text)
+		if err := appCtx.sendUserNotification(ctx, sub.UserID, preferredMessengerUserID, msg); err != nil {
+			slog.Error("send subscription reminder failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "preferred_messenger_user_id", preferredMessengerUserID)
 			continue
 		}
 		if err := appCtx.store.MarkSubscriptionReminderSent(ctx, sub.ID, now); err != nil {
 			slog.Error("mark subscription reminder sent failed", "error", err, "subscription_id", sub.ID)
 		}
-		_ = appCtx.store.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, sub.TelegramID, sub.ConnectorID, domain.AuditActionSubscriptionReminderSent, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
+		_ = appCtx.store.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionReminderSent, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
 	}
 }
 
@@ -170,15 +171,16 @@ func processSubscriptionExpiryNotices(ctx context.Context, appCtx *application) 
 		}
 
 		text := appSubscriptionExpiryNoticeMessage(sub.EndsAt)
-		msg := appCtx.buildRenewalNotification(ctx, sub.UserID, sub.TelegramID, connector.StartPayload, text)
-		if err := appCtx.sendUserNotification(ctx, sub.UserID, sub.TelegramID, msg); err != nil {
-			slog.Error("send subscription expiry notice failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "legacy_external_id", sub.TelegramID)
+		preferredMessengerUserID := formatPreferredMessengerUserID(sub.TelegramID)
+		msg := appCtx.buildRenewalNotification(ctx, sub.UserID, preferredMessengerUserID, connector.StartPayload, text)
+		if err := appCtx.sendUserNotification(ctx, sub.UserID, preferredMessengerUserID, msg); err != nil {
+			slog.Error("send subscription expiry notice failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "preferred_messenger_user_id", preferredMessengerUserID)
 			continue
 		}
 		if err := appCtx.store.MarkSubscriptionExpiryNoticeSent(ctx, sub.ID, now); err != nil {
 			slog.Error("mark subscription expiry notice sent failed", "error", err, "subscription_id", sub.ID)
 		}
-		_ = appCtx.store.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, sub.TelegramID, sub.ConnectorID, domain.AuditActionSubscriptionExpiryNoticeSent, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
+		_ = appCtx.store.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionExpiryNoticeSent, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
 	}
 }
 
@@ -202,13 +204,22 @@ func processExpiredSubscriptions(ctx context.Context, appCtx *application) {
 		}
 
 		// Best-effort revoke from chat when chat_id is configured and bot has rights.
-		if connectorFound && appCtx.resolvePreferredMessengerKind(ctx, sub.UserID, sub.TelegramID) == messenger.KindTelegram {
+		preferredMessengerUserID := formatPreferredMessengerUserID(sub.TelegramID)
+		if connectorFound && appCtx.resolvePreferredMessengerKind(ctx, sub.UserID, preferredMessengerUserID) == messenger.KindTelegram {
 			if chatID, ok := normalizeTelegramChatID(connector.ChatID); ok {
-				if err := appCtx.telegramClient.RemoveChatMember(ctx, chatID, sub.TelegramID); err != nil {
-					slog.Error("remove chat member failed", "error", err, "subscription_id", sub.ID, "telegram_id", sub.TelegramID, "chat_id", chatID)
-					_ = appCtx.store.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, sub.TelegramID, sub.ConnectorID, domain.AuditActionSubscriptionRevokeFailed, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
-				} else {
-					_ = appCtx.store.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, sub.TelegramID, sub.ConnectorID, domain.AuditActionSubscriptionRevokedFromChat, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
+				account, found, err := appCtx.resolveTelegramMessengerAccount(ctx, sub.UserID)
+				if err != nil {
+					slog.Error("resolve telegram account for revoke failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID)
+				} else if found {
+					telegramID, parseErr := strconv.ParseInt(account.MessengerUserID, 10, 64)
+					if parseErr != nil || telegramID <= 0 {
+						slog.Error("invalid telegram account id for revoke", "error", parseErr, "subscription_id", sub.ID, "user_id", sub.UserID, "messenger_user_id", account.MessengerUserID)
+					} else if err := appCtx.telegramClient.RemoveChatMember(ctx, chatID, telegramID); err != nil {
+						slog.Error("remove chat member failed", "error", err, "subscription_id", sub.ID, "telegram_id", telegramID, "chat_id", chatID)
+						_ = appCtx.store.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionRevokeFailed, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
+					} else {
+						_ = appCtx.store.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionRevokedFromChat, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
+					}
 				}
 			}
 		}
@@ -216,12 +227,12 @@ func processExpiredSubscriptions(ctx context.Context, appCtx *application) {
 		text := appSubscriptionExpiredText
 		msg := messenger.OutgoingMessage{Text: text}
 		if connectorFound {
-			msg = appCtx.buildRenewalNotification(ctx, sub.UserID, sub.TelegramID, connector.StartPayload, text)
+			msg = appCtx.buildRenewalNotification(ctx, sub.UserID, preferredMessengerUserID, connector.StartPayload, text)
 		}
-		if err := appCtx.sendUserNotification(ctx, sub.UserID, sub.TelegramID, msg); err != nil {
-			slog.Error("send subscription expired message failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "legacy_external_id", sub.TelegramID)
+		if err := appCtx.sendUserNotification(ctx, sub.UserID, preferredMessengerUserID, msg); err != nil {
+			slog.Error("send subscription expired message failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "preferred_messenger_user_id", preferredMessengerUserID)
 		}
-		_ = appCtx.store.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, sub.TelegramID, sub.ConnectorID, domain.AuditActionSubscriptionExpired, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
+		_ = appCtx.store.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionExpired, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
 	}
 }
 
@@ -242,14 +253,14 @@ func buildBotStartCommand(startPayload string) string {
 	return "/start " + payload
 }
 
-func (a *application) buildRenewalNotification(ctx context.Context, userID, legacyExternalID int64, startPayload, text string) messenger.OutgoingMessage {
+func (a *application) buildRenewalNotification(ctx context.Context, userID int64, preferredMessengerUserID, startPayload, text string) messenger.OutgoingMessage {
 	msg := messenger.OutgoingMessage{Text: text}
 	payload := strings.TrimSpace(startPayload)
 	if payload == "" {
 		return msg
 	}
 
-	switch a.resolvePreferredMessengerKind(ctx, userID, legacyExternalID) {
+	switch a.resolvePreferredMessengerKind(ctx, userID, preferredMessengerUserID) {
 	case messenger.KindMAX:
 		msg.Text += fmt.Sprintf(appSubscriptionReminderCommandFmt, payload)
 	default:

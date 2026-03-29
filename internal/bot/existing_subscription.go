@@ -11,9 +11,14 @@ import (
 )
 
 func (h *Handler) sendExistingSubscriptionMessage(ctx context.Context, chatID, telegramID, connectorID int64) bool {
-	sub, found, err := h.store.GetLatestSubscriptionByUserConnector(ctx, telegramID, connectorID)
+	user, resolved := h.resolveMessengerUser(ctx, messenger.UserIdentity{Kind: messenger.KindTelegram, ID: telegramID})
+	if !resolved {
+		return false
+	}
+
+	sub, found, err := h.store.GetLatestSubscriptionByUserConnector(ctx, user.ID, connectorID)
 	if err != nil {
-		slog.Error("load latest subscription for connector failed", "error", err, "telegram_id", telegramID, "connector_id", connectorID)
+		slog.Error("load latest subscription for connector failed", "error", err, "user_id", user.ID, "connector_id", connectorID)
 		return false
 	}
 	if !found || sub.Status != domain.SubscriptionStatusActive || !sub.EndsAt.After(time.Now().UTC()) {

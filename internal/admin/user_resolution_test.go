@@ -18,12 +18,13 @@ func TestResolveFilterTelegramID_UsesUserID(t *testing.T) {
 	st := memory.New()
 	h := NewHandler(st, "test-admin-token", "test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil)
 
-	if err := st.SaveUser(ctx, domain.User{
-		TelegramID:       264704572,
-		TelegramUsername: "emiloserdov",
-		FullName:         "Egor Miloserdov",
-		UpdatedAt:        time.Now().UTC(),
-	}); err != nil {
+	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, "264704572", "emiloserdov")
+	if err != nil {
+		t.Fatalf("GetOrCreateUserByMessenger: %v", err)
+	}
+	user.FullName = "Egor Miloserdov"
+	user.UpdatedAt = time.Now().UTC()
+	if err := st.SaveUser(ctx, user); err != nil {
 		t.Fatalf("SaveUser: %v", err)
 	}
 	user, found, err := st.GetUser(ctx, 264704572)
@@ -48,10 +49,22 @@ func TestUsersPage_FiltersByUserID(t *testing.T) {
 	st := memory.New()
 	h := NewHandler(st, "test-admin-token", "test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil)
 
-	if err := st.SaveUser(ctx, domain.User{TelegramID: 111, FullName: "First User", UpdatedAt: time.Now().UTC()}); err != nil {
+	first, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, "111", "")
+	if err != nil {
+		t.Fatalf("GetOrCreate first: %v", err)
+	}
+	first.FullName = "First User"
+	first.UpdatedAt = time.Now().UTC()
+	if err := st.SaveUser(ctx, first); err != nil {
 		t.Fatalf("SaveUser first: %v", err)
 	}
-	if err := st.SaveUser(ctx, domain.User{TelegramID: 222, FullName: "Second User", UpdatedAt: time.Now().UTC()}); err != nil {
+	second, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, "222", "")
+	if err != nil {
+		t.Fatalf("GetOrCreate second: %v", err)
+	}
+	second.FullName = "Second User"
+	second.UpdatedAt = time.Now().UTC()
+	if err := st.SaveUser(ctx, second); err != nil {
 		t.Fatalf("SaveUser second: %v", err)
 	}
 	target, found, err := st.GetUser(ctx, 222)

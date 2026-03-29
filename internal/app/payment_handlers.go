@@ -77,7 +77,7 @@ func (a *application) handlePaymentResult(w http.ResponseWriter, r *http.Request
 	if err := a.store.SaveAuditEvent(r.Context(), a.buildAppTargetAuditEvent(
 		r.Context(),
 		paymentRow.UserID,
-		paymentRow.TelegramID,
+		formatPreferredMessengerUserID(paymentRow.TelegramID),
 		paymentRow.ConnectorID,
 		domain.AuditActionRobokassaResultReceived,
 		"inv_id="+invID+";out_sum="+outSum,
@@ -157,7 +157,7 @@ func (a *application) handlePaymentFail(w http.ResponseWriter, r *http.Request) 
 				_ = a.store.SaveAuditEvent(r.Context(), a.buildAppTargetAuditEvent(
 					r.Context(),
 					paymentRow.UserID,
-					paymentRow.TelegramID,
+					formatPreferredMessengerUserID(paymentRow.TelegramID),
 					paymentRow.ConnectorID,
 					domain.AuditActionPaymentFailed,
 					"payment_id="+strconv.FormatInt(paymentRow.ID, 10),
@@ -246,43 +246,11 @@ func writeRebillResponse(w http.ResponseWriter, payload rebillResponse) {
 
 func (a *application) buildPaymentPageActions(ctx context.Context, paymentRow domain.Payment, channelURL string, success bool) []paymentPageAction {
 	return appPaymentPageActions(
-		a.resolvePreferredMessengerKind(ctx, paymentRow.UserID, paymentRow.TelegramID),
+		a.resolvePreferredMessengerKind(ctx, paymentRow.UserID, formatPreferredMessengerUserID(paymentRow.TelegramID)),
 		success,
 		channelURL,
 		firstNonEmpty(buildBotChatURL(a.config.Telegram.BotUsername), "https://t.me"),
 	)
-}
-
-func (a *application) resolvePreferredMessengerKind(ctx context.Context, userID, legacyExternalID int64) messenger.Kind {
-	if userID <= 0 {
-		return messenger.KindTelegram
-	}
-
-	accounts, err := a.store.ListUserMessengerAccounts(ctx, userID)
-	if err != nil {
-		return messenger.KindTelegram
-	}
-
-	targetExternalID := strconv.FormatInt(legacyExternalID, 10)
-	for _, account := range accounts {
-		if account.MessengerUserID != targetExternalID {
-			continue
-		}
-		if account.MessengerKind == domain.MessengerKindMAX {
-			return messenger.KindMAX
-		}
-		if account.MessengerKind == domain.MessengerKindTelegram {
-			return messenger.KindTelegram
-		}
-	}
-
-	for _, account := range accounts {
-		if account.MessengerKind == domain.MessengerKindMAX {
-			return messenger.KindMAX
-		}
-	}
-
-	return messenger.KindTelegram
 }
 
 func (a *application) notifyFailedRecurringPayment(ctx context.Context, paymentRow domain.Payment) {
@@ -301,14 +269,14 @@ func (a *application) notifyFailedRecurringPayment(ctx context.Context, paymentR
 			{Text: appPaymentFailedRecurringButton, URL: renewURL},
 		}}
 	}
-	if err := a.sendUserNotification(ctx, paymentRow.UserID, paymentRow.TelegramID, message); err != nil {
-		logWarn("failed recurring payment notify failed", "payment_id", paymentRow.ID, "user_id", paymentRow.UserID, "legacy_external_id", paymentRow.TelegramID, "error", err)
+	if err := a.sendUserNotification(ctx, paymentRow.UserID, formatPreferredMessengerUserID(paymentRow.TelegramID), message); err != nil {
+		logWarn("failed recurring payment notify failed", "payment_id", paymentRow.ID, "user_id", paymentRow.UserID, "preferred_messenger_user_id", paymentRow.TelegramID, "error", err)
 		return
 	}
 	if err := a.store.SaveAuditEvent(ctx, a.buildAppTargetAuditEvent(
 		ctx,
 		paymentRow.UserID,
-		paymentRow.TelegramID,
+		formatPreferredMessengerUserID(paymentRow.TelegramID),
 		paymentRow.ConnectorID,
 		domain.AuditActionRecurringPaymentFailedNotice,
 		"payment_id="+strconv.FormatInt(paymentRow.ID, 10),

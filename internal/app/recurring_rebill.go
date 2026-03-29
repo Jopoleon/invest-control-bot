@@ -61,7 +61,6 @@ func (a *application) triggerRebill(ctx context.Context, subscriptionID int64, s
 		Status:            domain.PaymentStatusPending,
 		Token:             invoiceID,
 		UserID:            subscription.UserID,
-		TelegramID:        subscription.TelegramID,
 		ConnectorID:       subscription.ConnectorID,
 		SubscriptionID:    subscription.ID,
 		ParentPaymentID:   parentPayment.ID,
@@ -98,7 +97,7 @@ func (a *application) triggerRebill(ctx context.Context, subscriptionID int64, s
 		_ = a.store.SaveAuditEvent(ctx, a.buildAppTargetAuditEvent(
 			ctx,
 			subscription.UserID,
-			subscription.TelegramID,
+			formatPreferredMessengerUserID(subscription.TelegramID),
 			subscription.ConnectorID,
 			domain.AuditActionRebillRequestFailed,
 			"subscription_id="+strconv.FormatInt(subscription.ID, 10)+";invoice_id="+invoiceID+";source="+source+";error="+err.Error(),
@@ -110,7 +109,7 @@ func (a *application) triggerRebill(ctx context.Context, subscriptionID int64, s
 	if err := a.store.SaveAuditEvent(ctx, a.buildAppTargetAuditEvent(
 		ctx,
 		subscription.UserID,
-		subscription.TelegramID,
+		formatPreferredMessengerUserID(subscription.TelegramID),
 		subscription.ConnectorID,
 		domain.AuditActionRebillRequested,
 		"subscription_id="+strconv.FormatInt(subscription.ID, 10)+";invoice_id="+invoiceID+";parent="+parentPayment.Token+";source="+source,
@@ -129,8 +128,8 @@ func (a *application) shouldTriggerScheduledRebill(ctx context.Context, sub doma
 	}
 
 	payments, err := a.store.ListPayments(ctx, domain.PaymentListQuery{
-		TelegramID: sub.TelegramID,
-		Limit:      500,
+		UserID: sub.UserID,
+		Limit:  500,
 	})
 	if err != nil {
 		return false, err

@@ -54,13 +54,6 @@ func (h *Handler) handleCallback(ctx context.Context, cb messenger.IncomingActio
 	if !ok {
 		return
 	}
-	updatedUsername := applyCurrentTelegramUsername(&user, cb.User.Username)
-	if updatedUsername {
-		if err := h.store.SaveUser(ctx, user); err != nil {
-			slog.Error("save user before registration flow failed", "error", err, "telegram_id", cb.User.ID, "connector_id", connectorID)
-			return
-		}
-	}
 
 	consent := domain.Consent{
 		UserID:            user.ID,
@@ -86,7 +79,8 @@ func (h *Handler) handleCallback(ctx context.Context, cb messenger.IncomingActio
 	}
 	h.logAuditEvent(ctx, cb.User, connectorID, domain.AuditActionConsentAccepted, "")
 
-	nextStep := nextRegistrationStep(user)
+	currentUsername := normalizeMessengerUsername(cb.User.Username)
+	nextStep := nextRegistrationStep(user, currentUsername)
 	if nextStep == domain.StepDone {
 		if err := h.store.DeleteRegistrationState(ctx, messengerKindFromIdentity(cb.User.Kind), strconv.FormatInt(cb.User.ID, 10)); err != nil {
 			slog.Error("delete registration state failed", "error", err, "telegram_id", cb.User.ID)
@@ -101,7 +95,7 @@ func (h *Handler) handleCallback(ctx context.Context, cb messenger.IncomingActio
 		MessengerUserID: strconv.FormatInt(cb.User.ID, 10),
 		ConnectorID:     connectorID,
 		Step:            nextStep,
-		Username:        user.TelegramUsername,
+		Username:        currentUsername,
 	}
 	if err := h.store.SaveRegistrationState(ctx, state); err != nil {
 		slog.Error("save registration state failed", "error", err, "telegram_id", cb.User.ID, "connector_id", connectorID)

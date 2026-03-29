@@ -24,6 +24,14 @@
   - global user-level `auto_pay_enabled` больше не используется;
   - recurring state для UI считается из активных подписок;
   - checkout recurring choice задается только явным действием пользователя в bot flow.
+- Следующий identity-first срез уже внедрен в runtime:
+  - `GetLatestSubscriptionByUserConnector` и `DisableAutoPayForActiveSubscriptions` переведены на `user_id` вместо `telegram_id`;
+  - bot/app use-cases для ownership, latest subscription lookup и scheduler rebill checks больше не считают `telegram_id` каноническим владельцем подписки;
+  - тестовые seed helper'ы обновлены так, чтобы создавать пользователей через `user_messenger_accounts`, а не через голые Telegram IDs.
+- App-level helper layer тоже сдвинут в messenger-account модель:
+  - `sendUserNotification`, `buildAppTargetAuditEvent` и выбор preferred messenger теперь принимают строковый `preferredMessengerUserID` и резолвят фактический target через `user_messenger_accounts`;
+  - lifecycle revoke-from-chat теперь берет Telegram account из linked identities пользователя, а не из `subscriptions.telegram_id` как обязательного источника истины;
+  - это уменьшает blast radius для следующего шага, где `Payment.TelegramID` / `Subscription.TelegramID` будут удаляться из runtime-моделей полностью.
 
 ## 2) Зафиксированные решения
 - Админка на первом этапе: встроенные server-rendered HTML-страницы на Go.
@@ -86,7 +94,9 @@
   - `offer_url`, `privacy_url`
   - `is_active`, timestamps
 - `users`
-  - `id`, `telegram_id` (unique), `telegram_username`, `full_name`, `phone`, `email`, timestamps
+  - `id`, `full_name`, `phone`, `email`, timestamps
+- `user_messenger_accounts`
+  - `user_id`, `messenger_kind`, `messenger_user_id`, `username`, link/update timestamps
 - `subscriptions`
   - `id`, `user_id`, `connector_id`, `status` (`pending|active|expired|canceled`), `started_at`, `expires_at`, `auto_renew_enabled`, timestamps
 - `payments`
@@ -486,6 +496,8 @@
 - `2026-03-26` Admin action/export layer подтянут к dual-identity модели: user detail forms и action URLs теперь прокидывают `user_id`, POST handlers (`message`, `paylink`, `revoke`, `rebill`) сначала резолвят пользователя по `user_id/telegram_id`, а CSV-экспорт пользователей и churn-выгрузка получили колонку `user_id`; добавлен action-level тест на отправку сообщения через `user_id`.
 - `2026-03-26` Read-only admin filters начали принимать `user_id` без переписывания query-моделей store: `users`, `billing`, `churn` и связанные CSV exports резолвят `user_id` в текущий `telegram_id` через unified identity helper; добавлены unit-тесты на filter-resolution и users-page filtering по `user_id`.
 - `2026-03-26` Payment/subscription слой переведен на следующий additive шаг multi-messenger migration: добавлена миграция `0014_payments_subscriptions_user_id.sql`, `payments` и `subscriptions` теперь сохраняют `user_id` параллельно с legacy `telegram_id`, а write/read paths и store-фильтры начали реально использовать обе модели.
+- `2026-03-28` `users` runtime/store выровнен с clean baseline: доменная модель пользователя теперь хранит только канонический профиль (`id/full_name/phone/email/timestamps`), Telegram username/id читаются через `user_messenger_accounts`, а bot registration/admin user resolution/public recurring cancel перестали зависеть от колонок `users.telegram_id` и `users.telegram_username`.
+- `2026-03-28` Postgres store для `payments` и `subscriptions` выровнен с clean baseline схемой: SQL write paths больше не пишут в несуществующие `telegram_id` колонки, а read/filter paths продолжают отдавать legacy `TelegramID` как derived runtime projection через join к `user_messenger_accounts` для Telegram identity. Это сохранило текущие bot/app/admin сценарии без отдельного compatibility столбца в БД.
 - `2026-03-26` Для MAX добавлен первый рабочий local-dev transport: `cmd/max-poller` поднимает long polling через `GET /updates`, пакет `internal/max` покрыт client/poller/adapter unit-тестами, а mapper `message_created` выровнен под documented payload (`message.sender`, `message.recipient`, `message.body.mid`) и теперь логирует raw update при очередном несовпадении формы события.
 - `2026-03-27` На живом MAX E2E подтверждены `/menu`, `/start <payload>`, регистрация, `accept_terms`, `payconsent` и генерация Robokassa checkout link. App-level post-payment notification path переведен с Telegram-only отправки на messenger-aware notifier, чтобы успешная оплата и ошибки recurring могли уведомлять пользователя в MAX-чате.
 - `2026-03-27` Отдельно зафиксирован следующий инфраструктурный этап по БД: после стабилизации multi-messenger behavior нужен clean-schema pass с полной пересборкой миграций под чистую накатку, удобным финальным порядком полей и удалением временных compatibility-слоев там, где они больше не нужны.

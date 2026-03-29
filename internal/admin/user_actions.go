@@ -38,11 +38,15 @@ func (h *Handler) sendUserMessage(w http.ResponseWriter, r *http.Request) {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
 		return
 	}
-	if !found || user.TelegramID <= 0 {
+	telegramID, _, hasTelegramIdentity, err := h.resolveTelegramIdentity(r.Context(), user.ID)
+	if err != nil {
+		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
+		return
+	}
+	if !found || !hasTelegramIdentity {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.invalid_id"))
 		return
 	}
-	telegramID = user.TelegramID
 	text := strings.TrimSpace(r.FormValue("message"))
 	if text == "" {
 		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.actions.message_empty"))
@@ -90,11 +94,15 @@ func (h *Handler) sendUserPaymentLink(w http.ResponseWriter, r *http.Request) {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
 		return
 	}
-	if !foundUser || user.TelegramID <= 0 || (subID <= 0 && connectorID <= 0) {
+	telegramID, _, hasTelegramIdentity, err := h.resolveTelegramIdentity(r.Context(), user.ID)
+	if err != nil {
+		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
+		return
+	}
+	if !foundUser || !hasTelegramIdentity || (subID <= 0 && connectorID <= 0) {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.invalid_id"))
 		return
 	}
-	telegramID = user.TelegramID
 
 	var (
 		sub       domain.Subscription
@@ -172,11 +180,15 @@ func (h *Handler) revokeSubscription(w http.ResponseWriter, r *http.Request) {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
 		return
 	}
-	if !foundUser || user.TelegramID <= 0 || subID <= 0 {
+	telegramID, _, hasTelegramIdentity, err := h.resolveTelegramIdentity(r.Context(), user.ID)
+	if err != nil {
+		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
+		return
+	}
+	if !foundUser || !hasTelegramIdentity || subID <= 0 {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.invalid_id"))
 		return
 	}
-	telegramID = user.TelegramID
 
 	sub, ok, err := h.store.GetSubscriptionByID(r.Context(), subID)
 	if err != nil || !ok || sub.TelegramID != telegramID {
@@ -259,11 +271,15 @@ func (h *Handler) triggerSubscriptionRebill(w http.ResponseWriter, r *http.Reque
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
 		return
 	}
-	if !foundUser || user.TelegramID <= 0 || subID <= 0 {
+	telegramID, _, hasTelegramIdentity, err := h.resolveTelegramIdentity(r.Context(), user.ID)
+	if err != nil {
+		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
+		return
+	}
+	if !foundUser || !hasTelegramIdentity || subID <= 0 {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.invalid_id"))
 		return
 	}
-	telegramID = user.TelegramID
 	if h.retriggerRebill == nil {
 		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.actions.rebill_unavailable"))
 		return

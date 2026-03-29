@@ -28,13 +28,12 @@ type Connector struct {
 
 // User stores user profile fields collected during onboarding.
 type User struct {
-	ID               int64     `db:"id" json:"id"`
-	TelegramID       int64     `db:"telegram_id" json:"telegram_id"`
-	TelegramUsername string    `db:"telegram_username" json:"telegram_username"`
-	FullName         string    `db:"full_name" json:"full_name"`
-	Phone            string    `db:"phone" json:"phone"`
-	Email            string    `db:"email" json:"email"`
-	UpdatedAt        time.Time `db:"updated_at" json:"updated_at"`
+	ID        int64     `db:"id" json:"id"`
+	FullName  string    `db:"full_name" json:"full_name"`
+	Phone     string    `db:"phone" json:"phone"`
+	Email     string    `db:"email" json:"email"`
+	CreatedAt time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
 }
 
 // UserMessengerAccount links one internal user to one external messenger identity.

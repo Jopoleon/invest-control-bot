@@ -206,7 +206,7 @@ func (a *application) processRecurringCancelPost(w http.ResponseWriter, r *http.
 	if err := a.store.SaveAuditEvent(r.Context(), a.buildAppTargetAuditEvent(
 		r.Context(),
 		sub.UserID,
-		legacyExternalID,
+		formatPreferredMessengerUserID(legacyExternalID),
 		sub.ConnectorID,
 		domain.AuditActionAutopayDisabled,
 		"source=web_cancel_page;subscription_id="+strconv.FormatInt(sub.ID, 10),
@@ -218,8 +218,8 @@ func (a *application) processRecurringCancelPost(w http.ResponseWriter, r *http.
 	// Delivery goes through the linked messenger account for the user. The page
 	// is still authorized by the legacy external id, but the notification itself
 	// should follow the real messenger origin of the subscription.
-	if err := a.sendUserNotification(r.Context(), sub.UserID, legacyExternalID, messenger.OutgoingMessage{Text: message}); err != nil {
-		slog.Error("send public cancel confirmation failed", "error", err, "user_id", sub.UserID, "legacy_external_id", legacyExternalID)
+	if err := a.sendUserNotification(r.Context(), sub.UserID, formatPreferredMessengerUserID(legacyExternalID), messenger.OutgoingMessage{Text: message}); err != nil {
+		slog.Error("send public cancel confirmation failed", "error", err, "user_id", sub.UserID, "preferred_messenger_user_id", legacyExternalID)
 	}
 	done := "1"
 	if connectorName != "" {
@@ -339,7 +339,14 @@ func (a *application) resolveRecurringCancelUserName(ctx context.Context, subs [
 			break
 		}
 		if found {
-			return firstNonEmpty(strings.TrimSpace(user.FullName), strings.TrimSpace(user.TelegramUsername))
+			if accounts, err := a.store.ListUserMessengerAccounts(ctx, user.ID); err == nil {
+				for _, account := range accounts {
+					if account.MessengerKind == domain.MessengerKindTelegram {
+						return firstNonEmpty(strings.TrimSpace(user.FullName), strings.TrimSpace(account.Username))
+					}
+				}
+			}
+			return strings.TrimSpace(user.FullName)
 		}
 	}
 	user, found, err := a.resolveTelegramUser(ctx, legacyExternalID)
@@ -348,7 +355,14 @@ func (a *application) resolveRecurringCancelUserName(ctx context.Context, subs [
 		return ""
 	}
 	if found {
-		return firstNonEmpty(strings.TrimSpace(user.FullName), strings.TrimSpace(user.TelegramUsername))
+		if accounts, err := a.store.ListUserMessengerAccounts(ctx, user.ID); err == nil {
+			for _, account := range accounts {
+				if account.MessengerKind == domain.MessengerKindTelegram {
+					return firstNonEmpty(strings.TrimSpace(user.FullName), strings.TrimSpace(account.Username))
+				}
+			}
+		}
+		return strings.TrimSpace(user.FullName)
 	}
 	return ""
 }

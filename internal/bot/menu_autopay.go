@@ -87,7 +87,12 @@ func (h *Handler) disableAutopayConfirmed(ctx context.Context, cb messenger.Inco
 		h.send(ctx, cb.ChatID, botMsgAutopayUnavailable)
 		return
 	}
-	if err := h.store.DisableAutoPayForActiveSubscriptions(ctx, cb.User.ID, time.Now().UTC()); err != nil {
+	user, resolved := h.resolveMessengerUser(ctx, cb.User)
+	if !resolved {
+		h.send(ctx, cb.ChatID, botMsgAutopayDisableSubscriptionsFailed)
+		return
+	}
+	if err := h.store.DisableAutoPayForActiveSubscriptions(ctx, user.ID, time.Now().UTC()); err != nil {
 		slog.Error("disable subscription autopay failed", "error", err, "telegram_id", cb.User.ID)
 		h.send(ctx, cb.ChatID, botMsgAutopayDisableSubscriptionsFailed)
 		return
@@ -271,8 +276,13 @@ func (h *Handler) loadOwnedSubscriptionFromMenuAction(ctx context.Context, cb me
 		h.send(ctx, cb.ChatID, invalidMsg)
 		return domain.Subscription{}, false
 	}
+	user, resolved := h.resolveMessengerUser(ctx, cb.User)
+	if !resolved {
+		h.send(ctx, cb.ChatID, botMsgAutopaySubscriptionNotFound)
+		return domain.Subscription{}, false
+	}
 	sub, found, err := h.store.GetSubscriptionByID(ctx, subID)
-	if err != nil || !found || sub.TelegramID != cb.User.ID {
+	if err != nil || !found || sub.UserID != user.ID {
 		h.send(ctx, cb.ChatID, botMsgAutopaySubscriptionNotFound)
 		return domain.Subscription{}, false
 	}

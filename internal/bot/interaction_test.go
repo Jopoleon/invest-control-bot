@@ -169,10 +169,16 @@ func seedAutopayConnector(t *testing.T, ctx context.Context, st *memory.Store, p
 func seedPayment(t *testing.T, ctx context.Context, st *memory.Store, telegramID, connectorID int64, autopay bool) int64 {
 	t.Helper()
 
-	err := st.CreatePayment(ctx, domain.Payment{
+	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, int64ToString(telegramID), "")
+	if err != nil {
+		t.Fatalf("get or create user by messenger: %v", err)
+	}
+
+	err = st.CreatePayment(ctx, domain.Payment{
 		Provider:       "robokassa",
 		Status:         domain.PaymentStatusPaid,
 		Token:          "token-" + int64ToString(telegramID) + "-" + int64ToString(connectorID) + "-" + boolSuffix(autopay),
+		UserID:         user.ID,
 		TelegramID:     telegramID,
 		ConnectorID:    connectorID,
 		AmountRUB:      2300,
@@ -196,7 +202,13 @@ func seedPayment(t *testing.T, ctx context.Context, st *memory.Store, telegramID
 func seedSubscription(t *testing.T, ctx context.Context, st *memory.Store, telegramID, connectorID, paymentID int64, autopay bool) int64 {
 	t.Helper()
 
-	err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, int64ToString(telegramID), "")
+	if err != nil {
+		t.Fatalf("get or create user by messenger: %v", err)
+	}
+
+	err = st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         user.ID,
 		TelegramID:     telegramID,
 		ConnectorID:    connectorID,
 		PaymentID:      paymentID,
@@ -210,7 +222,7 @@ func seedSubscription(t *testing.T, ctx context.Context, st *memory.Store, teleg
 	if err != nil {
 		t.Fatalf("upsert subscription: %v", err)
 	}
-	sub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, telegramID, connectorID)
+	sub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, user.ID, connectorID)
 	if err != nil {
 		t.Fatalf("get latest subscription: %v", err)
 	}

@@ -83,7 +83,6 @@ func (h *Handler) handlePay(ctx context.Context, cb messenger.IncomingAction) {
 		Status:         domain.PaymentStatusPending,
 		Token:          token,
 		UserID:         user.ID,
-		TelegramID:     cb.User.ID,
 		ConnectorID:    connectorID,
 		AmountRUB:      connector.PriceRUB,
 		AutoPayEnabled: effectiveRecurring,

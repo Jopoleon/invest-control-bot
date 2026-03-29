@@ -5,41 +5,51 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
 	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 )
 
-// sendUserNotification routes user-facing app notifications through the linked
-// messenger account that matches the external id stored in legacy payment and
-// subscription records. While the schema is still in mixed mode, this keeps
-// Telegram flows working and allows MAX-originated payments to notify MAX users.
-func (a *application) sendUserNotification(ctx context.Context, userID, legacyExternalID int64, msg messenger.OutgoingMessage) error {
-	if userID > 0 {
-		accounts, err := a.store.ListUserMessengerAccounts(ctx, userID)
-		if err != nil {
-			return fmt.Errorf("list user messenger accounts: %w", err)
+// sendUserNotification routes app-level notifications through the linked
+// messenger account of the internal user. When the caller still has a preferred
+// messenger user id from mixed-mode records, it can be passed to keep MAX flows
+// targeting MAX and Telegram flows targeting Telegram during the transition.
+func (a *application) sendUserNotification(ctx context.Context, userID int64, preferredMessengerUserID string, msg messenger.OutgoingMessage) error {
+	accounts, err := a.loadUserMessengerAccounts(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if len(accounts) > 0 {
+		preferred, found := pickPreferredMessengerAccount(accounts, preferredMessengerUserID)
+		if found {
+			if err := a.sendViaMessengerAccount(ctx, preferred, msg); err == nil {
+				return nil
+			} else {
+				slog.Warn("send via preferred messenger account failed", "user_id", userID, "messenger_kind", preferred.MessengerKind, "messenger_user_id", preferred.MessengerUserID, "error", err)
+			}
 		}
-		targetExternalID := strconv.FormatInt(legacyExternalID, 10)
 		for _, account := range accounts {
-			if account.MessengerUserID != targetExternalID {
+			if found && account.MessengerKind == preferred.MessengerKind && account.MessengerUserID == preferred.MessengerUserID {
 				continue
 			}
 			if err := a.sendViaMessengerAccount(ctx, account, msg); err == nil {
 				return nil
-			} else {
-				slog.Warn("send via matched messenger account failed", "user_id", userID, "messenger_kind", account.MessengerKind, "external_user_id", account.MessengerUserID, "error", err)
 			}
 		}
 	}
 
-	if legacyExternalID <= 0 {
+	if preferredMessengerUserID == "" {
+		return nil
+	}
+	chatID, err := strconv.ParseInt(preferredMessengerUserID, 10, 64)
+	if err != nil || chatID <= 0 {
 		return nil
 	}
 
 	telegramErr := a.telegramClient.Send(ctx, messenger.UserRef{
 		Kind:   messenger.KindTelegram,
-		ChatID: legacyExternalID,
+		ChatID: chatID,
 	}, msg)
 	if telegramErr == nil {
 		return nil
@@ -50,13 +60,91 @@ func (a *application) sendUserNotification(ctx context.Context, userID, legacyEx
 	}
 	maxErr := a.maxSender.Send(ctx, messenger.UserRef{
 		Kind:   messenger.KindMAX,
-		ChatID: legacyExternalID,
+		ChatID: chatID,
 	}, msg)
 	if maxErr == nil {
-		slog.Warn("notification delivery fell back from telegram to MAX", "user_id", userID, "legacy_external_id", legacyExternalID)
+		slog.Warn("notification delivery fell back from telegram to MAX", "user_id", userID, "preferred_messenger_user_id", preferredMessengerUserID)
 		return nil
 	}
 	return fmt.Errorf("telegram send failed: %v; max send failed: %w", telegramErr, maxErr)
+}
+
+func (a *application) resolvePreferredMessengerKind(ctx context.Context, userID int64, preferredMessengerUserID string) messenger.Kind {
+	account, found, err := a.resolvePreferredMessengerAccount(ctx, userID, preferredMessengerUserID)
+	if err != nil || !found {
+		return messenger.KindTelegram
+	}
+	switch account.MessengerKind {
+	case domain.MessengerKindMAX:
+		return messenger.KindMAX
+	default:
+		return messenger.KindTelegram
+	}
+}
+
+func (a *application) resolvePreferredMessengerAccount(ctx context.Context, userID int64, preferredMessengerUserID string) (domain.UserMessengerAccount, bool, error) {
+	accounts, err := a.loadUserMessengerAccounts(ctx, userID)
+	if err != nil {
+		return domain.UserMessengerAccount{}, false, err
+	}
+	account, found := pickPreferredMessengerAccount(accounts, preferredMessengerUserID)
+	return account, found, nil
+}
+
+func (a *application) resolveTelegramMessengerAccount(ctx context.Context, userID int64) (domain.UserMessengerAccount, bool, error) {
+	accounts, err := a.loadUserMessengerAccounts(ctx, userID)
+	if err != nil {
+		return domain.UserMessengerAccount{}, false, err
+	}
+	for _, account := range accounts {
+		if account.MessengerKind == domain.MessengerKindTelegram {
+			return account, true, nil
+		}
+	}
+	return domain.UserMessengerAccount{}, false, nil
+}
+
+func (a *application) loadUserMessengerAccounts(ctx context.Context, userID int64) ([]domain.UserMessengerAccount, error) {
+	if userID <= 0 {
+		return nil, nil
+	}
+	accounts, err := a.store.ListUserMessengerAccounts(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list user messenger accounts: %w", err)
+	}
+	return accounts, nil
+}
+
+func pickPreferredMessengerAccount(accounts []domain.UserMessengerAccount, preferredMessengerUserID string) (domain.UserMessengerAccount, bool) {
+	preferredMessengerUserID = strings.TrimSpace(preferredMessengerUserID)
+	if preferredMessengerUserID != "" {
+		for _, account := range accounts {
+			if account.MessengerUserID == preferredMessengerUserID {
+				return account, true
+			}
+		}
+	}
+	for _, account := range accounts {
+		if account.MessengerKind == domain.MessengerKindTelegram {
+			return account, true
+		}
+	}
+	for _, account := range accounts {
+		if account.MessengerKind == domain.MessengerKindMAX {
+			return account, true
+		}
+	}
+	if len(accounts) == 0 {
+		return domain.UserMessengerAccount{}, false
+	}
+	return accounts[0], true
+}
+
+func formatPreferredMessengerUserID(raw int64) string {
+	if raw <= 0 {
+		return ""
+	}
+	return strconv.FormatInt(raw, 10)
 }
 
 func (a *application) sendViaMessengerAccount(ctx context.Context, account domain.UserMessengerAccount, msg messenger.OutgoingMessage) error {

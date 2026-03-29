@@ -91,6 +91,10 @@ Current direction:
 - external messenger identity is modeled separately
 - Telegram remains supported through `telegram_id`, but it is no longer the long-term canonical identity
 - `user_settings.auto_pay_enabled` has been removed from the runtime model; recurring state is derived from subscriptions and explicit checkout choice
+- `users` runtime/profile model no longer carries `telegram_id` / `telegram_username`; messenger metadata lives in `user_messenger_accounts`
+- postgres `payments` / `subscriptions` writes now align with the clean baseline schema; legacy `telegram_id` is treated as a derived runtime projection resolved through linked Telegram identity
+- `GetLatestSubscriptionByUserConnector` and `DisableAutoPayForActiveSubscriptions` are now `user_id`-first store APIs; bot/app runtime paths should prefer resolved internal users over Telegram IDs for ownership and recurring-state changes
+- app-level notification/audit helpers now resolve messenger targets through linked accounts by `user_id`; temporary preferred messenger ids may still be passed from mixed-mode records, but the helper contract is no longer built around `legacyExternalID`
 
 When changing code:
 1. Prefer using store methods that resolve users through messenger identity.

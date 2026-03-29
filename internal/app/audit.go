@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"strconv"
 	"strings"
 	"time"
 
@@ -12,7 +11,7 @@ import (
 
 // buildAppTargetAuditEvent records app-initiated actions such as provider callbacks,
 // scheduler jobs and public-page side effects while preserving the affected user context.
-func (a *application) buildAppTargetAuditEvent(ctx context.Context, userID, legacyExternalID, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
+func (a *application) buildAppTargetAuditEvent(ctx context.Context, userID int64, preferredMessengerUserID string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
 	event := domain.AuditEvent{
 		ActorType:    domain.AuditActorTypeApp,
 		ActorSubject: "app",
@@ -22,9 +21,9 @@ func (a *application) buildAppTargetAuditEvent(ctx context.Context, userID, lega
 		Details:      details,
 		CreatedAt:    createdAt,
 	}
-	if legacyExternalID > 0 {
-		event.TargetMessengerKind = messengerKindToDomain(a.resolvePreferredMessengerKind(ctx, userID, legacyExternalID))
-		event.TargetMessengerUserID = strconv.FormatInt(legacyExternalID, 10)
+	if account, found, err := a.resolvePreferredMessengerAccount(ctx, userID, preferredMessengerUserID); err == nil && found {
+		event.TargetMessengerKind = account.MessengerKind
+		event.TargetMessengerUserID = account.MessengerUserID
 	}
 	return event
 }
