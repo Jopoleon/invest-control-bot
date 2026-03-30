@@ -72,10 +72,11 @@ type TelegramConfig struct {
 
 // MAXConfig stores MAX bot credentials, webhook metadata and local polling settings.
 type MAXConfig struct {
-	BotToken string
-	BotName  string
-	Webhook  WebhookConfig
-	Polling  MAXPollingConfig
+	BotToken    string
+	BotName     string
+	BotUsername string
+	Webhook     WebhookConfig
+	Polling     MAXPollingConfig
 }
 
 // MAXPollingConfig controls local long-polling worker parameters.
@@ -173,8 +174,9 @@ func Load() (Config, error) {
 			},
 		},
 		MAX: MAXConfig{
-			BotToken: os.Getenv("MAX_BOT_TOKEN"),
-			BotName:  os.Getenv("MAX_BOT_NAME"),
+			BotToken:    os.Getenv("MAX_BOT_TOKEN"),
+			BotName:     os.Getenv("MAX_BOT_NAME"),
+			BotUsername: os.Getenv("MAX_BOT_USERNAME"),
 			Webhook: WebhookConfig{
 				SecretToken: os.Getenv("MAX_WEBHOOK_SECRET"),
 				PublicURL:   os.Getenv("MAX_WEBHOOK_PUBLIC_URL"),

@@ -34,6 +34,13 @@
   - это уменьшает blast radius для следующего шага, где `Payment.TelegramID` / `Subscription.TelegramID` будут удаляться из runtime-моделей полностью.
 
 ### Обновление 2026-03-29
+- Зафиксирован отдельный follow-up для тестирования на реальных деньгах:
+  - для smoke/E2E проверки живого recurring и автосписаний понадобится non-production-only режим с очень коротким сроком подписки (например минуты/секунды);
+  - это не должно становиться production default, поэтому идея пока оставлена как явный `TODO` в коде и рабочем контексте, а не как скрытая договоренность.
+- Добавлена локальная dev-утилита `cmd/robokassa-callback`:
+  - умеет эмулировать Robokassa `result`, `success` и `fail` сигналы на локальный backend;
+  - если сумма не передана явно, подтягивает ее из `payments` по `payments.token`;
+  - это снимает зависимость от постоянного доступа к LK Robokassa для smoke/E2E проверки checkout flow.
 - `internal/bootstrap` удален:
   - открытие store и применение миграций теперь инкапсулированы в `internal/app/store_open.go`;
   - `cmd/server`, `cmd/max-poller` и `pkg/vercelapp` больше не зависят от отдельного bootstrap-пакета.
@@ -47,6 +54,18 @@
 - Public recurring cancel page стала честнее в mixed-mode:
   - token по-прежнему несет legacy messenger user id;
   - но страница и POST-path теперь сначала пытаются резолвить пользователя через linked identities (`telegram` -> `max`), а уже затем используют fallback bridge.
+- Bot menu и related helpers больше не считают Telegram обязательным transport context:
+  - `sendSubscriptionOverview`, `sendPaymentHistory`, `sendAutopayInfo`, `sendExistingSubscriptionMessage` и финальный registration step теперь принимают `messenger.UserIdentity`, а не raw Telegram ID;
+  - active subscription lookup и menu audit events резолвят пользователя через общий messenger identity path;
+  - log keys в `internal/bot` / `internal/app` выровнены под `messenger_user_id` там, где речь идет уже не о Telegram-specific transport field.
+- Admin navigation и form actions стали user-first:
+  - detail/revoke/paylink/rebill URLs теперь строятся от `user_id`, а не тащат `telegram_id` как обязательный route/query context;
+  - hidden form fields в detail/churn screen больше не прокидывают Telegram ID, если сервер уже может восстановить transport identity через `user_id`;
+  - Telegram остается только в тех админских действиях, где он реально нужен как transport-specific projection (direct send, revoke from chat, paylink to Telegram user).
+- Startup transport health checks добавлены в long-lived runtime:
+  - `cmd/server` теперь явно пингует Telegram `getMe` и MAX `GET /me` до webhook/setup шага;
+  - `cmd/max-poller` тоже валидирует MAX token через `GET /me` перед запуском polling loop;
+  - это дает ранний fail-fast на битых токенах и более ясные startup logs с identity бота.
 - Полный regression pass после этих правок:
   - `GOCACHE=/tmp/go-build go test ./...` проходит.
 

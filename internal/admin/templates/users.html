@@ -41,9 +41,15 @@
     <form method="GET" action="/admin/users" class="filter-form">
       <div class="filter-grid is-two">
         <label class="filter-field">
+          <span>{{index .I18N "users.filter.user_id"}}</span>
+          <input name="user_id" value="{{.UserID}}" placeholder="42">
+        </label>
+        <label class="filter-field">
           <span>{{index .I18N "users.filter.telegram_id"}}</span>
           <input name="telegram_id" value="{{.TelegramID}}" placeholder="264704572">
         </label>
+      </div>
+      <div class="filter-grid is-two">
         <label class="filter-field">
           <span>{{index .I18N "users.filter.search"}}</span>
           <input name="search" value="{{.Search}}" placeholder="{{index .I18N "users.filter.search_ph"}}">
@@ -70,8 +76,9 @@
       <table id="usersSource">
         <thead>
           <tr>
-            <th>{{index .I18N "users.table.id"}}</th>
-            <th>{{index .I18N "users.table.username"}}</th>
+            <th>{{index .I18N "users.table.user_id"}}</th>
+            <th>{{index .I18N "users.table.telegram_id"}}</th>
+            <th>{{index .I18N "users.table.telegram_username"}}</th>
             <th>{{index .I18N "users.table.full_name"}}</th>
             <th>{{index .I18N "users.table.phone"}}</th>
             <th>{{index .I18N "users.table.email"}}</th>
@@ -82,8 +89,9 @@
         <tbody>
         {{range .Users}}
           <tr>
-            <td class="mono"><a href="{{.DetailURL}}">{{.TelegramID}}</a></td>
-            <td>{{if .TelegramUsername}}<a href="{{.DetailURL}}">{{.TelegramUsername}}</a>{{end}}</td>
+            <td class="mono"><a href="{{.DetailURL}}">{{.UserID}}</a></td>
+            <td class="mono">{{if .HasTelegram}}{{.TelegramID}}{{else}}—{{end}}</td>
+            <td>{{if .TelegramUsername}}<a href="{{.DetailURL}}">{{.TelegramUsername}}</a>{{else}}—{{end}}</td>
             <td>{{.FullName}}</td>
             <td>{{.Phone}}</td>
             <td>{{.Email}}</td>

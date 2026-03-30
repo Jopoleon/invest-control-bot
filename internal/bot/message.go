@@ -18,7 +18,7 @@ func (h *Handler) handleMessage(ctx context.Context, msg messenger.IncomingMessa
 
 	text := strings.TrimSpace(msg.Text)
 	if strings.EqualFold(text, "/menu") {
-		h.sendMenu(ctx, msg.ChatID)
+		h.sendMenu(ctx, msg.ChatID, msg.User)
 		return
 	}
 	if strings.HasPrefix(text, "/start") {
@@ -28,7 +28,7 @@ func (h *Handler) handleMessage(ctx context.Context, msg messenger.IncomingMessa
 
 	state, ok, err := h.store.GetRegistrationState(ctx, messengerKindFromIdentity(msg.User.Kind), strconv.FormatInt(msg.User.ID, 10))
 	if err != nil {
-		slog.Error("load registration state failed", "error", err, "telegram_id", msg.User.ID)
+		slog.Error("load registration state failed", "error", err, "messenger_kind", msg.User.Kind, "messenger_user_id", msg.User.ID)
 		return
 	}
 	if !ok || state.Step == domain.StepNone || state.Step == domain.StepDone {

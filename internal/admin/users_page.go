@@ -22,6 +22,7 @@ func (h *Handler) usersPage(w http.ResponseWriter, r *http.Request) {
 			TopbarPath: "/admin/users",
 			ActiveNav:  "users",
 		},
+		UserID:     strings.TrimSpace(r.URL.Query().Get("user_id")),
 		TelegramID: strings.TrimSpace(r.URL.Query().Get("telegram_id")),
 		Search:     strings.TrimSpace(r.URL.Query().Get("search")),
 		ExportURL:  buildExportURL("/admin/users/export.csv", r.URL.Query(), lang),
@@ -52,13 +53,14 @@ func (h *Handler) usersPage(w http.ResponseWriter, r *http.Request) {
 			UserID:           user.UserID,
 			TelegramID:       user.TelegramID,
 			TelegramUsername: user.TelegramUsername,
+			HasTelegram:      user.TelegramID > 0,
 			FullName:         user.FullName,
 			Phone:            user.Phone,
 			Email:            user.Email,
 			AutoPay:          autoPayLabel,
 			AutoPayClass:     autoPayClass,
 			UpdatedAt:        user.UpdatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
-			DetailURL:        buildUserDetailURL(lang, user.UserID, user.TelegramID),
+			DetailURL:        buildUserDetailURL(lang, user.UserID),
 		})
 	}
 

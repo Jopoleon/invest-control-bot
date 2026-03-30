@@ -18,7 +18,11 @@ const (
 	reminderDaysBeforeEnd = 3
 	expiryNoticeWindow    = 24 * time.Hour
 	subscriptionJobLimit  = 200
-	subscriptionJobEvery  = time.Minute
+	// TODO(testing): if we introduce very short non-production subscription
+	// periods for live recurring tests, reminder/expiry/rebill thresholds in
+	// this scheduler will need an explicit alternate strategy instead of these
+	// day-based windows.
+	subscriptionJobEvery = time.Minute
 )
 
 // newSubscriptionLifecycleScheduler wires periodic reminder and expiration jobs.
@@ -215,7 +219,7 @@ func processExpiredSubscriptions(ctx context.Context, appCtx *application) {
 					if parseErr != nil || telegramID <= 0 {
 						slog.Error("invalid telegram account id for revoke", "error", parseErr, "subscription_id", sub.ID, "user_id", sub.UserID, "messenger_user_id", account.MessengerUserID)
 					} else if err := appCtx.telegramClient.RemoveChatMember(ctx, chatID, telegramID); err != nil {
-						slog.Error("remove chat member failed", "error", err, "subscription_id", sub.ID, "telegram_id", telegramID, "chat_id", chatID)
+						slog.Error("remove chat member failed", "error", err, "subscription_id", sub.ID, "messenger_user_id", telegramID, "chat_id", chatID)
 						_ = appCtx.store.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionRevokeFailed, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
 					} else {
 						_ = appCtx.store.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionRevokedFromChat, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))

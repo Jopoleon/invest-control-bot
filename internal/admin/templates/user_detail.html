@@ -280,21 +280,26 @@
       <span class="section-kicker">{{index .I18N "users.detail.profile"}}</span>
     </div>
     <h1>
-      {{if .User.FullName}}{{.User.FullName}}{{else if .User.TelegramUsername}}{{.User.TelegramUsername}}{{else}}{{.User.TelegramID}}{{end}}
+      {{if .User.FullName}}{{.User.FullName}}{{else if .User.TelegramUsername}}{{.User.TelegramUsername}}{{else}}{{.User.UserID}}{{end}}
     </h1>
     <p class="hero-subtitle">
       Операционная карточка пользователя: профиль, подписки, платежи и история действий в одном месте.
     </p>
-    {{if .User.TelegramID}}
     <div class="hero-tags">
       <div class="hero-tag">
-        <small>{{index .I18N "users.table.id"}}</small>
+        <small>{{index .I18N "users.table.user_id"}}</small>
+        <strong class="mono">{{.User.UserID}}</strong>
+      </div>
+      {{if .User.HasTelegram}}
+      <div class="hero-tag">
+        <small>{{index .I18N "users.table.telegram_id"}}</small>
         <strong class="mono">{{.User.TelegramID}}</strong>
       </div>
       <div class="hero-tag">
-        <small>{{index .I18N "users.table.username"}}</small>
+        <small>{{index .I18N "users.table.telegram_username"}}</small>
         <strong>{{.User.TelegramUsername}}</strong>
       </div>
+      {{end}}
       <div class="hero-tag">
         <small>{{index .I18N "users.table.autopay"}}</small>
         <strong><span class="badge {{.User.AutoPayClass}}">{{.User.AutoPay}}</span></strong>
@@ -304,11 +309,9 @@
         <strong class="mono">{{.User.UpdatedAt}}</strong>
       </div>
     </div>
-    {{end}}
     {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
   </article>
 
-  {{if .User.TelegramID}}
   <article class="section-card">
     <div class="section-head">
       <h3>{{index .I18N "users.detail.profile"}}</h3>
@@ -387,13 +390,16 @@
     <div class="action-grid">
       <div class="action-card">
         <h4>{{index .I18N "users.actions.message"}}</h4>
+        {{if .User.HasTelegram}}
         <form method="POST" action="{{.MessageActionURL}}">
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
           <input type="hidden" name="user_id" value="{{.User.UserID}}">
-          <input type="hidden" name="telegram_id" value="{{.User.TelegramID}}">
           <textarea name="message" placeholder="{{index .I18N "users.actions.message_ph"}}" required></textarea>
           <button type="submit">{{index .I18N "users.actions.message_send"}}</button>
         </form>
+        {{else}}
+        <small>{{index .I18N "users.actions.message_unavailable"}}</small>
+        {{end}}
       </div>
       <div class="action-card">
         <h4>{{index .I18N "users.actions.paylink"}}</h4>
@@ -479,13 +485,19 @@
     </div>
     <div class="profile-grid">
       <div class="profile-card">
-        <small>{{index .I18N "users.table.id"}}</small>
-        <strong class="mono">{{.User.TelegramID}}</strong>
+        <small>{{index .I18N "users.table.user_id"}}</small>
+        <strong class="mono">{{.User.UserID}}</strong>
+      </div>
+      {{if .User.HasTelegram}}
+      <div class="profile-card">
+        <small>{{index .I18N "users.table.telegram_id"}}</small>
+        <span class="mono">{{.User.TelegramID}}</span>
       </div>
       <div class="profile-card">
-        <small>{{index .I18N "users.table.username"}}</small>
+        <small>{{index .I18N "users.table.telegram_username"}}</small>
         <span>{{.User.TelegramUsername}}</span>
       </div>
+      {{end}}
       <div class="profile-card">
         <small>{{index .I18N "users.table.full_name"}}</small>
         <span>{{.User.FullName}}</span>
@@ -546,7 +558,6 @@
               <form method="POST" action="{{.PaymentLinkURL}}">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                 <input type="hidden" name="user_id" value="{{$.User.UserID}}">
-                <input type="hidden" name="telegram_id" value="{{$.User.TelegramID}}">
                 <input type="hidden" name="subscription_id" value="{{.ID}}">
                 <button type="submit" class="action-btn is-send">{{index $.I18N "users.actions.paylink_send"}}</button>
               </form>
@@ -555,7 +566,6 @@
               <form method="POST" action="{{.RebillURL}}">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                 <input type="hidden" name="user_id" value="{{$.User.UserID}}">
-                <input type="hidden" name="telegram_id" value="{{$.User.TelegramID}}">
                 <input type="hidden" name="subscription_id" value="{{.ID}}">
                 <button type="submit" class="action-btn is-edit">{{index $.I18N "users.actions.rebill_send"}}</button>
               </form>
@@ -564,7 +574,6 @@
               <form method="POST" action="{{.RevokeURL}}" onsubmit="return confirm('{{index $.I18N "users.revoke.confirm"}}');">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                 <input type="hidden" name="user_id" value="{{$.User.UserID}}">
-                <input type="hidden" name="telegram_id" value="{{$.User.TelegramID}}">
                 <input type="hidden" name="subscription_id" value="{{.ID}}">
                 <button type="submit" class="action-btn is-delete">{{index $.I18N "users.revoke.button"}}</button>
               </form>
@@ -647,7 +656,6 @@
     </div>
     {{if not .Events}}<small>{{index .I18N "users.detail.empty"}}</small>{{end}}
   </article>
-  {{end}}
 </main>
 <script src="/admin/assets/js/gridjs.umd.js" defer></script>
 <script>

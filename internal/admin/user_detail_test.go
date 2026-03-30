@@ -53,20 +53,20 @@ func TestBuildRecurringSummary_UsesRebillState(t *testing.T) {
 	}
 }
 
-func TestBuildUserDetailURL_IncludesUserIDAndTelegramID(t *testing.T) {
-	got := buildUserDetailURL("ru", 17, 264704572)
+func TestBuildUserDetailURL_UsesUserIDOnly(t *testing.T) {
+	got := buildUserDetailURL("ru", 17)
 	if !strings.Contains(got, "user_id=17") {
 		t.Fatalf("user_id missing from url: %q", got)
 	}
-	if !strings.Contains(got, "telegram_id=264704572") {
-		t.Fatalf("telegram_id missing from url: %q", got)
+	if strings.Contains(got, "telegram_id=") {
+		t.Fatalf("telegram_id unexpectedly present in url: %q", got)
 	}
 }
 
 func TestUserDetailPage_AllowsUserIDLookup(t *testing.T) {
 	ctx := context.Background()
 	st := memory.New()
-	h := NewHandler(st, "test-admin-token", "test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil)
+	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil)
 
 	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, "264704572", "emiloserdov")
 	if err != nil {

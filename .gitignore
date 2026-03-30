@@ -10,6 +10,7 @@ personal_notes.md
 /scrnshts
 /junk
 /bin/
+/.dist/
 /tmp/
 /vendor
 *.log

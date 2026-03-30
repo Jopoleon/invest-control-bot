@@ -4,8 +4,11 @@ import "context"
 
 // Request contains minimum data needed to create checkout URL.
 type Request struct {
-	ConnectorID     int64
-	AmountRUB       int64
+	ConnectorID int64
+	AmountRUB   int64
+	// InvoiceID is the merchant-side payment identifier passed to provider
+	// checkout. For Robokassa this is the canonical `InvoiceID` / `InvId` and is
+	// persisted in payments.token.
 	InvoiceID       string
 	Description     string
 	EnableRecurring bool
@@ -19,7 +22,11 @@ type Service interface {
 
 // RebillRequest contains data for provider-side recurring charge creation.
 type RebillRequest struct {
-	InvoiceID         string
+	// InvoiceID is the new merchant-side recurring payment identifier. For
+	// Robokassa it is sent as `InvoiceID` and persisted in payments.token.
+	InvoiceID string
+	// PreviousInvoiceID is the parent successful merchant invoice reference. For
+	// Robokassa it maps to the previous payment `InvoiceID` / `InvId`.
 	PreviousInvoiceID string
 	AmountRUB         int64
 	Description       string

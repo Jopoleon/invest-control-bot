@@ -37,7 +37,7 @@ func (h *Handler) handleCallback(ctx context.Context, cb messenger.IncomingActio
 	connectorIDRaw := strings.TrimPrefix(cb.Data, "accept_terms:")
 	connectorID, err := strconv.ParseInt(connectorIDRaw, 10, 64)
 	if err != nil || connectorID <= 0 {
-		h.send(ctx, cb.ChatID, botMsgConnectorUnavailable)
+		h.sendTo(ctx, cb.ChatID, cb.User, botMsgConnectorUnavailable)
 		return
 	}
 	connector, ok, err := h.store.GetConnector(ctx, connectorID)
@@ -46,7 +46,7 @@ func (h *Handler) handleCallback(ctx context.Context, cb messenger.IncomingActio
 		return
 	}
 	if !ok || !connector.IsActive {
-		h.send(ctx, cb.ChatID, botMsgConnectorUnavailable)
+		h.sendTo(ctx, cb.ChatID, cb.User, botMsgConnectorUnavailable)
 		return
 	}
 
@@ -83,10 +83,10 @@ func (h *Handler) handleCallback(ctx context.Context, cb messenger.IncomingActio
 	nextStep := nextRegistrationStep(user, currentUsername)
 	if nextStep == domain.StepDone {
 		if err := h.store.DeleteRegistrationState(ctx, messengerKindFromIdentity(cb.User.Kind), strconv.FormatInt(cb.User.ID, 10)); err != nil {
-			slog.Error("delete registration state failed", "error", err, "telegram_id", cb.User.ID)
+			slog.Error("delete registration state failed", "error", err, "messenger_kind", cb.User.Kind, "messenger_user_id", cb.User.ID)
 		}
 		h.logAuditEvent(ctx, cb.User, connectorID, domain.AuditActionRegistrationReusedProfile, "")
-		h.sendFinalRegistrationMessage(ctx, cb.ChatID, cb.User.ID, connectorID)
+		h.sendFinalRegistrationMessage(ctx, cb.ChatID, cb.User, connectorID)
 		return
 	}
 
@@ -98,12 +98,12 @@ func (h *Handler) handleCallback(ctx context.Context, cb messenger.IncomingActio
 		Username:        currentUsername,
 	}
 	if err := h.store.SaveRegistrationState(ctx, state); err != nil {
-		slog.Error("save registration state failed", "error", err, "telegram_id", cb.User.ID, "connector_id", connectorID)
+		slog.Error("save registration state failed", "error", err, "messenger_kind", cb.User.Kind, "messenger_user_id", cb.User.ID, "connector_id", connectorID)
 		return
 	}
 	h.logAuditEvent(ctx, cb.User, connectorID, domain.AuditActionRegistrationStepRequested, string(nextStep))
 
-	h.send(ctx, cb.ChatID, registrationPrompt(nextStep))
+	h.sendTo(ctx, cb.ChatID, cb.User, registrationPrompt(nextStep))
 }
 
 // handlePayConsentToggle re-renders the final checkout step with the currently
@@ -115,7 +115,7 @@ func (h *Handler) handlePayConsentToggle(ctx context.Context, cb messenger.Incom
 
 	connectorID, enabled, ok := parsePayConsentCallbackData(cb.Data)
 	if !ok {
-		h.send(ctx, cb.ChatID, botMsgPayConsentToggleFailed)
+		h.sendTo(ctx, cb.ChatID, cb.User, botMsgPayConsentToggleFailed)
 		return
 	}
 	connector, found, err := h.store.GetConnector(ctx, connectorID)
@@ -124,7 +124,7 @@ func (h *Handler) handlePayConsentToggle(ctx context.Context, cb messenger.Incom
 		return
 	}
 	if !found || !connector.IsActive {
-		h.send(ctx, cb.ChatID, botMsgConnectorUnavailable)
+		h.sendTo(ctx, cb.ChatID, cb.User, botMsgConnectorUnavailable)
 		return
 	}
 

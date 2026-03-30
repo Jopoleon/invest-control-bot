@@ -11,31 +11,35 @@ type basePageData struct {
 
 // connectorView is a template-friendly representation of connector row.
 type connectorView struct {
-	ID           int64
-	StartPayload string
-	Name         string
-	ChatID       string
-	ChannelURL   string
-	PriceRUB     int64
-	PeriodDays   int
-	OfferURL     string
-	PrivacyURL   string
-	BotLink      string
-	IsActive     bool
-	ActiveLabel  string
-	ActiveClass  string
-	ToggleTo     bool
-	ToggleLabel  string
+	ID              int64
+	StartPayload    string
+	Name            string
+	ChatID          string
+	ChannelURL      string
+	PriceRUB        int64
+	PeriodDays      int
+	OfferURL        string
+	PrivacyURL      string
+	TelegramBotLink string
+	MAXBotLink      string
+	MAXStartCommand string
+	IsActive        bool
+	ActiveLabel     string
+	ActiveClass     string
+	ToggleTo        bool
+	ToggleLabel     string
 }
 
 // connectorsPageData is context passed into connectors.html template.
 type connectorsPageData struct {
 	basePageData
 
-	Notice          string
-	RequiredMessage string
-	ExportURL       string
-	Connectors      []connectorView
+	Notice              string
+	RequiredMessage     string
+	ExportURL           string
+	TelegramBotUsername string
+	MAXBotUsername      string
+	Connectors          []connectorView
 }
 
 // helpPageData is context passed into help.html template.
@@ -97,6 +101,7 @@ type eventsPageData struct {
 
 type paymentView struct {
 	ID                int64
+	UserID            int64
 	Provider          string
 	ProviderPaymentID string
 	Status            string
@@ -115,6 +120,7 @@ type paymentView struct {
 
 type subscriptionView struct {
 	ID               int64
+	UserID           int64
 	Status           string
 	StatusLabel      string
 	StatusClass      string
@@ -141,6 +147,7 @@ type billingPageData struct {
 
 	Notice string
 
+	UserID             string
 	TelegramID         string
 	ConnectorID        string
 	PaymentStatus      string
@@ -179,6 +186,7 @@ type userView struct {
 	UserID           int64
 	TelegramID       int64
 	TelegramUsername string
+	HasTelegram      bool
 	FullName         string
 	Phone            string
 	Email            string
@@ -192,6 +200,7 @@ type usersPageData struct {
 	basePageData
 
 	Notice     string
+	UserID     string
 	TelegramID string
 	Search     string
 	ExportURL  string
@@ -280,6 +289,7 @@ type churnPageData struct {
 
 	Notice      string
 	ExportURL   string
+	UserID      string
 	TelegramID  string
 	ConnectorID string
 	Search      string

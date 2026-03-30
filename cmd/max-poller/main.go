@@ -49,6 +49,12 @@ func main() {
 
 	paymentService := buildPaymentService(cfg)
 	maxClient := max.NewClient(cfg.MAX.BotToken, nil)
+	botInfo, err := maxClient.Ping(context.Background())
+	if err != nil {
+		slog.Error("ping MAX api failed", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("MAX api ping ok", "bot_id", botInfo.UserID, "bot_username", botInfo.Username, "bot_name", firstNonEmpty(botInfo.FirstName, botInfo.Name))
 	maxSender := max.NewSender(maxClient)
 	handler := bot.NewHandler(
 		st,
@@ -227,4 +233,13 @@ func trimWebhookPath(raw, suffix string) string {
 	u.Path = strings.TrimSuffix(u.Path, suffix)
 	u.Path = strings.TrimRight(u.Path, "/")
 	return strings.TrimRight(u.String(), "/")
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }

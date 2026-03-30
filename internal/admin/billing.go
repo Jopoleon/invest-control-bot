@@ -25,6 +25,7 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 			TopbarPath: "/admin/billing",
 			ActiveNav:  "billing",
 		},
+		UserID:                 strings.TrimSpace(r.URL.Query().Get("user_id")),
 		PaymentStatus:          strings.TrimSpace(r.URL.Query().Get("payment_status")),
 		SubscriptionStatus:     strings.TrimSpace(r.URL.Query().Get("subscription_status")),
 		TelegramID:             strings.TrimSpace(r.URL.Query().Get("telegram_id")),
@@ -104,6 +105,7 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 		autoPayLabel, autoPayClass := autoPayBadge(lang, p.AutoPayEnabled, true)
 		data.Payments = append(data.Payments, paymentView{
 			ID:                p.ID,
+			UserID:            p.UserID,
 			Provider:          p.Provider,
 			ProviderPaymentID: p.ProviderPaymentID,
 			Status:            string(p.Status),
@@ -133,6 +135,7 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 		autoPayLabel, autoPayClass := autoPayBadge(lang, s.AutoPayEnabled, true)
 		data.Subscriptions = append(data.Subscriptions, subscriptionView{
 			ID:             s.ID,
+			UserID:         s.UserID,
 			Status:         string(s.Status),
 			StatusLabel:    statusLabel,
 			StatusClass:    statusClass,

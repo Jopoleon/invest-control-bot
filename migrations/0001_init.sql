@@ -255,9 +255,9 @@ CREATE TABLE payments (
 COMMENT ON TABLE payments IS 'Checkout attempts and recurring rebill records.';
 COMMENT ON COLUMN payments.id IS 'Internal payment id. Example: 14.';
 COMMENT ON COLUMN payments.provider IS 'Payment provider name. Example: robokassa.';
-COMMENT ON COLUMN payments.provider_payment_id IS 'Provider-side payment id after callback confirmation. Example: robokassa:8094871605448087949.';
+COMMENT ON COLUMN payments.provider_payment_id IS 'Provider-side payment id after confirmation. For Robokassa this is external operation context such as OpKey or a derived provider marker. Example: robokassa:8094871605448087949.';
 COMMENT ON COLUMN payments.status IS 'Internal payment status. Example: pending, paid, failed.';
-COMMENT ON COLUMN payments.token IS 'Public opaque token used in redirect or internal payment lookup. Example: 8094871605448087949.';
+COMMENT ON COLUMN payments.token IS 'Merchant-side payment reference used across checkout, callbacks and internal lookup. For Robokassa this field stores InvoiceID / InvId. Example: 8094871605448087949.';
 COMMENT ON COLUMN payments.user_id IS 'Canonical internal user owner. Example: 42.';
 COMMENT ON COLUMN payments.connector_id IS 'Connector being purchased. Example: 13.';
 COMMENT ON COLUMN payments.subscription_id IS 'Target subscription id for rebill attempts, or 0 for first payment. Example: 12.';

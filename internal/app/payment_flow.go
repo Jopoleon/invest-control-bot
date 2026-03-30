@@ -41,6 +41,9 @@ func (a *application) activateSuccessfulPayment(ctx context.Context, paymentRow 
 	if err != nil {
 		slog.Error("load connector for subscription failed", "error", err, "connector_id", paymentRow.ConnectorID)
 	} else if connectorExists && connector.PeriodDays > 0 {
+		// TODO(testing): add a non-production-only short-lived subscription mode
+		// for real-money recurring/autopay validation (minutes or seconds). The
+		// default production behavior must remain day-based.
 		periodDays = connector.PeriodDays
 	}
 

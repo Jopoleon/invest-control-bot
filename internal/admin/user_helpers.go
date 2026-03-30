@@ -6,52 +6,40 @@ import (
 	"strings"
 )
 
-func buildUserDetailURL(lang string, userID, telegramID int64) string {
+func buildUserDetailURL(lang string, userID int64) string {
 	params := url.Values{}
 	params.Set("lang", lang)
 	if userID > 0 {
 		params.Set("user_id", strconv.FormatInt(userID, 10))
-	}
-	if telegramID > 0 {
-		params.Set("telegram_id", strconv.FormatInt(telegramID, 10))
 	}
 	return "/admin/users/view?" + params.Encode()
 }
 
-func buildSubscriptionRevokeURL(lang string, userID, telegramID, subscriptionID int64) string {
+func buildSubscriptionRevokeURL(lang string, userID, subscriptionID int64) string {
 	params := url.Values{}
 	params.Set("lang", lang)
 	if userID > 0 {
 		params.Set("user_id", strconv.FormatInt(userID, 10))
-	}
-	if telegramID > 0 {
-		params.Set("telegram_id", strconv.FormatInt(telegramID, 10))
 	}
 	params.Set("subscription_id", strconv.FormatInt(subscriptionID, 10))
 	return "/admin/subscriptions/revoke?" + params.Encode()
 }
 
-func buildUserPaymentLinkURL(lang string, userID, telegramID, subscriptionID int64) string {
+func buildUserPaymentLinkURL(lang string, userID, subscriptionID int64) string {
 	params := url.Values{}
 	params.Set("lang", lang)
 	if userID > 0 {
 		params.Set("user_id", strconv.FormatInt(userID, 10))
-	}
-	if telegramID > 0 {
-		params.Set("telegram_id", strconv.FormatInt(telegramID, 10))
 	}
 	params.Set("subscription_id", strconv.FormatInt(subscriptionID, 10))
 	return "/admin/users/send-payment-link?" + params.Encode()
 }
 
-func buildSubscriptionRebillURL(lang string, userID, telegramID, subscriptionID int64) string {
+func buildSubscriptionRebillURL(lang string, userID, subscriptionID int64) string {
 	params := url.Values{}
 	params.Set("lang", lang)
 	if userID > 0 {
 		params.Set("user_id", strconv.FormatInt(userID, 10))
-	}
-	if telegramID > 0 {
-		params.Set("telegram_id", strconv.FormatInt(telegramID, 10))
 	}
 	params.Set("subscription_id", strconv.FormatInt(subscriptionID, 10))
 	return "/admin/subscriptions/rebill?" + params.Encode()
@@ -85,6 +73,23 @@ func buildAdminBotStartURL(botUsername, startPayload string) string {
 		return ""
 	}
 	return "https://t.me/" + username + "?start=" + payload
+}
+
+func buildAdminMAXStartURL(botName, startPayload string) string {
+	name := strings.TrimSpace(strings.TrimPrefix(botName, "@"))
+	payload := strings.TrimSpace(startPayload)
+	if name == "" || payload == "" {
+		return ""
+	}
+	return "https://max.ru/" + name + "?start=" + payload
+}
+
+func buildAdminStartCommand(startPayload string) string {
+	payload := strings.TrimSpace(startPayload)
+	if payload == "" {
+		return ""
+	}
+	return "/start " + payload
 }
 
 func trimAuditDetails(raw string, limit int) string {

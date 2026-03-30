@@ -15,15 +15,12 @@ func (s *Store) SaveUser(ctx context.Context, user domain.User) error {
 	now := time.Now().UTC()
 	if user.ID > 0 {
 		_, err := s.db.ExecContext(ctx, `
-			INSERT INTO users (
-				id, full_name, phone, email, updated_at
-			) VALUES ($1,$2,$3,$4,$5)
-			ON CONFLICT (id)
-			DO UPDATE SET
-				full_name = EXCLUDED.full_name,
-				phone = EXCLUDED.phone,
-				email = EXCLUDED.email,
-				updated_at = EXCLUDED.updated_at
+			UPDATE users
+			SET full_name = $2,
+				phone = $3,
+				email = $4,
+				updated_at = $5
+			WHERE id = $1
 		`, user.ID, user.FullName, user.Phone, user.Email, now)
 		return err
 	}

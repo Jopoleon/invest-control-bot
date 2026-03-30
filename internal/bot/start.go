@@ -14,7 +14,7 @@ import (
 func (h *Handler) handleStart(ctx context.Context, msg messenger.IncomingMessage) {
 	parts := strings.Fields(strings.TrimSpace(msg.Text))
 	if len(parts) < 2 {
-		h.send(ctx, msg.ChatID, botMsgStartUsage)
+		h.sendTo(ctx, msg.ChatID, msg.User, botMsgStartUsage)
 		return
 	}
 
@@ -34,7 +34,7 @@ func (h *Handler) handleStart(ctx context.Context, msg messenger.IncomingMessage
 		}
 	}
 	if !ok || !connector.IsActive {
-		h.send(ctx, msg.ChatID, botMsgConnectorUnavailable)
+		h.sendTo(ctx, msg.ChatID, msg.User, botMsgConnectorUnavailable)
 		return
 	}
 	h.logAuditEvent(ctx, msg.User, connector.ID, domain.AuditActionStartOpened, "payload="+payload)
@@ -55,7 +55,7 @@ func (h *Handler) handleStart(ctx context.Context, msg messenger.IncomingMessage
 		}},
 	}
 
-	if err := h.sender.Send(ctx, chatRef(msg.ChatID), out); err != nil {
+	if err := h.sender.Send(ctx, recipientRef(msg.ChatID, msg.User), out); err != nil {
 		slog.Error("send start message failed", "error", err, "chat_id", msg.ChatID, "connector_id", connector.ID)
 	}
 }

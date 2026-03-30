@@ -53,6 +53,8 @@ func (a *application) triggerRebill(ctx context.Context, subscriptionID int64, s
 		return rebillResponse{}, errors.New("connector not found")
 	}
 
+	// The generated invoiceID becomes the next merchant-side Robokassa InvoiceID
+	// and is persisted in payments.token for callbacks and later reconciliation.
 	invoiceID := generateInvoiceID()
 	now := time.Now().UTC()
 	pendingPayment := domain.Payment{

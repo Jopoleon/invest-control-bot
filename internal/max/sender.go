@@ -21,11 +21,14 @@ func NewSender(client *Client) *Sender {
 func (s *Sender) Send(ctx context.Context, user messenger.UserRef, msg messenger.OutgoingMessage) error {
 	attachments := toMAXAttachments(msg.Buttons)
 	req := SendMessageRequest{
-		// Current bot flows in MAX run in private dialogs, so the transport-neutral
-		// recipient reference maps to MAX `user_id` rather than `chat_id`.
-		UserID:      user.ChatID,
 		Text:        msg.Text,
 		Attachments: attachments,
+	}
+	switch {
+	case user.UserID > 0:
+		req.UserID = user.UserID
+	case user.ChatID > 0:
+		req.ChatID = user.ChatID
 	}
 	slog.Debug("max sender send request",
 		"user_id", req.UserID,

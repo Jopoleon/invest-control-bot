@@ -10,25 +10,25 @@ import (
 	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 )
 
-func (h *Handler) sendSubscriptionOverview(ctx context.Context, chatID, telegramID int64) {
-	subs, err := queryActiveSubscriptions(ctx, h, telegramID)
+func (h *Handler) sendSubscriptionOverview(ctx context.Context, chatID int64, userIdentity messenger.UserIdentity) {
+	subs, err := queryActiveSubscriptions(ctx, h, userIdentity)
 	if err != nil {
-		slog.Error("list active subscriptions failed", "error", err, "telegram_id", telegramID)
-		h.send(ctx, chatID, botMsgSubscriptionLoadFailed)
+		slog.Error("list active subscriptions failed", "error", err, "messenger_kind", userIdentity.Kind, "messenger_user_id", userIdentity.ID)
+		h.sendTo(ctx, chatID, userIdentity, botMsgSubscriptionLoadFailed)
 		return
 	}
 
-	text, ok := h.buildSubscriptionOverviewText(ctx, telegramID, subs)
+	text, ok := h.buildSubscriptionOverviewText(ctx, userIdentity, subs)
 	if !ok {
-		h.send(ctx, chatID, botMsgNoActiveSubscriptions)
+		h.sendTo(ctx, chatID, userIdentity, botMsgNoActiveSubscriptions)
 		return
 	}
 
-	h.send(ctx, chatID, text)
-	h.logAuditEvent(ctx, messenger.UserIdentity{Kind: messenger.KindTelegram, ID: telegramID}, 0, domain.AuditActionMenuSubscriptionOpened, "")
+	h.sendTo(ctx, chatID, userIdentity, text)
+	h.logAuditEvent(ctx, userIdentity, 0, domain.AuditActionMenuSubscriptionOpened, "")
 }
 
-func (h *Handler) buildSubscriptionOverviewText(ctx context.Context, telegramID int64, subs []domain.Subscription) (string, bool) {
+func (h *Handler) buildSubscriptionOverviewText(ctx context.Context, userIdentity messenger.UserIdentity, subs []domain.Subscription) (string, bool) {
 	if len(subs) == 0 {
 		return "", false
 	}
@@ -37,7 +37,7 @@ func (h *Handler) buildSubscriptionOverviewText(ctx context.Context, telegramID 
 	for _, sub := range subs {
 		connector, ok, err := h.store.GetConnector(ctx, sub.ConnectorID)
 		if err != nil {
-			slog.Error("load connector for subscription overview failed", "error", err, "connector_id", sub.ConnectorID, "telegram_id", telegramID)
+			slog.Error("load connector for subscription overview failed", "error", err, "connector_id", sub.ConnectorID, "messenger_kind", userIdentity.Kind, "messenger_user_id", userIdentity.ID)
 			continue
 		}
 		if !ok {
@@ -53,10 +53,10 @@ func (h *Handler) buildSubscriptionOverviewText(ctx context.Context, telegramID 
 	return strings.TrimSpace(strings.Join(lines, "\n")), true
 }
 
-func (h *Handler) sendPaymentHistory(ctx context.Context, chatID, telegramID int64) {
-	user, resolved := h.resolveMessengerUser(ctx, messenger.UserIdentity{Kind: messenger.KindTelegram, ID: telegramID})
+func (h *Handler) sendPaymentHistory(ctx context.Context, chatID int64, userIdentity messenger.UserIdentity) {
+	user, resolved := h.resolveMessengerUser(ctx, userIdentity)
 	if !resolved {
-		h.send(ctx, chatID, botMsgPaymentsLoadFailed)
+		h.sendTo(ctx, chatID, userIdentity, botMsgPaymentsLoadFailed)
 		return
 	}
 	payments, err := h.store.ListPayments(ctx, domain.PaymentListQuery{
@@ -64,19 +64,19 @@ func (h *Handler) sendPaymentHistory(ctx context.Context, chatID, telegramID int
 		Limit:  5,
 	})
 	if err != nil {
-		slog.Error("list payments for menu failed", "error", err, "telegram_id", telegramID)
-		h.send(ctx, chatID, botMsgPaymentsLoadFailed)
+		slog.Error("list payments for menu failed", "error", err, "messenger_kind", userIdentity.Kind, "messenger_user_id", userIdentity.ID)
+		h.sendTo(ctx, chatID, userIdentity, botMsgPaymentsLoadFailed)
 		return
 	}
 
 	text, ok := buildPaymentHistoryText(payments)
 	if !ok {
-		h.send(ctx, chatID, botMsgNoPayments)
+		h.sendTo(ctx, chatID, userIdentity, botMsgNoPayments)
 		return
 	}
 
-	h.send(ctx, chatID, text)
-	h.logAuditEvent(ctx, messenger.UserIdentity{Kind: messenger.KindTelegram, ID: telegramID}, 0, domain.AuditActionMenuPaymentsOpened, "")
+	h.sendTo(ctx, chatID, userIdentity, text)
+	h.logAuditEvent(ctx, userIdentity, 0, domain.AuditActionMenuPaymentsOpened, "")
 }
 
 func buildPaymentHistoryText(payments []domain.Payment) (string, bool) {

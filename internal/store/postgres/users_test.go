@@ -63,6 +63,35 @@ func TestGetUserByMessenger(t *testing.T) {
 	}
 }
 
+func TestSaveUserUpdatesExistingRow(t *testing.T) {
+	store, mock, cleanup := newMockStore(t)
+	defer cleanup()
+
+	mock.ExpectExec(regexp.QuoteMeta(`
+			UPDATE users
+			SET full_name = $2,
+				phone = $3,
+				email = $4,
+				updated_at = $5
+			WHERE id = $1
+		`)).
+		WithArgs(int64(11), "Egor Miloserdov", "+79990001122", "egor@example.com", sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	err := store.SaveUser(context.Background(), domain.User{
+		ID:       11,
+		FullName: "Egor Miloserdov",
+		Phone:    "+79990001122",
+		Email:    "egor@example.com",
+	})
+	if err != nil {
+		t.Fatalf("SaveUser: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
 func TestGetOrCreateUserByMessengerCreatesNewTelegramUser(t *testing.T) {
 	store, mock, cleanup := newMockStore(t)
 	defer cleanup()

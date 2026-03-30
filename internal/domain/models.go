@@ -12,18 +12,22 @@ const (
 
 // Connector describes a tariff and start payload used to enter the bot flow.
 type Connector struct {
-	ID           int64     `db:"id" json:"id"`
-	StartPayload string    `db:"start_payload" json:"start_payload"`
-	Name         string    `db:"name" json:"name"`
-	Description  string    `db:"description" json:"description"`
-	ChatID       string    `db:"chat_id" json:"chat_id"`
-	ChannelURL   string    `db:"channel_url" json:"channel_url"`
-	PriceRUB     int64     `db:"price_rub" json:"price_rub"`
-	PeriodDays   int       `db:"period_days" json:"period_days"`
-	OfferURL     string    `db:"offer_url" json:"offer_url"`
-	PrivacyURL   string    `db:"privacy_url" json:"privacy_url"`
-	IsActive     bool      `db:"is_active" json:"is_active"`
-	CreatedAt    time.Time `db:"created_at" json:"created_at"`
+	ID           int64  `db:"id" json:"id"`
+	StartPayload string `db:"start_payload" json:"start_payload"`
+	Name         string `db:"name" json:"name"`
+	Description  string `db:"description" json:"description"`
+	ChatID       string `db:"chat_id" json:"chat_id"`
+	ChannelURL   string `db:"channel_url" json:"channel_url"`
+	PriceRUB     int64  `db:"price_rub" json:"price_rub"`
+	// TODO(testing): for real-money recurring smoke tests we may need a
+	// non-production-only override that allows very short periods (minutes or
+	// seconds). Keep production semantics centered on days unless that mode is
+	// explicitly introduced and guarded by config/env.
+	PeriodDays int       `db:"period_days" json:"period_days"`
+	OfferURL   string    `db:"offer_url" json:"offer_url"`
+	PrivacyURL string    `db:"privacy_url" json:"privacy_url"`
+	IsActive   bool      `db:"is_active" json:"is_active"`
+	CreatedAt  time.Time `db:"created_at" json:"created_at"`
 }
 
 // User stores user profile fields collected during onboarding.
@@ -207,21 +211,29 @@ const (
 
 // Payment stores provider checkout attempt and final state.
 type Payment struct {
-	ID                int64         `db:"id" json:"id"`
-	Provider          string        `db:"provider" json:"provider"`
+	ID       int64  `db:"id" json:"id"`
+	Provider string `db:"provider" json:"provider"`
+	// ProviderPaymentID stores provider-side operation id after confirmation.
+	// For Robokassa this is the external operation reference (`OpKey`) or our
+	// derived provider marker such as `robokassa:<InvId>` when only the merchant
+	// invoice id is available at callback time.
 	ProviderPaymentID string        `db:"provider_payment_id" json:"provider_payment_id"`
 	Status            PaymentStatus `db:"status" json:"status"`
-	Token             string        `db:"token" json:"token"`
-	UserID            int64         `db:"user_id" json:"user_id"`
-	ConnectorID       int64         `db:"connector_id" json:"connector_id"`
-	SubscriptionID    int64         `db:"subscription_id" json:"subscription_id"`
-	ParentPaymentID   int64         `db:"parent_payment_id" json:"parent_payment_id"`
-	AmountRUB         int64         `db:"amount_rub" json:"amount_rub"`
-	AutoPayEnabled    bool          `db:"auto_pay_enabled" json:"auto_pay_enabled"`
-	CheckoutURL       string        `db:"checkout_url" json:"checkout_url"`
-	CreatedAt         time.Time     `db:"created_at" json:"created_at"`
-	PaidAt            *time.Time    `db:"paid_at" json:"paid_at,omitempty"`
-	UpdatedAt         time.Time     `db:"updated_at" json:"updated_at"`
+	// Token stores the merchant-side payment reference used across the app.
+	// For Robokassa this field is the canonical `InvoiceID` / `InvId` that we
+	// send to checkout, use in ResultURL/SuccessURL handlers, and later can use
+	// for OpStateExt reconciliation.
+	Token           string     `db:"token" json:"token"`
+	UserID          int64      `db:"user_id" json:"user_id"`
+	ConnectorID     int64      `db:"connector_id" json:"connector_id"`
+	SubscriptionID  int64      `db:"subscription_id" json:"subscription_id"`
+	ParentPaymentID int64      `db:"parent_payment_id" json:"parent_payment_id"`
+	AmountRUB       int64      `db:"amount_rub" json:"amount_rub"`
+	AutoPayEnabled  bool       `db:"auto_pay_enabled" json:"auto_pay_enabled"`
+	CheckoutURL     string     `db:"checkout_url" json:"checkout_url"`
+	CreatedAt       time.Time  `db:"created_at" json:"created_at"`
+	PaidAt          *time.Time `db:"paid_at" json:"paid_at,omitempty"`
+	UpdatedAt       time.Time  `db:"updated_at" json:"updated_at"`
 }
 
 // SubscriptionStatus is lifecycle state for user access period.

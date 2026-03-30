@@ -117,6 +117,7 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 			UserID:           item.ID,
 			TelegramID:       telegramID,
 			TelegramUsername: telegramUsername,
+			HasTelegram:      hasTelegramIdentity,
 			FullName:         item.FullName,
 			Phone:            item.Phone,
 			Email:            item.Email,
@@ -166,6 +167,7 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 		autoPayLabel, autoPayClass := autoPayBadge(lang, p.AutoPayEnabled, true)
 		data.Payments = append(data.Payments, paymentView{
 			ID:                p.ID,
+			UserID:            p.UserID,
 			Provider:          p.Provider,
 			ProviderPaymentID: p.ProviderPaymentID,
 			Status:            string(p.Status),
@@ -198,6 +200,7 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 		}
 		data.Subscriptions = append(data.Subscriptions, subscriptionView{
 			ID:               s.ID,
+			UserID:           s.UserID,
 			Status:           string(s.Status),
 			StatusLabel:      statusLabel,
 			StatusClass:      statusClass,
@@ -212,11 +215,11 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 			EndsAt:           s.EndsAt.In(time.Local).Format("2006-01-02 15:04:05"),
 			CreatedAt:        s.CreatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
 			CanRevoke:        s.Status == domain.SubscriptionStatusActive,
-			RevokeURL:        buildSubscriptionRevokeURL(lang, item.ID, telegramID, s.ID),
+			RevokeURL:        buildSubscriptionRevokeURL(lang, item.ID, s.ID),
 			CanSendPayLink:   canSendPayLink,
-			PaymentLinkURL:   buildUserPaymentLinkURL(lang, item.ID, telegramID, s.ID),
+			PaymentLinkURL:   buildUserPaymentLinkURL(lang, item.ID, s.ID),
 			CanTriggerRebill: h.retriggerRebill != nil && s.Status == domain.SubscriptionStatusActive && s.AutoPayEnabled,
-			RebillURL:        buildSubscriptionRebillURL(lang, item.ID, telegramID, s.ID),
+			RebillURL:        buildSubscriptionRebillURL(lang, item.ID, s.ID),
 		})
 	}
 

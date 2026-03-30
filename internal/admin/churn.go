@@ -53,6 +53,7 @@ func (h *Handler) churnPage(w http.ResponseWriter, r *http.Request) {
 			TopbarPath: "/admin/churn",
 			ActiveNav:  "churn",
 		},
+		UserID:      strings.TrimSpace(r.URL.Query().Get("user_id")),
 		TelegramID:  strings.TrimSpace(r.URL.Query().Get("telegram_id")),
 		ConnectorID: strings.TrimSpace(r.URL.Query().Get("connector_id")),
 		Search:      strings.TrimSpace(r.URL.Query().Get("search")),
@@ -273,11 +274,11 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang string, userFilterI
 			SubscriptionClass:  subClass,
 			LastAmountRUB:      item.lastAmountRUB,
 			LastEventAt:        item.lastEventAt.In(time.Local).Format("2006-01-02 15:04:05"),
-			UserDetailURL:      buildUserDetailURL(lang, item.userID, item.telegramID),
+			UserDetailURL:      buildUserDetailURL(lang, item.userID),
 			CanSendPayLink:     buildAdminBotStartURL(h.botUsername, h.lookupStartPayload(ctx, item.connectorID)) != "",
-			PaymentLinkURL:     buildConnectorPaymentLinkURL(lang, item.telegramID, item.connectorID),
+			PaymentLinkURL:     buildConnectorPaymentLinkURL(lang, item.userID, item.connectorID),
 			CanTriggerRebill:   h.retriggerRebill != nil && item.subscriptionID > 0 && item.autoPayEnabled && item.subscriptionStatus == domain.SubscriptionStatusActive,
-			RebillURL:          buildSubscriptionRebillURL(lang, item.userID, item.telegramID, item.subscriptionID),
+			RebillURL:          buildSubscriptionRebillURL(lang, item.userID, item.subscriptionID),
 		})
 	}
 
@@ -307,10 +308,10 @@ func localizeChurnIssue(lang string, issue churnIssueKind) (string, string) {
 	}
 }
 
-func buildConnectorPaymentLinkURL(lang string, telegramID, connectorID int64) string {
+func buildConnectorPaymentLinkURL(lang string, userID, connectorID int64) string {
 	params := url.Values{}
 	params.Set("lang", lang)
-	params.Set("telegram_id", strconv.FormatInt(telegramID, 10))
+	params.Set("user_id", strconv.FormatInt(userID, 10))
 	params.Set("connector_id", strconv.FormatInt(connectorID, 10))
 	return "/admin/users/send-payment-link?" + params.Encode()
 }

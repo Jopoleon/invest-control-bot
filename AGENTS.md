@@ -139,6 +139,7 @@ Comments are required where intent is not obvious:
 
 Do not add noise comments for trivial assignments.
 When logic changes, comments must be updated in the same change.
+If a place remains intentionally incomplete, risky, environment-specific, or still under discussion, leave a searchable `TODO:` comment near the code instead of keeping the assumption implicit. This is especially important for payment, recurring, subscription duration, and messenger-delivery behavior.
 
 ## DB / Migration Rules
 
@@ -192,6 +193,12 @@ If continuing implementation from current state, the next sensible sequence is:
 2. Add tests for every such refactor step.
 3. Only after that, start migrating business records toward `user_id`.
 4. Then implement the MAX adapter on top of the messenger-neutral bot core.
+
+## Known Follow-Ups To Preserve
+
+- For real-money recurring/autopay testing we will likely need a non-production-only way to create very short subscription periods (minutes or seconds) so rebill and expiry flows can be validated quickly.
+- This should not silently leak into production defaults.
+- Until implemented, keep explicit `TODO:` markers near subscription period calculation and recurring lifecycle code.
 
 ## Useful Files
 

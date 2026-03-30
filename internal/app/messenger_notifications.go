@@ -162,7 +162,7 @@ func formatPreferredMessengerUserID(raw int64) string {
 func (a *application) sendViaMessengerAccount(ctx context.Context, account domain.UserMessengerAccount, msg messenger.OutgoingMessage) error {
 	externalID, err := strconv.ParseInt(account.MessengerUserID, 10, 64)
 	if err != nil || externalID <= 0 {
-		return fmt.Errorf("invalid external user id %q for %s", account.MessengerUserID, account.MessengerKind)
+		return fmt.Errorf("invalid messenger user id %q for %s", account.MessengerUserID, account.MessengerKind)
 	}
 
 	switch account.MessengerKind {
@@ -170,7 +170,7 @@ func (a *application) sendViaMessengerAccount(ctx context.Context, account domai
 		if a.maxSender == nil {
 			return fmt.Errorf("max sender is not configured")
 		}
-		return a.maxSender.Send(ctx, messenger.UserRef{Kind: messenger.KindMAX, ChatID: externalID}, msg)
+		return a.maxSender.Send(ctx, messenger.UserRef{Kind: messenger.KindMAX, UserID: externalID}, msg)
 	case domain.MessengerKindTelegram:
 		return a.telegramClient.Send(ctx, messenger.UserRef{Kind: messenger.KindTelegram, ChatID: externalID}, msg)
 	default:

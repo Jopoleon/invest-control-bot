@@ -57,6 +57,29 @@
 go run ./cmd/server
 ```
 
+### Простой VPS deploy по SSH
+Для ручного деплоя на VPS без Docker и без GitHub Actions можно использовать
+скрипт `scripts/deploy_vps.sh`.
+
+Он:
+- локально собирает `./cmd/server` под `linux/amd64`
+- копирует бинарник на сервер по `scp`
+- раскладывает релиз в `releases/<timestamp>-<commit>`
+- переключает симлинк `current` на новый релиз
+
+По умолчанию скрипт использует SSH host `investcontrol` и директорию
+`/home/investcontrol/apps/invest-control-bot` на сервере.
+
+Минимальный запуск:
+```bash
+bash scripts/deploy_vps.sh
+```
+
+Если нужно сразу перезапускать systemd-сервис после выкладки:
+```bash
+RESTART_CMD='sudo systemctl restart invest-control-bot' bash scripts/deploy_vps.sh
+```
+
 ### Локальный MAX development
 Для MAX локальный dev-flow рекомендуем запускать через long polling, а не через webhook tunnel.
 
@@ -68,6 +91,7 @@ LOG_LEVEL=debug
 
 MAX_BOT_TOKEN=...
 MAX_BOT_NAME=...
+MAX_BOT_USERNAME=id9718272494_bot
 MAX_POLLING_TYPES=bot_started,message_created,message_callback
 MAX_POLLING_TIMEOUT_SEC=30
 MAX_POLLING_LIMIT=100
@@ -89,6 +113,8 @@ go run ./cmd/max-poller
 - для long polling у MAX не нужен `ngrok`;
 - `ngrok` нужен только для web/payment ссылок, если ты открываешь их с телефона;
 - перед polling у MAX-бота не должно быть активной webhook subscription.
+- для deep link в админке нужен `MAX_BOT_USERNAME`, например `id9718272494_bot`;
+- `MAX_BOT_NAME` можно использовать как display name, но launch URL строится именно по username.
 
 ### MAX webhook mode
 Для production MAX теперь поддерживается и webhook flow внутри основного HTTP-сервера.
@@ -96,6 +122,7 @@ go run ./cmd/max-poller
 Минимальные env:
 ```env
 MAX_BOT_TOKEN=...
+MAX_BOT_USERNAME=id9718272494_bot
 MAX_WEBHOOK_PUBLIC_URL=https://your-domain.example/max/webhook
 MAX_WEBHOOK_SECRET=your-max-webhook-secret
 MAX_POLLING_TYPES=bot_started,message_created,message_callback
@@ -217,6 +244,12 @@ GOCACHE=/tmp/go-build go test ./...
   - `POST /payment/success`
   - `POST /payment/fail`
 - Ручной и автоматический recurring trigger уже реализованы.
+- Для локальной разработки есть утилита синтетических callback'ов:
+  - `go run ./cmd/robokassa-callback --mode result --invoice-id <InvId>`
+  - `go run ./cmd/robokassa-callback --mode success --invoice-id <InvId>`
+  - `go run ./cmd/robokassa-callback --mode fail --invoice-id <InvId>`
+  - если `--amount-rub` не указан для `result|success`, утилита сама ищет платеж по `payments.token`
+  - для Robokassa `payments.token` документирован как merchant-side `InvoiceID / InvId`
 
 ## Recurring / автоплатежи
 - В продукте уже есть:

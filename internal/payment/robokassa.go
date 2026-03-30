@@ -59,6 +59,9 @@ func NewRobokassaService(cfg RobokassaConfig) *RobokassaService {
 func (s *RobokassaService) ProviderName() string { return "robokassa" }
 
 // CreateCheckoutURL forms Robokassa payment link with MD5 signature.
+// req.InvoiceID is our merchant-side Robokassa `InvId` and must match the
+// value persisted in payments.token for callback lookup and later status
+// reconciliation via OpStateExt.
 func (s *RobokassaService) CreateCheckoutURL(_ context.Context, req Request) (string, error) {
 	invID := strings.TrimSpace(req.InvoiceID)
 	if invID == "" {
@@ -108,6 +111,8 @@ func (s *RobokassaService) VerifySuccessSignature(outSum, invID, provided string
 }
 
 // CreateRebill requests server-side recurring charge based on previous successful invoice.
+// Both InvoiceID fields are merchant-side Robokassa invoice references, not
+// provider-side operation ids.
 func (s *RobokassaService) CreateRebill(ctx context.Context, req RebillRequest) error {
 	invoiceID := strings.TrimSpace(req.InvoiceID)
 	previousInvoiceID := strings.TrimSpace(req.PreviousInvoiceID)

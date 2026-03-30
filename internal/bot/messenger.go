@@ -17,6 +17,17 @@ func chatRef(chatID int64) messenger.UserRef {
 	}
 }
 
+func recipientRef(chatID int64, user messenger.UserIdentity) messenger.UserRef {
+	ref := messenger.UserRef{
+		Kind:   user.Kind,
+		ChatID: chatID,
+	}
+	if user.Kind == messenger.KindMAX && user.ID > 0 {
+		ref.UserID = user.ID
+	}
+	return ref
+}
+
 func messageRef(chatID int64, messageID int) messenger.MessageRef {
 	return messenger.MessageRef{
 		Kind:      messenger.KindTelegram,

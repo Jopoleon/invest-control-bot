@@ -273,7 +273,7 @@ func TestSendSubscriptionOverview_BuildsResolvedChannelText(t *testing.T) {
 	paymentID := seedPayment(t, ctx, st, 9106, connectorID, true)
 	_ = seedSubscription(t, ctx, st, 9106, connectorID, paymentID, true)
 
-	h.sendSubscriptionOverview(ctx, 9106, 9106)
+	h.sendSubscriptionOverview(ctx, 9106, messenger.UserIdentity{Kind: messenger.KindTelegram, ID: 9106})
 
 	if len(sender.sent) != 1 {
 		t.Fatalf("sent messages = %d, want 1", len(sender.sent))
@@ -299,7 +299,7 @@ func TestSendPaymentHistory_BuildsLatestPaymentsText(t *testing.T) {
 	connectorID := seedAutopayConnector(t, ctx, st, "payment-history", "payment-history")
 	_ = seedPayment(t, ctx, st, 9107, connectorID, true)
 
-	h.sendPaymentHistory(ctx, 9107, 9107)
+	h.sendPaymentHistory(ctx, 9107, messenger.UserIdentity{Kind: messenger.KindTelegram, ID: 9107})
 
 	if len(sender.sent) != 1 {
 		t.Fatalf("sent messages = %d, want 1", len(sender.sent))

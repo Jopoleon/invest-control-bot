@@ -22,7 +22,7 @@ func TestSendUserMessage_AllowsUserIDResolution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("telegram.NewClient: %v", err)
 	}
-	h := NewHandler(st, "test-admin-token", "test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", tg, nil)
+	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", tg, nil)
 
 	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, "264704572", "emiloserdov")
 	if err != nil {

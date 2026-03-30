@@ -171,8 +171,8 @@ func TestActivateSuccessfulPayment_SendsSuccessMessageViaMAXAccount(t *testing.T
 	if maxSpy.sent[0].user.Kind != messenger.KindMAX {
 		t.Fatalf("sent kind = %s, want %s", maxSpy.sent[0].user.Kind, messenger.KindMAX)
 	}
-	if maxSpy.sent[0].user.ChatID != 193465776 {
-		t.Fatalf("sent chat id = %d, want 193465776", maxSpy.sent[0].user.ChatID)
+	if maxSpy.sent[0].user.UserID != 193465776 {
+		t.Fatalf("sent user id = %d, want 193465776", maxSpy.sent[0].user.UserID)
 	}
 	if got := maxSpy.sent[0].msg.Text; !strings.Contains(got, "Оплата прошла успешно") {
 		t.Fatalf("success text = %q, want payment success notification", got)

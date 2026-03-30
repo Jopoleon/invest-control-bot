@@ -10,8 +10,8 @@ import (
 	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 )
 
-func (h *Handler) sendExistingSubscriptionMessage(ctx context.Context, chatID, telegramID, connectorID int64) bool {
-	user, resolved := h.resolveMessengerUser(ctx, messenger.UserIdentity{Kind: messenger.KindTelegram, ID: telegramID})
+func (h *Handler) sendExistingSubscriptionMessage(ctx context.Context, chatID int64, userIdentity messenger.UserIdentity, connectorID int64) bool {
+	user, resolved := h.resolveMessengerUser(ctx, userIdentity)
 	if !resolved {
 		return false
 	}
@@ -35,7 +35,7 @@ func (h *Handler) sendExistingSubscriptionMessage(ctx context.Context, chatID, t
 
 	if sub.AutoPayEnabled {
 		text += botMsgExistingSubscriptionAutopayEnabled
-		cancelURL := h.buildAutopayCancelURL(telegramID)
+		cancelURL := h.buildAutopayCancelURL(userIdentity.ID)
 		if cancelURL != "" {
 			buttons = [][]messenger.ActionButton{{
 				buttonURL(botBtnAutopayCancelPage, cancelURL),
@@ -53,8 +53,8 @@ func (h *Handler) sendExistingSubscriptionMessage(ctx context.Context, chatID, t
 		}
 	}
 
-	if err := h.sender.Send(ctx, chatRef(chatID), messenger.OutgoingMessage{Text: text, Buttons: buttons}); err != nil {
-		slog.Error("send existing subscription message failed", "error", err, "telegram_id", telegramID, "connector_id", connectorID)
+	if err := h.sender.Send(ctx, recipientRef(chatID, userIdentity), messenger.OutgoingMessage{Text: text, Buttons: buttons}); err != nil {
+		slog.Error("send existing subscription message failed", "error", err, "messenger_kind", userIdentity.Kind, "messenger_user_id", userIdentity.ID, "connector_id", connectorID)
 		return false
 	}
 	return true

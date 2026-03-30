@@ -13,6 +13,7 @@ const (
 // UserRef identifies a user/chat inside a concrete messenger transport.
 type UserRef struct {
 	Kind   Kind
+	UserID int64
 	ChatID int64
 }
 

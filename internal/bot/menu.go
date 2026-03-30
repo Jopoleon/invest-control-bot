@@ -23,7 +23,7 @@ const (
 	menuCallbackAutopayOffNo  = "menu:autopay:off:no"
 )
 
-func (h *Handler) sendMenu(ctx context.Context, chatID int64) {
+func (h *Handler) sendMenu(ctx context.Context, chatID int64, user messenger.UserIdentity) {
 	rows := [][]messenger.ActionButton{
 		{
 			buttonAction(botMenuButtonSubscription, menuCallbackSubscription),
@@ -37,7 +37,7 @@ func (h *Handler) sendMenu(ctx context.Context, chatID int64) {
 			buttonAction(botMenuButtonAutopay, menuCallbackAutopay),
 		})
 	}
-	if err := h.sender.Send(ctx, chatRef(chatID), messenger.OutgoingMessage{Text: botMenuTitle, Buttons: rows}); err != nil {
+	if err := h.sender.Send(ctx, recipientRef(chatID, user), messenger.OutgoingMessage{Text: botMenuTitle, Buttons: rows}); err != nil {
 		slog.Error("send menu failed", "error", err, "chat_id", chatID)
 	}
 }
@@ -65,15 +65,15 @@ func (h *Handler) handleMenuCallback(ctx context.Context, cb messenger.IncomingA
 func handleMenuSelection(ctx context.Context, h *Handler, chatID int64, cb messenger.IncomingAction) {
 	switch cb.Data {
 	case menuCallbackSubscription:
-		h.sendSubscriptionOverview(ctx, chatID, cb.User.ID)
+		h.sendSubscriptionOverview(ctx, chatID, cb.User)
 	case menuCallbackPayments:
-		h.sendPaymentHistory(ctx, chatID, cb.User.ID)
+		h.sendPaymentHistory(ctx, chatID, cb.User)
 	case menuCallbackAutopay:
-		h.sendAutopayInfo(ctx, chatID, cb.User.ID)
+		h.sendAutopayInfo(ctx, chatID, cb.User)
 	case menuCallbackAutopayPick:
 		h.showAutopaySubscriptionChooser(ctx, cb)
 	case menuCallbackAutopayOn:
-		h.setAutopayPreference(ctx, chatID, cb.User.ID, true)
+		h.setAutopayPreference(ctx, chatID, cb.User, true)
 	case menuCallbackAutopayOffAsk:
 		h.confirmAutopayDisable(ctx, cb)
 	case menuCallbackAutopayOff:
@@ -81,12 +81,12 @@ func handleMenuSelection(ctx context.Context, h *Handler, chatID int64, cb messe
 	case menuCallbackAutopayOffNo:
 		h.restoreAutopayInfo(ctx, cb)
 	default:
-		h.send(ctx, chatID, botMsgUnknownMenuCommand)
+		h.sendTo(ctx, chatID, cb.User, botMsgUnknownMenuCommand)
 	}
 }
 
-func queryActiveSubscriptions(ctx context.Context, h *Handler, telegramID int64) ([]domain.Subscription, error) {
-	user, resolved := h.resolveMessengerUser(ctx, messenger.UserIdentity{Kind: messenger.KindTelegram, ID: telegramID})
+func queryActiveSubscriptions(ctx context.Context, h *Handler, userIdentity messenger.UserIdentity) ([]domain.Subscription, error) {
+	user, resolved := h.resolveMessengerUser(ctx, userIdentity)
 	if !resolved {
 		return nil, nil
 	}

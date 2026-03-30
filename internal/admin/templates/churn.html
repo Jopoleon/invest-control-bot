@@ -47,6 +47,10 @@
     <form method="GET" action="/admin/churn" class="filter-form">
       <div class="filter-grid">
         <label class="filter-field">
+          <span>{{index .I18N "churn.filter.user_id"}}</span>
+          <input name="user_id" value="{{.UserID}}" placeholder="42">
+        </label>
+        <label class="filter-field">
           <span>{{index .I18N "users.filter.telegram_id"}}</span>
           <input name="telegram_id" value="{{.TelegramID}}" placeholder="264704572">
         </label>
@@ -125,7 +129,8 @@
           <tr>
             <td class="churn-user">
               <strong><a href="{{.UserDetailURL}}">{{if .FullName}}{{.FullName}}{{else}}{{.TelegramID}}{{end}}</a></strong>
-              <small class="mono">{{.TelegramID}}</small>
+              <small class="mono">user_id={{.UserID}}</small>
+              {{if .TelegramID}}<small class="mono">telegram_id={{.TelegramID}}</small>{{end}}
               {{if .TelegramUsername}}<small>@{{.TelegramUsername}}</small>{{end}}
             </td>
             <td>{{.Connector}}</td>
@@ -144,7 +149,6 @@
               <form method="POST" action="{{.PaymentLinkURL}}">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                 <input type="hidden" name="user_id" value="{{.UserID}}">
-                <input type="hidden" name="telegram_id" value="{{.TelegramID}}">
                 <input type="hidden" name="connector_id" value="{{.ConnectorID}}">
                 <button type="submit" class="action-btn is-send">{{index $.I18N "users.actions.paylink_send"}}</button>
               </form>
@@ -153,7 +157,6 @@
               <form method="POST" action="{{.RebillURL}}">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
                 <input type="hidden" name="user_id" value="{{.UserID}}">
-                <input type="hidden" name="telegram_id" value="{{.TelegramID}}">
                 <input type="hidden" name="subscription_id" value="{{.SubscriptionID}}">
                 <button type="submit" class="action-btn is-edit">{{index $.I18N "users.actions.rebill_send"}}</button>
               </form>

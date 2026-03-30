@@ -26,7 +26,7 @@ func TestSenderSendUsesUserIDForPrivateDialog(t *testing.T) {
 	client.SetBaseURL(server.URL)
 	sender := NewSender(client)
 
-	err := sender.Send(context.Background(), messenger.UserRef{Kind: messenger.KindMAX, ChatID: 264704572}, messenger.OutgoingMessage{Text: "Привет"})
+	err := sender.Send(context.Background(), messenger.UserRef{Kind: messenger.KindMAX, UserID: 264704572, ChatID: 109778209}, messenger.OutgoingMessage{Text: "Привет"})
 	if err != nil {
 		t.Fatalf("Send: %v", err)
 	}
@@ -35,6 +35,35 @@ func TestSenderSendUsesUserIDForPrivateDialog(t *testing.T) {
 	}
 	if gotChatID != "" {
 		t.Fatalf("chat_id = %q, want empty", gotChatID)
+	}
+}
+
+func TestSenderSendUsesChatIDWhenUserIDIsMissing(t *testing.T) {
+	t.Helper()
+
+	var gotUserID string
+	var gotChatID string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUserID = r.URL.Query().Get("user_id")
+		gotChatID = r.URL.Query().Get("chat_id")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"message":{"recipient":{"chat_id":109778209},"body":{"mid":"42","text":"ok"}}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("test-token", server.Client())
+	client.SetBaseURL(server.URL)
+	sender := NewSender(client)
+
+	err := sender.Send(context.Background(), messenger.UserRef{Kind: messenger.KindMAX, ChatID: 109778209}, messenger.OutgoingMessage{Text: "Привет"})
+	if err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	if gotUserID != "" {
+		t.Fatalf("user_id = %q, want empty", gotUserID)
+	}
+	if gotChatID != "109778209" {
+		t.Fatalf("chat_id = %q, want 109778209", gotChatID)
 	}
 }
 

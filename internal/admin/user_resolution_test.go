@@ -16,7 +16,7 @@ import (
 func TestResolveFilterTelegramID_UsesUserID(t *testing.T) {
 	ctx := context.Background()
 	st := memory.New()
-	h := NewHandler(st, "test-admin-token", "test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil)
+	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil)
 
 	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, "264704572", "emiloserdov")
 	if err != nil {
@@ -47,7 +47,7 @@ func TestResolveFilterTelegramID_UsesUserID(t *testing.T) {
 func TestResolveFilterUserID_UsesTelegramID(t *testing.T) {
 	ctx := context.Background()
 	st := memory.New()
-	h := NewHandler(st, "test-admin-token", "test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil)
+	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil)
 
 	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, "264704572", "emiloserdov")
 	if err != nil {
@@ -69,7 +69,7 @@ func TestResolveFilterUserID_UsesTelegramID(t *testing.T) {
 func TestUsersPage_FiltersByUserID(t *testing.T) {
 	ctx := context.Background()
 	st := memory.New()
-	h := NewHandler(st, "test-admin-token", "test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil)
+	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil)
 
 	first, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, "111", "")
 	if err != nil {

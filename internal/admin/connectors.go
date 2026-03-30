@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -30,7 +31,7 @@ func (h *Handler) connectorsPage(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		h.renderConnectorsPage(r.Context(), w, r, lang, "")
+		h.renderConnectorsPage(r.Context(), w, r, lang, strings.TrimSpace(r.URL.Query().Get("notice")))
 	case http.MethodPost:
 		if err := r.ParseForm(); err != nil {
 			h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "connectors.bad_form"))
@@ -45,7 +46,7 @@ func (h *Handler) connectorsPage(w http.ResponseWriter, r *http.Request) {
 			h.renderConnectorsPage(r.Context(), w, r, lang, h.localizeCreateConnectorError(lang, err))
 			return
 		}
-		h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "connectors.created"))
+		h.redirectConnectors(w, r, lang, t(lang, "connectors.created"))
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
@@ -92,7 +93,7 @@ func (h *Handler) toggleConnector(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "connectors.updated"))
+	h.redirectConnectors(w, r, lang, t(lang, "connectors.updated"))
 }
 
 // deleteConnector hard-deletes connector if it has no dependent history.
@@ -129,7 +130,7 @@ func (h *Handler) deleteConnector(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "connectors.deleted"))
+	h.redirectConnectors(w, r, lang, t(lang, "connectors.deleted"))
 }
 
 // createConnector parses HTML form and persists connector entity.
@@ -198,6 +199,10 @@ func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWrite
 	if botUsername == "" {
 		botUsername = "<bot_username>"
 	}
+	maxBotUsername := h.maxBotUsername
+	if maxBotUsername == "" {
+		maxBotUsername = "<max_bot_username>"
+	}
 
 	rows := make([]connectorView, 0, len(connectors))
 	for _, c := range connectors {
@@ -208,21 +213,23 @@ func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWrite
 		}
 		activeLabel, activeClass := connectorActiveBadge(lang, c.IsActive)
 		rows = append(rows, connectorView{
-			ID:           c.ID,
-			StartPayload: c.StartPayload,
-			Name:         c.Name,
-			ChatID:       c.ChatID,
-			ChannelURL:   c.ChannelURL,
-			PriceRUB:     c.PriceRUB,
-			PeriodDays:   c.PeriodDays,
-			OfferURL:     c.OfferURL,
-			PrivacyURL:   c.PrivacyURL,
-			BotLink:      "https://t.me/" + botUsername + "?start=" + c.StartPayload,
-			IsActive:     c.IsActive,
-			ActiveLabel:  activeLabel,
-			ActiveClass:  activeClass,
-			ToggleTo:     toggleTo,
-			ToggleLabel:  toggleLabel,
+			ID:              c.ID,
+			StartPayload:    c.StartPayload,
+			Name:            c.Name,
+			ChatID:          c.ChatID,
+			ChannelURL:      c.ChannelURL,
+			PriceRUB:        c.PriceRUB,
+			PeriodDays:      c.PeriodDays,
+			OfferURL:        c.OfferURL,
+			PrivacyURL:      c.PrivacyURL,
+			TelegramBotLink: buildAdminBotStartURL(botUsername, c.StartPayload),
+			MAXBotLink:      buildAdminMAXStartURL(maxBotUsername, c.StartPayload),
+			MAXStartCommand: buildAdminStartCommand(c.StartPayload),
+			IsActive:        c.IsActive,
+			ActiveLabel:     activeLabel,
+			ActiveClass:     activeClass,
+			ToggleTo:        toggleTo,
+			ToggleLabel:     toggleLabel,
 		})
 	}
 
@@ -234,11 +241,22 @@ func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWrite
 			TopbarPath: "/admin/connectors",
 			ActiveNav:  "connectors",
 		},
-		Notice:          notice,
-		RequiredMessage: t(lang, "connectors.required"),
-		ExportURL:       buildExportURL("/admin/connectors/export.csv", r.URL.Query(), lang),
-		Connectors:      rows,
+		Notice:              notice,
+		RequiredMessage:     t(lang, "connectors.required"),
+		ExportURL:           buildExportURL("/admin/connectors/export.csv", r.URL.Query(), lang),
+		TelegramBotUsername: botUsername,
+		MAXBotUsername:      maxBotUsername,
+		Connectors:          rows,
 	})
+}
+
+func (h *Handler) redirectConnectors(w http.ResponseWriter, r *http.Request, lang, notice string) {
+	query := url.Values{}
+	query.Set("lang", lang)
+	if strings.TrimSpace(notice) != "" {
+		query.Set("notice", notice)
+	}
+	http.Redirect(w, r, "/admin/connectors?"+query.Encode(), http.StatusSeeOther)
 }
 
 func (h *Handler) localizeCreateConnectorError(lang string, err error) string {

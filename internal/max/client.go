@@ -40,6 +40,15 @@ func (c *Client) SetBaseURL(baseURL string) {
 	c.baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 }
 
+// Ping validates the token against MAX API and returns bot identity.
+func (c *Client) Ping(ctx context.Context) (BotInfo, error) {
+	var info BotInfo
+	if err := c.doJSON(ctx, http.MethodGet, "/me", nil, nil, &info); err != nil {
+		return BotInfo{}, err
+	}
+	return info, nil
+}
+
 // GetUpdates fetches one long-polling page from MAX.
 func (c *Client) GetUpdates(ctx context.Context, req GetUpdatesRequest) (UpdatesPage, error) {
 	values := url.Values{}

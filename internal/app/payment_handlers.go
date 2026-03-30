@@ -50,6 +50,8 @@ func (a *application) handlePaymentResult(w http.ResponseWriter, r *http.Request
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	// payments.token is the merchant-side Robokassa InvoiceID / InvId, so all
+	// callback and redirect handlers resolve the payment row through that field.
 	paymentRow, ok, err := a.store.GetPaymentByToken(r.Context(), invID)
 	if err != nil {
 		logStoreError("load payment by robokassa inv_id failed", err, "inv_id", invID)

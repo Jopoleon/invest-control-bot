@@ -18,8 +18,9 @@ import (
 )
 
 type appInitOptions struct {
-	ensureTelegramSetup bool
-	ensureMAXSetup      bool
+	ensureTelegramSetup  bool
+	ensureMAXSetup       bool
+	checkTransportHealth bool
 }
 
 type application struct {
@@ -41,6 +42,15 @@ func newApplication(cfg config.Config, st store.Store, opts appInitOptions) (*ap
 	if err != nil {
 		return nil, fmt.Errorf("create telegram client: %w", err)
 	}
+	if opts.checkTransportHealth {
+		info, err := tgClient.Ping(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("ping telegram api: %w", err)
+		}
+		if strings.TrimSpace(cfg.Telegram.BotToken) != "" {
+			slog.Info("telegram api ping ok", "bot_id", info.ID, "bot_username", info.Username, "bot_name", info.FirstName)
+		}
+	}
 	if opts.ensureTelegramSetup {
 		if err := tgClient.EnsureWebhook(context.Background(), cfg.Telegram.Webhook.PublicURL, cfg.Telegram.Webhook.SecretToken); err != nil {
 			return nil, fmt.Errorf("ensure telegram webhook: %w", err)
@@ -50,6 +60,17 @@ func newApplication(cfg config.Config, st store.Store, opts appInitOptions) (*ap
 		}
 	}
 	maxClient := max.NewClient(cfg.MAX.BotToken, nil)
+	maxLaunchUsername := strings.TrimSpace(cfg.MAX.BotUsername)
+	if opts.checkTransportHealth && strings.TrimSpace(cfg.MAX.BotToken) != "" {
+		info, err := maxClient.Ping(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("ping MAX api: %w", err)
+		}
+		slog.Info("MAX api ping ok", "bot_id", info.UserID, "bot_username", info.Username, "bot_name", firstNonEmpty(info.FirstName, info.Name))
+		if maxLaunchUsername == "" {
+			maxLaunchUsername = strings.TrimSpace(info.Username)
+		}
+	}
 	if opts.ensureMAXSetup {
 		if err := maxClient.EnsureWebhook(context.Background(), cfg.MAX.Webhook.PublicURL, cfg.MAX.Webhook.SecretToken, cfg.MAX.Polling.Types); err != nil {
 			return nil, fmt.Errorf("ensure MAX webhook: %w", err)
@@ -99,7 +120,7 @@ func newApplication(cfg config.Config, st store.Store, opts appInitOptions) (*ap
 		robokassaService:   robokassaService,
 	}
 	appCtx.maxAdapter = max.NewAdapter(appCtx.maxBotHandler)
-	appCtx.adminHandler = admin.NewHandler(st, cfg.Security.AdminToken, cfg.Telegram.BotUsername, publicBase, cfg.Security.EncryptionKey, tgClient, func(ctx context.Context, subscriptionID int64) (admin.RebillResult, error) {
+	appCtx.adminHandler = admin.NewHandler(st, cfg.Security.AdminToken, cfg.Telegram.BotUsername, maxLaunchUsername, publicBase, cfg.Security.EncryptionKey, tgClient, func(ctx context.Context, subscriptionID int64) (admin.RebillResult, error) {
 		payload, err := appCtx.triggerRebill(ctx, subscriptionID, "admin_ui")
 		if err != nil {
 			return admin.RebillResult{}, err

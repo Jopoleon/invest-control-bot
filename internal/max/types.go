@@ -31,6 +31,19 @@ type DeleteWebhookSubscriptionResponse struct {
 	Message string `json:"message,omitempty"`
 }
 
+// BotInfo is returned by GET /me and is enough for startup health checks.
+type BotInfo struct {
+	UserID           int64  `json:"user_id"`
+	FirstName        string `json:"first_name,omitempty"`
+	Username         string `json:"username,omitempty"`
+	IsBot            bool   `json:"is_bot,omitempty"`
+	LastActivityTime int64  `json:"last_activity_time,omitempty"`
+	Name             string `json:"name,omitempty"`
+	Description      string `json:"description,omitempty"`
+	AvatarURL        string `json:"avatar_url,omitempty"`
+	FullAvatarURL    string `json:"full_avatar_url,omitempty"`
+}
+
 // UpdatesPage is one page returned by GET /updates.
 type UpdatesPage struct {
 	Updates []Update `json:"updates"`

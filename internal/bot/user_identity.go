@@ -29,7 +29,7 @@ func (h *Handler) resolveMessengerUser(ctx context.Context, identity messenger.U
 		identity.Username,
 	)
 	if err != nil {
-		slog.Error("resolve messenger user failed", "error", err, "messenger_kind", identity.Kind, "external_user_id", identity.ID)
+		slog.Error("resolve messenger user failed", "error", err, "messenger_kind", identity.Kind, "messenger_user_id", identity.ID)
 		return domain.User{}, false
 	}
 	return user, true

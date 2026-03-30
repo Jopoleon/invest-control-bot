@@ -28,12 +28,12 @@ func main() {
 		slog.Error("invalid APP_RUNTIME for cmd/server", "runtime", cfg.Runtime, "expected", config.RuntimeServer)
 		os.Exit(1)
 	}
-	effectiveLevel, err := logger.Init(cfg.Logging.Level, cfg.Logging.FilePath)
+	_, err = logger.Init(cfg.Logging.Level, cfg.Logging.FilePath)
 	if err != nil {
 		slog.Error("logger init with file failed", "error", err, "file_path", cfg.Logging.FilePath)
 		os.Exit(1)
 	}
-	slog.Info("config loaded", "config", cfg, "effective_log_level", effectiveLevel, "log_file_path", cfg.Logging.FilePath)
+	//slog.Info("config loaded", "config", cfg, "effective_log_level", effectiveLevel, "log_file_path", cfg.Logging.FilePath)
 
 	st, cleanup, err := app.OpenStore(cfg)
 	if err != nil {

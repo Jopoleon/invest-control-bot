@@ -19,6 +19,7 @@ type Handler struct {
 	store           store.Store
 	adminToken      string
 	botUsername     string
+	maxBotUsername  string
 	publicBaseURL   string
 	encryptionKey   string
 	tg              *telegram.Client
@@ -34,7 +35,7 @@ type RebillResult struct {
 }
 
 // NewHandler creates admin handler and preloads HTML templates.
-func NewHandler(st store.Store, adminToken, botUsername, publicBaseURL, encryptionKey string, tg *telegram.Client, rebillTrigger func(context.Context, int64) (RebillResult, error)) *Handler {
+func NewHandler(st store.Store, adminToken, botUsername, maxBotUsername, publicBaseURL, encryptionKey string, tg *telegram.Client, rebillTrigger func(context.Context, int64) (RebillResult, error)) *Handler {
 	r, err := newRenderer()
 	if err != nil {
 		panic(err)
@@ -43,6 +44,7 @@ func NewHandler(st store.Store, adminToken, botUsername, publicBaseURL, encrypti
 		store:           st,
 		adminToken:      adminToken,
 		botUsername:     strings.TrimPrefix(strings.TrimSpace(botUsername), "@"),
+		maxBotUsername:  strings.TrimPrefix(strings.TrimSpace(maxBotUsername), "@"),
 		publicBaseURL:   strings.TrimRight(strings.TrimSpace(publicBaseURL), "/"),
 		encryptionKey:   strings.TrimSpace(encryptionKey),
 		tg:              tg,

@@ -23,6 +23,7 @@ func (h *Handler) respondToAction(ctx context.Context, cb messenger.IncomingActi
 	}
 	return h.sender.Send(ctx, messenger.UserRef{
 		Kind:   cb.User.Kind,
+		UserID: cb.User.ID,
 		ChatID: cb.ChatID,
 	}, msg)
 }

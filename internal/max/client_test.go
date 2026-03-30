@@ -9,6 +9,44 @@ import (
 	"testing"
 )
 
+func TestClientPingCallsMeEndpoint(t *testing.T) {
+	t.Helper()
+
+	var called bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %s, want GET", r.Method)
+		}
+		if r.URL.Path != "/me" {
+			t.Fatalf("path = %q, want /me", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "test-token" {
+			t.Fatalf("authorization = %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"user_id":218306705,"first_name":"InvestControlBot","username":"id9718272494_bot","is_bot":true}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("test-token", server.Client())
+	client.SetBaseURL(server.URL)
+
+	info, err := client.Ping(context.Background())
+	if err != nil {
+		t.Fatalf("Ping: %v", err)
+	}
+	if !called {
+		t.Fatal("expected /me to be called")
+	}
+	if info.UserID != 218306705 {
+		t.Fatalf("user_id = %d", info.UserID)
+	}
+	if info.Username != "id9718272494_bot" {
+		t.Fatalf("username = %q", info.Username)
+	}
+}
+
 func TestClientGetUpdatesBuildsLongPollingRequest(t *testing.T) {
 	t.Helper()
 

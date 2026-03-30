@@ -11,6 +11,13 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
+// BotInfo is a compact Telegram bot identity returned by startup health checks.
+type BotInfo struct {
+	ID        int64
+	Username  string
+	FirstName string
+}
+
 // Client wraps go-telegram/bot and provides minimal operations used by business logic.
 type Client struct {
 	enabled bool
@@ -34,6 +41,24 @@ func NewClient(botToken, webhookSecret string) (*Client, error) {
 	}
 
 	return &Client{enabled: true, bot: b}, nil
+}
+
+// Ping validates the token against Telegram API and returns bot identity.
+func (c *Client) Ping(ctx context.Context) (BotInfo, error) {
+	if !c.enabled {
+		slog.Debug("telegram client disabled, skip ping")
+		return BotInfo{}, nil
+	}
+
+	me, err := c.bot.GetMe(ctx)
+	if err != nil {
+		return BotInfo{}, err
+	}
+	return BotInfo{
+		ID:        me.ID,
+		Username:  me.Username,
+		FirstName: me.FirstName,
+	}, nil
 }
 
 // SendMessage sends plain text message with optional inline keyboard.

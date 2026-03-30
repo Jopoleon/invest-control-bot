@@ -15,6 +15,58 @@
       --pico-form-element-spacing-horizontal: .6rem;
     }
     main.container { max-width: 1220px; }
+    .connector-form {
+      display: grid;
+      gap: 1rem;
+    }
+    .connector-core {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 1rem;
+      align-items: start;
+    }
+    .connector-main-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(10rem, .45fr) minmax(8rem, .35fr);
+      gap: .9rem;
+    }
+    .connector-main {
+      display: grid;
+      gap: .9rem;
+    }
+    .connector-channel label > small,
+    .connector-advanced summary small {
+      display: block;
+      margin-top: .25rem;
+      color: #6c7b91;
+      font-size: .8rem;
+      line-height: 1.35;
+    }
+    .connector-advanced {
+      border: 1px solid rgba(31, 61, 112, .09);
+      border-radius: 16px;
+      padding: .15rem .9rem .85rem;
+      background: rgba(247, 249, 253, .8);
+    }
+    .connector-advanced summary {
+      cursor: pointer;
+      list-style: none;
+      font-weight: 700;
+      color: #2b3f5f;
+      padding: .7rem 0;
+    }
+    .connector-advanced summary::-webkit-details-marker {
+      display: none;
+    }
+    .connector-advanced-grid {
+      display: grid;
+      grid-template-columns: minmax(0, .7fr) minmax(0, 1fr) minmax(0, 1fr);
+      gap: .9rem;
+      margin-top: .35rem;
+    }
+    .connector-description {
+      margin-top: .9rem;
+    }
     .table-wrap { overflow-x: auto; }
     .table-wrap table {
       width: 100%;
@@ -59,6 +111,13 @@
       font-family: inherit;
       font-size: inherit;
     }
+    @media (max-width: 960px) {
+      .connector-core,
+      .connector-main-grid,
+      .connector-advanced-grid {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
@@ -77,53 +136,68 @@
       <h3>{{index .I18N "connectors.create"}}</h3>
       <span class="panel-kicker">Deeplink Tariffs</span>
     </div>
-    <form method="POST" action="/admin/connectors?lang={{.Lang}}">
+    <form method="POST" action="/admin/connectors?lang={{.Lang}}" class="connector-form">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-      <div class="grid">
-        <label>
-          {{index .I18N "connectors.form.name"}}
-          <input name="name" required>
-        </label>
-        <label>
-          {{index .I18N "connectors.form.chat_id"}}
-          <input name="chat_id" id="chat_id">
-        </label>
-        <label>
-          {{index .I18N "connectors.form.price_rub"}}
-          <input name="price_rub" placeholder="{{index .I18N "connectors.form.price_ph"}}" required>
-        </label>
-        <label>
-          {{index .I18N "connectors.form.period_days"}}
-          <input name="period_days" value="30">
-        </label>
+      <div class="connector-core">
+        <div class="connector-main">
+          <div class="connector-main-grid">
+            <label>
+              {{index .I18N "connectors.form.name"}}
+              <input name="name" required>
+            </label>
+            <label>
+              {{index .I18N "connectors.form.price_rub"}}
+              <input name="price_rub" placeholder="{{index .I18N "connectors.form.price_ph"}}" required>
+            </label>
+            <label>
+              {{index .I18N "connectors.form.period_days"}}
+              <input name="period_days" value="30">
+            </label>
+          </div>
+
+          <div class="connector-channel">
+            <label>
+              {{index .I18N "connectors.form.channel_url"}}
+              <input name="channel_url" id="channel_url" placeholder="https://t.me/testtestinvest">
+              <small>{{index .I18N "connectors.form.channel_hint"}}</small>
+            </label>
+          </div>
+        </div>
       </div>
 
-      <div class="grid">
-        <label>
-          <span class="field-label">
-            {{index .I18N "connectors.form.start_payload"}}
-            <span class="help-tip" tabindex="0" data-tip="{{index .I18N "connectors.form.payload_hint"}}">?</span>
-          </span>
-          <input name="start_payload" placeholder="in-94db7d6813507bc">
-        </label>
-        <label>
-          {{index .I18N "connectors.form.offer_url"}}
-          <input name="offer_url" placeholder="https://...">
-        </label>
-        <label>
-          {{index .I18N "connectors.form.privacy_url"}}
-          <input name="privacy_url" placeholder="https://...">
-        </label>
-        <label>
-          {{index .I18N "connectors.form.channel_url"}}
-          <input name="channel_url" id="channel_url" placeholder="https://t.me/testtestinvest">
-        </label>
-      </div>
+      <details class="connector-advanced">
+        <summary>
+          {{index .I18N "connectors.form.advanced"}}
+          <small>{{index .I18N "connectors.form.advanced_hint"}}</small>
+        </summary>
 
-      <label>
-        {{index .I18N "connectors.form.description"}}
-        <input name="description" placeholder="{{index .I18N "connectors.form.description_ph"}}">
-      </label>
+        <div class="connector-advanced-grid">
+          <label>
+            {{index .I18N "connectors.form.chat_id"}}
+            <input name="chat_id" id="chat_id">
+          </label>
+          <label>
+            <span class="field-label">
+              {{index .I18N "connectors.form.start_payload"}}
+              <span class="help-tip" tabindex="0" data-tip="{{index .I18N "connectors.form.payload_hint"}}">?</span>
+            </span>
+            <input name="start_payload" placeholder="in-94db7d6813507bc">
+          </label>
+          <label>
+            {{index .I18N "connectors.form.offer_url"}}
+            <input name="offer_url" placeholder="https://...">
+          </label>
+          <label>
+            {{index .I18N "connectors.form.privacy_url"}}
+            <input name="privacy_url" placeholder="https://...">
+          </label>
+        </div>
+
+        <label class="connector-description">
+          {{index .I18N "connectors.form.description"}}
+          <input name="description" placeholder="{{index .I18N "connectors.form.description_ph"}}">
+        </label>
+      </details>
 
       <div class="form-actions">
         <span class="help-tip" tabindex="0" data-tip="{{index .I18N "connectors.required_short"}}">?</span>
@@ -168,7 +242,11 @@
             <td class="link-cell">{{if .OfferURL}}<a href="{{.OfferURL}}" target="_blank" rel="noreferrer">{{index $.I18N "connectors.table.open_link"}}</a>{{end}}</td>
             <td class="link-cell">{{if .PrivacyURL}}<a href="{{.PrivacyURL}}" target="_blank" rel="noreferrer">{{index $.I18N "connectors.table.open_link"}}</a>{{end}}</td>
             <td class="link-cell bot-link-cell">{{if .ChannelURL}}<a href="{{.ChannelURL}}" target="_blank" rel="noreferrer">{{.ChannelURL}}</a>{{end}}</td>
-            <td class="link-cell bot-link-cell"><a href="{{.BotLink}}" target="_blank" rel="noreferrer">{{.BotLink}}</a></td>
+            <td class="link-cell bot-link-cell">
+              {{if .TelegramBotLink}}<div><strong>{{index $.I18N "connectors.table.telegram_bot_link"}}:</strong> <a href="{{.TelegramBotLink}}" target="_blank" rel="noreferrer">{{.TelegramBotLink}}</a></div>{{end}}
+              {{if .MAXBotLink}}<div><strong>{{index $.I18N "connectors.table.max_bot_link"}}:</strong> <a href="{{.MAXBotLink}}" target="_blank" rel="noreferrer">{{.MAXBotLink}}</a></div>{{end}}
+              {{if .MAXStartCommand}}<div><strong>{{index $.I18N "connectors.table.max_start_command"}}:</strong> <code>{{.MAXStartCommand}}</code></div>{{end}}
+            </td>
             <td class="status-cell"><span class="badge {{.ActiveClass}}">{{.ActiveLabel}}</span></td>
             <td class="actions">
               <form method="POST" action="/admin/connectors/toggle?lang={{$.Lang}}">
