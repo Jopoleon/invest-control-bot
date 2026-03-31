@@ -11,23 +11,25 @@ type basePageData struct {
 
 // connectorView is a template-friendly representation of connector row.
 type connectorView struct {
-	ID              int64
-	StartPayload    string
-	Name            string
-	ChatID          string
-	ChannelURL      string
-	PriceRUB        int64
-	PeriodDays      int
-	OfferURL        string
-	PrivacyURL      string
-	TelegramBotLink string
-	MAXBotLink      string
-	MAXStartCommand string
-	IsActive        bool
-	ActiveLabel     string
-	ActiveClass     string
-	ToggleTo        bool
-	ToggleLabel     string
+	ID                int64
+	StartPayload      string
+	Name              string
+	ChatID            string
+	ChannelURL        string
+	PriceRUB          int64
+	PeriodDays        int
+	TestPeriodSeconds int
+	PeriodLabel       string
+	OfferURL          string
+	PrivacyURL        string
+	TelegramBotLink   string
+	MAXBotLink        string
+	MAXStartCommand   string
+	IsActive          bool
+	ActiveLabel       string
+	ActiveClass       string
+	ToggleTo          bool
+	ToggleLabel       string
 }
 
 // connectorsPageData is context passed into connectors.html template.

@@ -23,11 +23,26 @@ type Connector struct {
 	// non-production-only override that allows very short periods (minutes or
 	// seconds). Keep production semantics centered on days unless that mode is
 	// explicitly introduced and guarded by config/env.
-	PeriodDays int       `db:"period_days" json:"period_days"`
-	OfferURL   string    `db:"offer_url" json:"offer_url"`
-	PrivacyURL string    `db:"privacy_url" json:"privacy_url"`
-	IsActive   bool      `db:"is_active" json:"is_active"`
-	CreatedAt  time.Time `db:"created_at" json:"created_at"`
+	PeriodDays        int       `db:"period_days" json:"period_days"`
+	TestPeriodSeconds int       `db:"test_period_seconds" json:"test_period_seconds"`
+	OfferURL          string    `db:"offer_url" json:"offer_url"`
+	PrivacyURL        string    `db:"privacy_url" json:"privacy_url"`
+	IsActive          bool      `db:"is_active" json:"is_active"`
+	CreatedAt         time.Time `db:"created_at" json:"created_at"`
+}
+
+// SubscriptionEndsAt returns the next access boundary for this connector while
+// preserving the normal day-based production path unless an explicit short
+// test period override is set for recurring/payment smoke tests.
+func (c Connector) SubscriptionEndsAt(start time.Time) time.Time {
+	if c.TestPeriodSeconds > 0 {
+		return start.Add(time.Duration(c.TestPeriodSeconds) * time.Second)
+	}
+	periodDays := c.PeriodDays
+	if periodDays <= 0 {
+		periodDays = 30
+	}
+	return start.AddDate(0, 0, periodDays)
 }
 
 // User stores user profile fields collected during onboarding.

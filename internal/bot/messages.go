@@ -81,10 +81,11 @@ const (
 
 func botStartCardText(connector domain.Connector, offerURL, privacyURL string) string {
 	return fmt.Sprintf(
-		"%s\n%s\n⚡️ Подписка: %d ₽\nПериод оплаты: Ежемесячно\nЧтобы продолжить, вам необходимо принять условия публичной оферты (%s) и политики обработки персональных данных (%s).",
+		"%s\n%s\n⚡️ Подписка: %d ₽\nПериод оплаты: %s\nЧтобы продолжить, вам необходимо принять условия публичной оферты (%s) и политики обработки персональных данных (%s).",
 		connector.Name,
 		connector.Description,
 		connector.PriceRUB,
+		botConnectorPeriodLabel(connector),
 		offerURL,
 		privacyURL,
 	)
@@ -98,7 +99,7 @@ func botSubscriptionOverviewLines(sub domain.Subscription, connector domain.Conn
 	lines := []string{
 		fmt.Sprintf("• %s", connector.Name),
 		fmt.Sprintf("  Сумма: %d ₽", connector.PriceRUB),
-		fmt.Sprintf("  Период: %d дн.", connector.PeriodDays),
+		fmt.Sprintf("  Период: %s", botConnectorPeriodLabel(connector)),
 		fmt.Sprintf("  Действует до: %s", sub.EndsAt.In(time.Local).Format("02.01.2006 15:04")),
 	}
 	if sub.AutoPayEnabled {
@@ -110,6 +111,20 @@ func botSubscriptionOverviewLines(sub domain.Subscription, connector domain.Conn
 		lines = append(lines, fmt.Sprintf("  Канал: %s", channel))
 	}
 	return append(lines, "")
+}
+
+func botConnectorPeriodLabel(connector domain.Connector) string {
+	if connector.TestPeriodSeconds > 0 {
+		if connector.TestPeriodSeconds%60 == 0 {
+			return fmt.Sprintf("%d мин.", connector.TestPeriodSeconds/60)
+		}
+		return fmt.Sprintf("%d сек.", connector.TestPeriodSeconds)
+	}
+	periodDays := connector.PeriodDays
+	if periodDays <= 0 {
+		periodDays = 30
+	}
+	return fmt.Sprintf("%d дн.", periodDays)
 }
 
 func botPaymentHistoryLines(payment domain.Payment) []string {

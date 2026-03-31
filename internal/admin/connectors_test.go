@@ -37,6 +37,7 @@ func TestConnectorsPageCreate_UsesRedirectAfterPost(t *testing.T) {
 	form.Set("name", "MAX Test")
 	form.Set("price_rub", "3200")
 	form.Set("period_days", "30")
+	form.Set("test_period", "15m")
 	form.Set("channel_url", "https://web.max.ru/-72598909498032")
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/connectors?lang=ru", strings.NewReader(form.Encode()))
@@ -62,5 +63,8 @@ func TestConnectorsPageCreate_UsesRedirectAfterPost(t *testing.T) {
 	}
 	if connectors[0].StartPayload == "" || !strings.HasPrefix(connectors[0].StartPayload, "in-") {
 		t.Fatalf("generated start payload = %q, want in-*", connectors[0].StartPayload)
+	}
+	if connectors[0].TestPeriodSeconds != 900 {
+		t.Fatalf("test_period_seconds = %d, want 900", connectors[0].TestPeriodSeconds)
 	}
 }

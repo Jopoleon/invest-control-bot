@@ -36,15 +36,15 @@ func (a *application) activateSuccessfulPayment(ctx context.Context, paymentRow 
 		effectivePaidAt = *paymentRow.PaidAt
 	}
 
-	periodDays := 30
+	endsAt := effectivePaidAt.AddDate(0, 0, 30)
 	connector, connectorExists, err := a.store.GetConnector(ctx, paymentRow.ConnectorID)
 	if err != nil {
 		slog.Error("load connector for subscription failed", "error", err, "connector_id", paymentRow.ConnectorID)
-	} else if connectorExists && connector.PeriodDays > 0 {
+	} else if connectorExists {
 		// TODO(testing): add a non-production-only short-lived subscription mode
 		// for real-money recurring/autopay validation (minutes or seconds). The
 		// default production behavior must remain day-based.
-		periodDays = connector.PeriodDays
+		endsAt = connector.SubscriptionEndsAt(effectivePaidAt)
 	}
 
 	startAt := effectivePaidAt
@@ -53,7 +53,11 @@ func (a *application) activateSuccessfulPayment(ctx context.Context, paymentRow 
 	} else if found && latestSub.Status == domain.SubscriptionStatusActive && latestSub.EndsAt.After(startAt) {
 		startAt = latestSub.EndsAt
 	}
-	endsAt := startAt.AddDate(0, 0, periodDays)
+	if connectorExists {
+		endsAt = connector.SubscriptionEndsAt(startAt)
+	} else {
+		endsAt = startAt.AddDate(0, 0, 30)
+	}
 	if err := a.store.UpsertSubscriptionByPayment(ctx, domain.Subscription{
 		UserID:         paymentRow.UserID,
 		ConnectorID:    paymentRow.ConnectorID,

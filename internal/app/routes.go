@@ -11,6 +11,7 @@ func (a *application) newRouter() chi.Router {
 	router.Use(loggingMiddleware)
 	a.adminHandler.Register(router)
 
+	router.HandleFunc("/", a.handleLanding)
 	router.HandleFunc("/healthz", a.handleHealthz)
 	router.HandleFunc("/subscribe/*", a.handleRecurringCheckout)
 	router.HandleFunc("/unsubscribe/*", a.handleRecurringCancel)

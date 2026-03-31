@@ -75,10 +75,66 @@ go run ./cmd/server
 bash scripts/deploy_vps.sh
 ```
 
-Если нужно сразу перезапускать systemd-сервис после выкладки:
+По умолчанию скрипт после выкладки перезапускает `systemd`-сервис
+`invest-control-bot`.
+
+Если нужно явно указать команду рестарта:
 ```bash
 RESTART_CMD='sudo systemctl restart invest-control-bot' bash scripts/deploy_vps.sh
 ```
+
+То же самое короче через имя сервиса:
+```bash
+REMOTE_SERVICE_NAME=invest-control-bot bash scripts/deploy_vps.sh
+```
+
+Если нужен deploy без рестарта процесса:
+```bash
+SKIP_RESTART=1 bash scripts/deploy_vps.sh
+```
+
+### Systemd service на VPS
+Шаблон unit-файла лежит в `deploy/systemd/invest-control-bot.service`.
+
+Он рассчитан на такую схему:
+- пользователь на сервере: `investcontrol`
+- релизы: `/home/investcontrol/apps/invest-control-bot/releases/...`
+- активный релиз: `/home/investcontrol/apps/invest-control-bot/current`
+- production env-файл: `/home/investcontrol/apps/invest-control-bot/shared/invest-control-bot.env`
+
+Установка на сервере:
+```bash
+sudo cp /path/to/repo/deploy/systemd/invest-control-bot.service /etc/systemd/system/invest-control-bot.service
+sudo mkdir -p /home/investcontrol/apps/invest-control-bot/releases
+sudo mkdir -p /home/investcontrol/apps/invest-control-bot/shared
+sudo chown -R investcontrol:investcontrol /home/investcontrol/apps/invest-control-bot
+sudo -u investcontrol editor /home/investcontrol/apps/invest-control-bot/shared/invest-control-bot.env
+sudo systemctl daemon-reload
+sudo systemctl enable invest-control-bot
+sudo systemctl start invest-control-bot
+```
+
+Проверка:
+```bash
+sudo systemctl status invest-control-bot
+sudo journalctl -u invest-control-bot -n 100 --no-pager
+```
+
+Минимально важные production env:
+```env
+APP_ENV=prod
+APP_RUNTIME=server
+HTTP_ADDR=127.0.0.1:8080
+LOG_LEVEL=info
+
+TELEGRAM_WEBHOOK_PUBLIC_URL=https://xn--b1aghkfidhbthmd7l.xn--p1ai/telegram/webhook
+MAX_WEBHOOK_PUBLIC_URL=https://xn--b1aghkfidhbthmd7l.xn--p1ai/max/webhook
+PAYMENT_MOCK_BASE_URL=https://xn--b1aghkfidhbthmd7l.xn--p1ai
+```
+
+Остальные секреты и `DB_*` параметры нужно заполнить в
+`/home/investcontrol/apps/invest-control-bot/shared/invest-control-bot.env`
+по вашему production окружению.
 
 ### Локальный MAX development
 Для MAX локальный dev-flow рекомендуем запускать через long polling, а не через webhook tunnel.

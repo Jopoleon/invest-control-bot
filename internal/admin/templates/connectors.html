@@ -184,6 +184,11 @@
             <input name="start_payload" placeholder="in-94db7d6813507bc">
           </label>
           <label>
+            {{index .I18N "connectors.form.test_period"}}
+            <input name="test_period" placeholder="15m">
+            <small>{{index .I18N "connectors.form.test_period_hint"}}</small>
+          </label>
+          <label>
             {{index .I18N "connectors.form.offer_url"}}
             <input name="offer_url" placeholder="https://...">
           </label>
@@ -238,7 +243,7 @@
             <td class="name-cell">{{.Name}}</td>
             <td class="mono chat-cell">{{.ChatID}}</td>
             <td class="price-cell">{{.PriceRUB}} ₽</td>
-            <td class="period-cell">{{.PeriodDays}}</td>
+            <td class="period-cell">{{.PeriodLabel}}</td>
             <td class="link-cell">{{if .OfferURL}}<a href="{{.OfferURL}}" target="_blank" rel="noreferrer">{{index $.I18N "connectors.table.open_link"}}</a>{{end}}</td>
             <td class="link-cell">{{if .PrivacyURL}}<a href="{{.PrivacyURL}}" target="_blank" rel="noreferrer">{{index $.I18N "connectors.table.open_link"}}</a>{{end}}</td>
             <td class="link-cell bot-link-cell">{{if .ChannelURL}}<a href="{{.ChannelURL}}" target="_blank" rel="noreferrer">{{.ChannelURL}}</a>{{end}}</td>

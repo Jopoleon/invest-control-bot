@@ -254,6 +254,70 @@ func TestActivateSuccessfulPayment_ExtendsFromCurrentSubscriptionEnd(t *testing.
 	}
 }
 
+func TestActivateSuccessfulPayment_UsesShortTestPeriodWhenConfigured(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	tg, err := telegram.NewClient("", "")
+	if err != nil {
+		t.Fatalf("create telegram client: %v", err)
+	}
+
+	now := time.Now().UTC().Truncate(time.Second)
+	userID := seedTelegramUser(t, ctx, st, 888888)
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:      "in-short-period",
+		Name:              "short-period-test",
+		ChatID:            "1003626584986",
+		PriceRUB:          2322,
+		PeriodDays:        30,
+		TestPeriodSeconds: 90,
+		IsActive:          true,
+		CreatedAt:         now,
+	}); err != nil {
+		t.Fatalf("create connector: %v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-short-period")
+	if err != nil || !found {
+		t.Fatalf("get connector by payload: found=%v err=%v", found, err)
+	}
+
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:    "robokassa",
+		Status:      domain.PaymentStatusPending,
+		Token:       "short-period-payment-1",
+		UserID:      userID,
+		ConnectorID: connector.ID,
+		AmountRUB:   2322,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	})
+
+	paymentRow, found, err := st.GetPaymentByToken(ctx, "short-period-payment-1")
+	if err != nil || !found {
+		t.Fatalf("get payment by token: found=%v err=%v", found, err)
+	}
+
+	appCtx := &application{
+		store:          st,
+		telegramClient: tg,
+	}
+	appCtx.activateSuccessfulPayment(ctx, paymentRow, "robokassa:short-period-payment-1", now)
+
+	latestSub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, paymentRow.UserID, paymentRow.ConnectorID)
+	if err != nil || !found {
+		t.Fatalf("get latest subscription: found=%v err=%v", found, err)
+	}
+	wantEnd := now.Add(90 * time.Second)
+	if !latestSub.StartsAt.Equal(now) {
+		t.Fatalf("starts_at=%s want=%s", latestSub.StartsAt, now)
+	}
+	if !latestSub.EndsAt.Equal(wantEnd) {
+		t.Fatalf("ends_at=%s want=%s", latestSub.EndsAt, wantEnd)
+	}
+}
+
 func TestActivateSuccessfulPayment_DoesNotSendDuplicateSuccessNotificationForAlreadyPaidPayment(t *testing.T) {
 	t.Helper()
 

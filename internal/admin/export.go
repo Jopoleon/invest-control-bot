@@ -26,7 +26,7 @@ func (h *Handler) exportConnectorsCSV(w http.ResponseWriter, r *http.Request) {
 	records := make([][]string, 0, len(rows)+1)
 	records = append(records, []string{
 		"id", "start_payload", "name", "description", "chat_id", "channel_url",
-		"price_rub", "period_days", "offer_url", "privacy_url", "is_active", "created_at",
+		"price_rub", "period_days", "test_period_seconds", "offer_url", "privacy_url", "is_active", "created_at",
 	})
 	for _, c := range rows {
 		records = append(records, []string{
@@ -38,6 +38,7 @@ func (h *Handler) exportConnectorsCSV(w http.ResponseWriter, r *http.Request) {
 			c.ChannelURL,
 			strconv.FormatInt(c.PriceRUB, 10),
 			strconv.Itoa(c.PeriodDays),
+			strconv.Itoa(c.TestPeriodSeconds),
 			c.OfferURL,
 			c.PrivacyURL,
 			strconv.FormatBool(c.IsActive),

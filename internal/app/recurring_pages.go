@@ -22,7 +22,7 @@ type recurringCheckoutPageData struct {
 	ConnectorName     string
 	ConnectorDesc     string
 	PriceRUB          int64
-	PeriodDays        int
+	PeriodLabel       string
 	ChannelURL        string
 	OfferURL          string
 	PrivacyURL        string
@@ -57,7 +57,7 @@ type recurringCancelSubscriptionView struct {
 	SubscriptionID int64
 	Name           string
 	PriceRUB       int64
-	PeriodDays     int
+	PeriodLabel    string
 	EndsAtLabel    string
 	ChannelURL     string
 }
@@ -97,7 +97,7 @@ func (a *application) handleRecurringCheckout(w http.ResponseWriter, r *http.Req
 		ConnectorName:     connector.Name,
 		ConnectorDesc:     strings.TrimSpace(connector.Description),
 		PriceRUB:          connector.PriceRUB,
-		PeriodDays:        connector.PeriodDays,
+		PeriodLabel:       appConnectorPeriodLabel(connector),
 		ChannelURL:        resolveConnectorChannelURL(connector.ChannelURL, connector.ChatID),
 		OfferURL:          offerURL,
 		PrivacyURL:        privacyURL,
@@ -292,13 +292,27 @@ func (a *application) buildRecurringCancelPageData(ctx context.Context, token st
 			SubscriptionID: sub.ID,
 			Name:           connector.Name,
 			PriceRUB:       connector.PriceRUB,
-			PeriodDays:     connector.PeriodDays,
+			PeriodLabel:    appConnectorPeriodLabel(connector),
 			EndsAtLabel:    sub.EndsAt.In(time.Local).Format("02.01.2006 15:04"),
 			ChannelURL:     resolveConnectorChannelURL(connector.ChannelURL, connector.ChatID),
 		})
 	}
 	data.AutoPayEnabled = len(data.ActiveSubscriptions) > 0
 	return data, http.StatusOK
+}
+
+func appConnectorPeriodLabel(connector domain.Connector) string {
+	if connector.TestPeriodSeconds > 0 {
+		if connector.TestPeriodSeconds%60 == 0 {
+			return strconv.Itoa(connector.TestPeriodSeconds/60) + " мин."
+		}
+		return strconv.Itoa(connector.TestPeriodSeconds) + " сек."
+	}
+	periodDays := connector.PeriodDays
+	if periodDays <= 0 {
+		periodDays = 30
+	}
+	return strconv.Itoa(periodDays) + " дн."
 }
 
 type recurringCancelDoneContextKey struct{}

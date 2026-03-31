@@ -21,8 +21,8 @@ func (s *Store) CreateConnector(ctx context.Context, c domain.Connector) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO connectors (
 			start_payload, name, description, chat_id, channel_url, price_rub, period_days,
-			offer_url, privacy_url, is_active, created_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+			test_period_seconds, offer_url, privacy_url, is_active, created_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 	`,
 		c.StartPayload,
 		c.Name,
@@ -31,6 +31,7 @@ func (s *Store) CreateConnector(ctx context.Context, c domain.Connector) error {
 		c.ChannelURL,
 		c.PriceRUB,
 		c.PeriodDays,
+		c.TestPeriodSeconds,
 		c.OfferURL,
 		c.PrivacyURL,
 		c.IsActive,
@@ -43,7 +44,7 @@ func (s *Store) CreateConnector(ctx context.Context, c domain.Connector) error {
 func (s *Store) ListConnectors(ctx context.Context) ([]domain.Connector, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, start_payload, name, description, chat_id, channel_url, price_rub, period_days,
-		       offer_url, privacy_url, is_active, created_at
+		       test_period_seconds, offer_url, privacy_url, is_active, created_at
 		FROM connectors
 		ORDER BY created_at ASC
 	`)
@@ -64,6 +65,7 @@ func (s *Store) ListConnectors(ctx context.Context) ([]domain.Connector, error) 
 			&c.ChannelURL,
 			&c.PriceRUB,
 			&c.PeriodDays,
+			&c.TestPeriodSeconds,
 			&c.OfferURL,
 			&c.PrivacyURL,
 			&c.IsActive,
@@ -81,7 +83,7 @@ func (s *Store) GetConnector(ctx context.Context, connectorID int64) (domain.Con
 	var c domain.Connector
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, start_payload, name, description, chat_id, channel_url, price_rub, period_days,
-		       offer_url, privacy_url, is_active, created_at
+		       test_period_seconds, offer_url, privacy_url, is_active, created_at
 		FROM connectors
 		WHERE id = $1
 	`, connectorID).Scan(
@@ -93,6 +95,7 @@ func (s *Store) GetConnector(ctx context.Context, connectorID int64) (domain.Con
 		&c.ChannelURL,
 		&c.PriceRUB,
 		&c.PeriodDays,
+		&c.TestPeriodSeconds,
 		&c.OfferURL,
 		&c.PrivacyURL,
 		&c.IsActive,
@@ -112,7 +115,7 @@ func (s *Store) GetConnectorByStartPayload(ctx context.Context, payload string) 
 	var c domain.Connector
 	err := s.db.QueryRowContext(ctx, `
 		SELECT id, start_payload, name, description, chat_id, channel_url, price_rub, period_days,
-		       offer_url, privacy_url, is_active, created_at
+		       test_period_seconds, offer_url, privacy_url, is_active, created_at
 		FROM connectors
 		WHERE start_payload = $1
 	`, payload).Scan(
@@ -124,6 +127,7 @@ func (s *Store) GetConnectorByStartPayload(ctx context.Context, payload string) 
 		&c.ChannelURL,
 		&c.PriceRUB,
 		&c.PeriodDays,
+		&c.TestPeriodSeconds,
 		&c.OfferURL,
 		&c.PrivacyURL,
 		&c.IsActive,

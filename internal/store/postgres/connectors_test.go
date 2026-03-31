@@ -17,12 +17,12 @@ func TestGetConnector(t *testing.T) {
 	createdAt := time.Date(2026, 3, 24, 12, 0, 0, 0, time.UTC)
 	rows := sqlmock.NewRows([]string{
 		"id", "start_payload", "name", "description", "chat_id", "channel_url", "price_rub", "period_days",
-		"offer_url", "privacy_url", "is_active", "created_at",
-	}).AddRow(11, "in-abc", "Recurring", "desc", "", "https://t.me/test", 2300, 30, "http://offer", "http://policy", true, createdAt)
+		"test_period_seconds", "offer_url", "privacy_url", "is_active", "created_at",
+	}).AddRow(11, "in-abc", "Recurring", "desc", "", "https://t.me/test", 2300, 30, 900, "http://offer", "http://policy", true, createdAt)
 
 	mock.ExpectQuery(regexp.QuoteMeta(`
 		SELECT id, start_payload, name, description, chat_id, channel_url, price_rub, period_days,
-		       offer_url, privacy_url, is_active, created_at
+		       test_period_seconds, offer_url, privacy_url, is_active, created_at
 		FROM connectors
 		WHERE id = $1
 	`)).WithArgs(int64(11)).WillReturnRows(rows)
@@ -36,6 +36,9 @@ func TestGetConnector(t *testing.T) {
 	}
 	if connector.Name != "Recurring" || connector.StartPayload != "in-abc" || connector.PriceRUB != 2300 {
 		t.Fatalf("unexpected connector: %+v", connector)
+	}
+	if connector.TestPeriodSeconds != 900 {
+		t.Fatalf("unexpected test period seconds: %+v", connector)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("sql expectations: %v", err)

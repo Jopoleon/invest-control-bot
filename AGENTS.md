@@ -196,9 +196,9 @@ If continuing implementation from current state, the next sensible sequence is:
 
 ## Known Follow-Ups To Preserve
 
-- For real-money recurring/autopay testing we will likely need a non-production-only way to create very short subscription periods (minutes or seconds) so rebill and expiry flows can be validated quickly.
+- Connector admin now supports an explicit short-lived test period override (`90s`, `15m`) for recurring/autopay smoke tests.
 - This should not silently leak into production defaults.
-- Until implemented, keep explicit `TODO:` markers near subscription period calculation and recurring lifecycle code.
+- Keep explicit `TODO:` markers near subscription period calculation and recurring lifecycle code until reminder/expiry/rebill UX is fully validated for these short test periods.
 
 ## Useful Files
 

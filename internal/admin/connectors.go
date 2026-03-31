@@ -16,10 +16,11 @@ import (
 )
 
 var (
-	errCreateConnectorRequired  = errors.New("create_connector_required")
-	errCreateConnectorPrice     = errors.New("create_connector_price")
-	errCreateConnectorPeriod    = errors.New("create_connector_period")
-	errCreateConnectorChatOrURL = errors.New("create_connector_chat_or_url_required")
+	errCreateConnectorRequired   = errors.New("create_connector_required")
+	errCreateConnectorPrice      = errors.New("create_connector_price")
+	errCreateConnectorPeriod     = errors.New("create_connector_period")
+	errCreateConnectorTestPeriod = errors.New("create_connector_test_period")
+	errCreateConnectorChatOrURL  = errors.New("create_connector_chat_or_url_required")
 )
 
 // connectorsPage handles list/create connector operations.
@@ -141,6 +142,7 @@ func (h *Handler) createConnector(ctx context.Context, r *http.Request) error {
 	chatID := strings.TrimSpace(r.FormValue("chat_id"))
 	priceRaw := strings.TrimSpace(r.FormValue("price_rub"))
 	periodRaw := strings.TrimSpace(r.FormValue("period_days"))
+	testPeriodRaw := strings.TrimSpace(r.FormValue("test_period"))
 	offerURL := strings.TrimSpace(r.FormValue("offer_url"))
 	privacyURL := strings.TrimSpace(r.FormValue("privacy_url"))
 	channelURL := strings.TrimSpace(r.FormValue("channel_url"))
@@ -169,19 +171,24 @@ func (h *Handler) createConnector(ctx context.Context, r *http.Request) error {
 	if err != nil || periodDays <= 0 {
 		return errCreateConnectorPeriod
 	}
+	testPeriodSeconds, err := parseTestConnectorPeriod(testPeriodRaw)
+	if err != nil {
+		return errCreateConnectorTestPeriod
+	}
 
 	connector := domain.Connector{
-		StartPayload: startPayload,
-		Name:         name,
-		Description:  description,
-		ChatID:       chatID,
-		ChannelURL:   channelURL,
-		PriceRUB:     price,
-		PeriodDays:   periodDays,
-		OfferURL:     offerURL,
-		PrivacyURL:   privacyURL,
-		IsActive:     true,
-		CreatedAt:    time.Now().UTC(),
+		StartPayload:      startPayload,
+		Name:              name,
+		Description:       description,
+		ChatID:            chatID,
+		ChannelURL:        channelURL,
+		PriceRUB:          price,
+		PeriodDays:        periodDays,
+		TestPeriodSeconds: testPeriodSeconds,
+		OfferURL:          offerURL,
+		PrivacyURL:        privacyURL,
+		IsActive:          true,
+		CreatedAt:         time.Now().UTC(),
 	}
 
 	if err := h.store.CreateConnector(ctx, connector); err != nil {
@@ -213,23 +220,25 @@ func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWrite
 		}
 		activeLabel, activeClass := connectorActiveBadge(lang, c.IsActive)
 		rows = append(rows, connectorView{
-			ID:              c.ID,
-			StartPayload:    c.StartPayload,
-			Name:            c.Name,
-			ChatID:          c.ChatID,
-			ChannelURL:      c.ChannelURL,
-			PriceRUB:        c.PriceRUB,
-			PeriodDays:      c.PeriodDays,
-			OfferURL:        c.OfferURL,
-			PrivacyURL:      c.PrivacyURL,
-			TelegramBotLink: buildAdminBotStartURL(botUsername, c.StartPayload),
-			MAXBotLink:      buildAdminMAXStartURL(maxBotUsername, c.StartPayload),
-			MAXStartCommand: buildAdminStartCommand(c.StartPayload),
-			IsActive:        c.IsActive,
-			ActiveLabel:     activeLabel,
-			ActiveClass:     activeClass,
-			ToggleTo:        toggleTo,
-			ToggleLabel:     toggleLabel,
+			ID:                c.ID,
+			StartPayload:      c.StartPayload,
+			Name:              c.Name,
+			ChatID:            c.ChatID,
+			ChannelURL:        c.ChannelURL,
+			PriceRUB:          c.PriceRUB,
+			PeriodDays:        c.PeriodDays,
+			TestPeriodSeconds: c.TestPeriodSeconds,
+			PeriodLabel:       adminConnectorPeriodLabel(c),
+			OfferURL:          c.OfferURL,
+			PrivacyURL:        c.PrivacyURL,
+			TelegramBotLink:   buildAdminBotStartURL(botUsername, c.StartPayload),
+			MAXBotLink:        buildAdminMAXStartURL(maxBotUsername, c.StartPayload),
+			MAXStartCommand:   buildAdminStartCommand(c.StartPayload),
+			IsActive:          c.IsActive,
+			ActiveLabel:       activeLabel,
+			ActiveClass:       activeClass,
+			ToggleTo:          toggleTo,
+			ToggleLabel:       toggleLabel,
 		})
 	}
 
@@ -267,6 +276,8 @@ func (h *Handler) localizeCreateConnectorError(lang string, err error) string {
 		return t(lang, "connector.validation.price")
 	case errors.Is(err, errCreateConnectorPeriod):
 		return t(lang, "connector.validation.period")
+	case errors.Is(err, errCreateConnectorTestPeriod):
+		return t(lang, "connector.validation.test_period")
 	case errors.Is(err, errCreateConnectorChatOrURL):
 		return t(lang, "connector.validation.chat_or_url")
 	default:
@@ -295,6 +306,36 @@ func parseConnectorID(raw string) (int64, error) {
 		return 0, errors.New("invalid id")
 	}
 	return id, nil
+}
+
+func parseTestConnectorPeriod(raw string) (int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, nil
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, err
+	}
+	seconds := int(d / time.Second)
+	if seconds <= 0 {
+		return 0, errors.New("duration must be at least one second")
+	}
+	return seconds, nil
+}
+
+func adminConnectorPeriodLabel(c domain.Connector) string {
+	if c.TestPeriodSeconds > 0 {
+		if c.TestPeriodSeconds%60 == 0 {
+			return strconv.Itoa(c.TestPeriodSeconds/60) + " мин. (test)"
+		}
+		return strconv.Itoa(c.TestPeriodSeconds) + " сек. (test)"
+	}
+	periodDays := c.PeriodDays
+	if periodDays <= 0 {
+		periodDays = 30
+	}
+	return strconv.Itoa(periodDays) + " дн."
 }
 
 // generateToken creates random hex token for IDs/payloads in admin form defaults.

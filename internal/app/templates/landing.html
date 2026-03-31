@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{.Title}}</title>
+  <style>
+    :root {
+      --bg: #f6f3ee;
+      --panel: #fffdf9;
+      --ink: #1f2430;
+      --muted: #697384;
+      --line: rgba(31, 36, 48, .10);
+      --sans: "Manrope", "Segoe UI", sans-serif;
+      --mono: "IBM Plex Mono", "SFMono-Regular", monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: var(--sans);
+      color: var(--ink);
+      background: var(--bg);
+    }
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+    .page {
+      min-height: 100svh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.25rem;
+    }
+    .shell {
+      width: min(760px, 100%);
+      padding: clamp(1.25rem, 3vw, 2rem);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: var(--panel);
+    }
+    .kicker {
+      margin: 0 0 1rem;
+      font-family: var(--mono);
+      font-size: .82rem;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(2.4rem, 7vw, 4.6rem);
+      line-height: .95;
+      letter-spacing: -.05em;
+    }
+    .subtitle {
+      margin: 1rem 0 0;
+      color: var(--muted);
+      font-size: 1.02rem;
+      line-height: 1.65;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .7rem;
+      margin-top: 1.4rem;
+    }
+    .action {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: .78rem 1rem;
+      background: #fff;
+    }
+    .action.primary {
+      background: var(--ink);
+      color: #fff;
+      border-color: var(--ink);
+    }
+    .meta {
+      display: grid;
+      gap: .75rem;
+      margin-top: 1.6rem;
+      padding-top: 1.2rem;
+      border-top: 1px solid var(--line);
+    }
+    .meta-label {
+      font-family: var(--mono);
+      font-size: .75rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .meta-links {
+      display: flex;
+      gap: .6rem;
+      flex-wrap: wrap;
+    }
+    .meta-links a {
+      color: var(--muted);
+      text-decoration: underline;
+      text-underline-offset: .16em;
+    }
+    @media (max-width: 640px) {
+      .page {
+        padding: .8rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <main class="shell">
+      <div class="kicker">Paid Access Backend</div>
+      <h1>{{.Title}}</h1>
+      <p class="subtitle">{{.Subtitle}}</p>
+
+      <div class="actions">
+        <a class="action primary" href="{{.AdminURL}}">Открыть admin</a>
+        <a class="action" href="{{.HealthURL}}">Healthz</a>
+      </div>
+
+      <section class="meta">
+        <div class="meta-label">Документы и системные ссылки</div>
+        <div class="meta-links">
+          <a href="{{.OfferURL}}">Оферта</a>
+          <a href="{{.PrivacyURL}}">Политика</a>
+          <a href="{{.AgreementURL}}">Соглашение</a>
+          <a href="{{.AdminURL}}">/admin</a>
+          <a href="{{.HealthURL}}">/healthz</a>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
