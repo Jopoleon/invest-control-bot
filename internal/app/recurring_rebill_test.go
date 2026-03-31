@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -381,6 +382,91 @@ func TestProcessRecurringRebills_TriggersScheduledAttempt(t *testing.T) {
 	pendingCount := 0
 	for _, p := range payments {
 		if p.SubscriptionID > 0 && p.ParentPaymentID == parentPayment.ID && p.Status == domain.PaymentStatusPending {
+			pendingCount++
+		}
+	}
+	if pendingCount != 1 {
+		t.Fatalf("pending rebill payments=%d want=1", pendingCount)
+	}
+}
+
+func TestRecurringRuntimeTriggerRebill_ReusesExistingPendingPayment(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	connectorID := seedConnector(t, ctx, st, "in-recurring-existing-pending")
+	parentInv := "rec-parent-existing"
+
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPaid,
+		Token:          parentInv,
+		UserID:         seedTelegramUser(t, ctx, st, 990099),
+		ConnectorID:    connectorID,
+		AmountRUB:      2322,
+		AutoPayEnabled: true,
+		CreatedAt:      time.Now().UTC().Add(-24 * time.Hour),
+		UpdatedAt:      time.Now().UTC().Add(-24 * time.Hour),
+	})
+	parentPayment, found, err := st.GetPaymentByToken(ctx, parentInv)
+	if err != nil || !found {
+		t.Fatalf("parent payment not found: found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         parentPayment.UserID,
+		ConnectorID:    parentPayment.ConnectorID,
+		PaymentID:      parentPayment.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       time.Now().UTC().Add(-24 * time.Hour),
+		EndsAt:         time.Now().UTC().Add(24 * time.Hour),
+		CreatedAt:      time.Now().UTC().Add(-24 * time.Hour),
+		UpdatedAt:      time.Now().UTC().Add(-24 * time.Hour),
+	}); err != nil {
+		t.Fatalf("seed subscription: %v", err)
+	}
+	subscriptions, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{UserID: parentPayment.UserID, Limit: 10})
+	if err != nil || len(subscriptions) != 1 {
+		t.Fatalf("subscriptions len=%d err=%v", len(subscriptions), err)
+	}
+	sub := subscriptions[0]
+
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:          "robokassa",
+		ProviderPaymentID: "rebill_parent:" + parentInv,
+		Status:            domain.PaymentStatusPending,
+		Token:             "rebill-existing-pending",
+		UserID:            parentPayment.UserID,
+		ConnectorID:       connectorID,
+		SubscriptionID:    sub.ID,
+		ParentPaymentID:   parentPayment.ID,
+		AmountRUB:         2322,
+		AutoPayEnabled:    true,
+		CreatedAt:         time.Now().UTC(),
+		UpdatedAt:         time.Now().UTC(),
+	})
+
+	appCtx := testApplicationForRecurring(t, st)
+	payload, err := appCtx.recurringRebillService().TriggerRebill(ctx, sub.ID, "test_runtime")
+	if err != nil {
+		t.Fatalf("triggerRebill err=%v", err)
+	}
+	if !payload.OK {
+		t.Fatalf("payload.OK = false, want true")
+	}
+	if !payload.Existing {
+		t.Fatalf("payload.Existing = false, want true")
+	}
+	if payload.InvoiceID != "rebill-existing-pending" {
+		t.Fatalf("invoice_id=%q want=%q", payload.InvoiceID, "rebill-existing-pending")
+	}
+
+	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{UserID: parentPayment.UserID, Limit: 20})
+	if err != nil {
+		t.Fatalf("list payments: %v", err)
+	}
+	pendingCount := 0
+	for _, paymentRow := range payments {
+		if paymentRow.SubscriptionID == sub.ID && paymentRow.Status == domain.PaymentStatusPending && strings.HasPrefix(paymentRow.Token, "rebill-") {
 			pendingCount++
 		}
 	}

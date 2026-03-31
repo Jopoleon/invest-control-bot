@@ -1104,6 +1104,33 @@ func seedConnector(t *testing.T, ctx context.Context, st store.Store, payload st
 	return connector.ID
 }
 
+func seedShortPeriodConnector(t *testing.T, ctx context.Context, st store.Store, payload string, testPeriodSeconds int) int64 {
+	t.Helper()
+
+	err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:      payload,
+		Name:              "test-short-connector",
+		ChatID:            "1003626584986",
+		PriceRUB:          2322,
+		PeriodDays:        30,
+		TestPeriodSeconds: testPeriodSeconds,
+		IsActive:          true,
+		CreatedAt:         time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("create short connector: %v", err)
+	}
+
+	connector, found, err := st.GetConnectorByStartPayload(ctx, payload)
+	if err != nil {
+		t.Fatalf("get short connector by payload: %v", err)
+	}
+	if !found {
+		t.Fatalf("short connector not found by payload=%s", payload)
+	}
+	return connector.ID
+}
+
 func seedPayment(t *testing.T, ctx context.Context, st store.Store, payment domain.Payment) {
 	t.Helper()
 	if payment.UserID <= 0 {

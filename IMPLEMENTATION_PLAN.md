@@ -1,7 +1,7 @@
 # План реализации сервиса (рабочий документ)
 
 Статус: v1.16 (identity-first runtime cleanup after clean baseline)
-Дата обновления: 2026-03-29
+Дата обновления: 2026-04-01
 Основание: `tz.md`, `telegram-bot-flow.md`
 
 ## 1) Цель
@@ -9,6 +9,7 @@
 
 Сопутствующие рабочие документы:
 - `docs/MAX_IMPLEMENTATION_PLAN.md` - MAX-specific track
+- `docs/APP_REFACTOR_PLAN.md` - текущий цикл рефакторинга `internal/app`
 - `docs/REFACTORING_AND_TEST_PLAN.md` - отдельный backlog по unit-тестам, дедупликации и безопасным refactoring-задачам
 
 ### Обновление 2026-03-27
@@ -68,6 +69,16 @@
   - это дает ранний fail-fast на битых токенах и более ясные startup logs с identity бота.
 - Полный regression pass после этих правок:
   - `GOCACHE=/tmp/go-build go test ./...` проходит.
+
+### Обновление 2026-04-01
+- Для short-period live recurring smoke tests внедрена отдельная scheduler semantics:
+  - recurring rebill для коннекторов с `test_period_seconds > 0` больше не использует боевые окна `72h/48h/24h`;
+  - reminder и pre-expiry notice для таких тестовых коннекторов отключены, чтобы не шуметь и не искажать smoke-тест;
+  - scheduler cadence уменьшен до `10s`, чтобы тестовые периоды `60s/120s` реально могли попадать в rebill windows.
+- На уровне тестов добавлены прямые regression checks для:
+  - short-period rebill eligibility;
+  - отсутствия pre-expiry reminders/notices для short-period subscriptions;
+  - сохранения зеленого `GOCACHE=/tmp/go-build go test ./...`.
 
 ## 2) Зафиксированные решения
 - Админка на первом этапе: встроенные server-rendered HTML-страницы на Go.

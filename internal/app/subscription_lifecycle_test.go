@@ -137,6 +137,54 @@ func TestProcessSubscriptionExpiryNotices_MarksNoticeOnce(t *testing.T) {
 	}
 }
 
+func TestProcessSubscriptionLifecycle_SkipsPreExpiryMessagesForShortTestPeriods(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	tg, err := telegram.NewClient("", "")
+	if err != nil {
+		t.Fatalf("create telegram client: %v", err)
+	}
+
+	connectorID := seedShortPeriodConnector(t, ctx, st, "in-short-lifecycle-skip", 120)
+	now := time.Now().UTC()
+	subscriptionID := seedActiveSubscription(t, ctx, st, connectorID, 880004, "sub-short-lifecycle", now.Add(20*time.Second))
+	appCtx := &application{
+		config:         config.Config{Telegram: config.TelegramConfig{BotUsername: "test_bot"}},
+		store:          st,
+		telegramClient: tg,
+	}
+
+	processSubscriptionReminders(ctx, appCtx)
+	processSubscriptionExpiryNotices(ctx, appCtx)
+
+	sub, found, err := st.GetSubscriptionByID(ctx, subscriptionID)
+	if err != nil {
+		t.Fatalf("get subscription: %v", err)
+	}
+	if !found {
+		t.Fatalf("subscription not found")
+	}
+	if sub.ReminderSentAt != nil {
+		t.Fatalf("reminder_sent_at = %v, want nil", sub.ReminderSentAt)
+	}
+	if sub.ExpiryNoticeSentAt != nil {
+		t.Fatalf("expiry_notice_sent_at = %v, want nil", sub.ExpiryNoticeSentAt)
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionReminderSent); got != 0 {
+		t.Fatalf("subscription_reminder_sent count = %d, want 0", got)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionExpiryNoticeSent); got != 0 {
+		t.Fatalf("subscription_expiry_notice_sent count = %d, want 0", got)
+	}
+}
+
 func TestProcessSubscriptionReminders_SendsMAXRenewalPrompt(t *testing.T) {
 	t.Helper()
 

@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
+	appsubscriptions "github.com/Jopoleon/invest-control-bot/internal/app/subscriptions"
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
 	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 	"github.com/go-co-op/gocron/v2"
@@ -18,11 +18,10 @@ const (
 	reminderDaysBeforeEnd = 3
 	expiryNoticeWindow    = 24 * time.Hour
 	subscriptionJobLimit  = 200
-	// TODO(testing): if we introduce very short non-production subscription
-	// periods for live recurring tests, reminder/expiry/rebill thresholds in
-	// this scheduler will need an explicit alternate strategy instead of these
-	// day-based windows.
-	subscriptionJobEvery = time.Minute
+	// Short smoke-test periods use an alternate strategy in app/subscriptions
+	// and app/recurring. The cadence stays below one minute so 60s/120s test
+	// periods have a realistic chance to hit their rebill windows.
+	subscriptionJobEvery = 10 * time.Second
 )
 
 // newSubscriptionLifecycleScheduler wires periodic reminder and expiration jobs.
@@ -97,7 +96,6 @@ func processRecurringRebills(ctx context.Context, appCtx *application) {
 		Limit:  subscriptionJobLimit,
 	})
 	if err != nil {
-		slog.Error("list subscriptions for recurring rebill failed", "error", err)
 		return
 	}
 
@@ -108,7 +106,6 @@ func processRecurringRebills(ctx context.Context, appCtx *application) {
 		}
 		shouldTrigger, err := appCtx.shouldTriggerScheduledRebill(ctx, sub, now)
 		if err != nil {
-			slog.Error("check scheduled rebill eligibility failed", "error", err, "subscription_id", sub.ID)
 			continue
 		}
 		if !shouldTrigger {
@@ -116,128 +113,22 @@ func processRecurringRebills(ctx context.Context, appCtx *application) {
 		}
 		if _, err := appCtx.triggerRebill(ctx, sub.ID, "scheduler"); err != nil {
 			if errors.Is(err, errRebillRequestFailed) {
-				slog.Warn("scheduled rebill request failed", "subscription_id", sub.ID, "error", err)
 				continue
 			}
-			slog.Error("scheduled rebill failed", "error", err, "subscription_id", sub.ID)
 		}
 	}
 }
 
 func processSubscriptionReminders(ctx context.Context, appCtx *application) {
-	now := time.Now().UTC()
-	remindBefore := now.AddDate(0, 0, reminderDaysBeforeEnd)
-	subs, err := appCtx.store.ListSubscriptionsForReminder(ctx, remindBefore, subscriptionJobLimit)
-	if err != nil {
-		slog.Error("list reminder due subscriptions failed", "error", err)
-		return
-	}
-	for _, sub := range subs {
-		connector, ok, err := appCtx.store.GetConnector(ctx, sub.ConnectorID)
-		if err != nil {
-			slog.Error("load connector for reminder failed", "error", err, "subscription_id", sub.ID, "connector_id", sub.ConnectorID)
-			continue
-		}
-		if !ok {
-			continue
-		}
-
-		text := appSubscriptionReminderMessage(sub.EndsAt)
-		preferredMessengerUserID := ""
-		msg := appCtx.buildRenewalNotification(ctx, sub.UserID, preferredMessengerUserID, connector.StartPayload, text)
-		if err := appCtx.sendUserNotification(ctx, sub.UserID, preferredMessengerUserID, msg); err != nil {
-			slog.Error("send subscription reminder failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "preferred_messenger_user_id", preferredMessengerUserID)
-			continue
-		}
-		if err := appCtx.store.MarkSubscriptionReminderSent(ctx, sub.ID, now); err != nil {
-			slog.Error("mark subscription reminder sent failed", "error", err, "subscription_id", sub.ID)
-		}
-		_ = appCtx.store.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionReminderSent, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
-	}
+	appCtx.subscriptionLifecycleService().ProcessSubscriptionReminders(ctx)
 }
 
 func processSubscriptionExpiryNotices(ctx context.Context, appCtx *application) {
-	now := time.Now().UTC()
-	noticeBefore := now.Add(expiryNoticeWindow)
-	subs, err := appCtx.store.ListSubscriptionsForExpiryNotice(ctx, noticeBefore, subscriptionJobLimit)
-	if err != nil {
-		slog.Error("list expiry notice subscriptions failed", "error", err)
-		return
-	}
-	for _, sub := range subs {
-		connector, ok, err := appCtx.store.GetConnector(ctx, sub.ConnectorID)
-		if err != nil {
-			slog.Error("load connector for expiry notice failed", "error", err, "subscription_id", sub.ID, "connector_id", sub.ConnectorID)
-			continue
-		}
-		if !ok {
-			continue
-		}
-
-		text := appSubscriptionExpiryNoticeMessage(sub.EndsAt)
-		preferredMessengerUserID := ""
-		msg := appCtx.buildRenewalNotification(ctx, sub.UserID, preferredMessengerUserID, connector.StartPayload, text)
-		if err := appCtx.sendUserNotification(ctx, sub.UserID, preferredMessengerUserID, msg); err != nil {
-			slog.Error("send subscription expiry notice failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "preferred_messenger_user_id", preferredMessengerUserID)
-			continue
-		}
-		if err := appCtx.store.MarkSubscriptionExpiryNoticeSent(ctx, sub.ID, now); err != nil {
-			slog.Error("mark subscription expiry notice sent failed", "error", err, "subscription_id", sub.ID)
-		}
-		_ = appCtx.store.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionExpiryNoticeSent, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
-	}
+	appCtx.subscriptionLifecycleService().ProcessSubscriptionExpiryNotices(ctx)
 }
 
 func processExpiredSubscriptions(ctx context.Context, appCtx *application) {
-	now := time.Now().UTC()
-	subs, err := appCtx.store.ListExpiredActiveSubscriptions(ctx, now, subscriptionJobLimit)
-	if err != nil {
-		slog.Error("list expired subscriptions failed", "error", err)
-		return
-	}
-	for _, sub := range subs {
-		connector, connectorFound, err := appCtx.store.GetConnector(ctx, sub.ConnectorID)
-		if err != nil {
-			slog.Error("load connector for expiration failed", "error", err, "subscription_id", sub.ID, "connector_id", sub.ConnectorID)
-		}
-
-		// Business status transition to expired.
-		if err := appCtx.store.UpdateSubscriptionStatus(ctx, sub.ID, domain.SubscriptionStatusExpired, now); err != nil {
-			slog.Error("update subscription status failed", "error", err, "subscription_id", sub.ID)
-			continue
-		}
-
-		// Best-effort revoke from chat when chat_id is configured and bot has rights.
-		preferredMessengerUserID := ""
-		if connectorFound && appCtx.resolvePreferredMessengerKind(ctx, sub.UserID, preferredMessengerUserID) == messenger.KindTelegram {
-			if chatID, ok := normalizeTelegramChatID(connector.ChatID); ok {
-				account, found, err := appCtx.resolveTelegramMessengerAccount(ctx, sub.UserID)
-				if err != nil {
-					slog.Error("resolve telegram account for revoke failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID)
-				} else if found {
-					telegramID, parseErr := strconv.ParseInt(account.MessengerUserID, 10, 64)
-					if parseErr != nil || telegramID <= 0 {
-						slog.Error("invalid telegram account id for revoke", "error", parseErr, "subscription_id", sub.ID, "user_id", sub.UserID, "messenger_user_id", account.MessengerUserID)
-					} else if err := appCtx.telegramClient.RemoveChatMember(ctx, chatID, telegramID); err != nil {
-						slog.Error("remove chat member failed", "error", err, "subscription_id", sub.ID, "messenger_user_id", telegramID, "chat_id", chatID)
-						_ = appCtx.store.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionRevokeFailed, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
-					} else {
-						_ = appCtx.store.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionRevokedFromChat, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
-					}
-				}
-			}
-		}
-
-		text := appSubscriptionExpiredText
-		msg := messenger.OutgoingMessage{Text: text}
-		if connectorFound {
-			msg = appCtx.buildRenewalNotification(ctx, sub.UserID, preferredMessengerUserID, connector.StartPayload, text)
-		}
-		if err := appCtx.sendUserNotification(ctx, sub.UserID, preferredMessengerUserID, msg); err != nil {
-			slog.Error("send subscription expired message failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "preferred_messenger_user_id", preferredMessengerUserID)
-		}
-		_ = appCtx.store.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionExpired, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
-	}
+	appCtx.subscriptionLifecycleService().ProcessExpiredSubscriptions(ctx)
 }
 
 func buildBotStartURL(botUsername, startPayload string) string {
@@ -258,24 +149,7 @@ func buildBotStartCommand(startPayload string) string {
 }
 
 func (a *application) buildRenewalNotification(ctx context.Context, userID int64, preferredMessengerUserID, startPayload, text string) messenger.OutgoingMessage {
-	msg := messenger.OutgoingMessage{Text: text}
-	payload := strings.TrimSpace(startPayload)
-	if payload == "" {
-		return msg
-	}
-
-	switch a.resolvePreferredMessengerKind(ctx, userID, preferredMessengerUserID) {
-	case messenger.KindMAX:
-		msg.Text += fmt.Sprintf(appSubscriptionReminderCommandFmt, payload)
-	default:
-		if renewURL := buildBotStartURL(a.config.Telegram.BotUsername, payload); renewURL != "" {
-			msg.Buttons = [][]messenger.ActionButton{{
-				{Text: appSubscriptionRenewButton, URL: renewURL},
-			}}
-		}
-	}
-
-	return msg
+	return a.subscriptionLifecycleService().BuildRenewalNotification(ctx, userID, preferredMessengerUserID, startPayload, text)
 }
 
 func normalizeTelegramChatID(chatIDRaw string) (int64, bool) {
@@ -293,4 +167,24 @@ func normalizeTelegramChatID(chatIDRaw string) (int64, bool) {
 		return value, true
 	}
 	return -value, true
+}
+
+func (a *application) subscriptionLifecycleService() *appsubscriptions.Service {
+	return &appsubscriptions.Service{
+		Store:                       a.store,
+		TelegramClient:              a.telegramClient,
+		TelegramBotUsername:         a.config.Telegram.BotUsername,
+		ReminderDaysBeforeEnd:       reminderDaysBeforeEnd,
+		ExpiryNoticeWindow:          expiryNoticeWindow,
+		SubscriptionJobLimit:        subscriptionJobLimit,
+		SubscriptionReminderMessage: appSubscriptionReminderMessage,
+		SubscriptionExpiryMessage:   appSubscriptionExpiryNoticeMessage,
+		SubscriptionExpiredText:     appSubscriptionExpiredText,
+		RenewalButtonLabel:          appSubscriptionRenewButton,
+		RenewalCommandFormat:        appSubscriptionReminderCommandFmt,
+		SendUserNotification:        a.sendUserNotification,
+		BuildTargetAuditEvent:       a.buildAppTargetAuditEvent,
+		ResolvePreferredKind:        a.resolvePreferredMessengerKind,
+		ResolveTelegramAccount:      a.resolveTelegramMessengerAccount,
+	}
 }
