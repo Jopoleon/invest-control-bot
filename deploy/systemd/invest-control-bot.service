@@ -1,0 +1,19 @@
+[Unit]
+Description=invest-control-bot backend service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=investcontrol
+Group=investcontrol
+WorkingDirectory=/home/investcontrol/apps/invest-control-bot/current
+EnvironmentFile=/home/investcontrol/apps/invest-control-bot/shared/invest-control-bot.env
+ExecStart=/home/investcontrol/apps/invest-control-bot/current/invest-control-bot
+Restart=always
+RestartSec=5
+TimeoutStopSec=15
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
