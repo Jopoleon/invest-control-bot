@@ -66,7 +66,7 @@ func TestBuildUserDetailURL_UsesUserIDOnly(t *testing.T) {
 func TestUserDetailPage_AllowsUserIDLookup(t *testing.T) {
 	ctx := context.Background()
 	st := memory.New()
-	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil)
+	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil, nil)
 
 	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, "264704572", "emiloserdov")
 	if err != nil {

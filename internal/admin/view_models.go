@@ -189,6 +189,7 @@ type userView struct {
 	TelegramID       int64
 	TelegramUsername string
 	HasTelegram      bool
+	CanDirectMessage bool
 	FullName         string
 	Phone            string
 	Email            string

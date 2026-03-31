@@ -11,6 +11,7 @@
 - `docs/MAX_IMPLEMENTATION_PLAN.md` - MAX-specific track
 - `docs/APP_REFACTOR_PLAN.md` - текущий цикл рефакторинга `internal/app`
 - `docs/REFACTORING_AND_TEST_PLAN.md` - отдельный backlog по unit-тестам, дедупликации и безопасным refactoring-задачам
+- `docs/CONNECTOR_PERIOD_MODEL_PLAN.md` - целевая model периодов коннектора (`duration`, `calendar_months`, `fixed_deadline`)
 
 ### Обновление 2026-03-27
 - Историческая цепочка additive SQL-миграций схлопнута в новый clean bootstrap.
@@ -79,6 +80,10 @@
   - short-period rebill eligibility;
   - отсутствия pre-expiry reminders/notices для short-period subscriptions;
   - сохранения зеленого `GOCACHE=/tmp/go-build go test ./...`.
+- Admin operations перестали быть Telegram-only:
+  - direct user message теперь отправляется в preferred linked messenger account;
+  - payment link из user detail теперь можно отправить и MAX-only пользователю;
+  - для MAX payment-link сообщения добавлен fallback `/start <payload>` помимо deeplink.
 
 ## 2) Зафиксированные решения
 - Админка на первом этапе: встроенные server-rendered HTML-страницы на Go.

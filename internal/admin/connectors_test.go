@@ -13,7 +13,7 @@ import (
 
 func TestConnectorsPageCreate_UsesRedirectAfterPost(t *testing.T) {
 	st := memory.New()
-	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil)
+	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil, nil)
 
 	csrfReq := httptest.NewRequest(http.MethodGet, "/admin/connectors?lang=ru", nil)
 	csrfRec := httptest.NewRecorder()

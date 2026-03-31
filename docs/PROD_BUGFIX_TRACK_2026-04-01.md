@@ -307,6 +307,7 @@ Admin layer еще не переведен на messenger-neutral delivery bound
 ### Этап 2. Перевести admin message/payment-link на messenger-neutral delivery
 
 Приоритет: P1
+Статус: implemented
 
 Файлы-кандидаты:
 - [user_actions.go](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/internal/admin/user_actions.go)
@@ -317,6 +318,17 @@ Admin layer еще не переведен на messenger-neutral delivery bound
 1. unified delivery action;
 2. MAX support;
 3. audit with messenger context.
+
+Сделано:
+1. `admin.Handler` теперь получает не только Telegram client, но и MAX sender.
+2. `sendUserMessage` больше не требует Telegram identity и отправляет в preferred linked messenger account пользователя.
+3. `sendUserPaymentLink` теперь работает для MAX-only пользователя:
+   - строит MAX deeplink;
+   - добавляет fallback-команду `/start <payload>` в текст сообщения.
+4. User detail page больше не скрывает direct-message action только из-за отсутствия Telegram identity.
+5. Добавлены regression tests на:
+   - direct admin message в MAX-only account;
+   - admin payment-link send в MAX-only account.
 
 ### Этап 3. Дочистить Telegram-first presentation в админке
 

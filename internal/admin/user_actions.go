@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 	"github.com/go-telegram/bot/models"
 )
 
@@ -38,12 +39,12 @@ func (h *Handler) sendUserMessage(w http.ResponseWriter, r *http.Request) {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
 		return
 	}
-	telegramID, _, hasTelegramIdentity, err := h.resolveTelegramIdentity(r.Context(), user.ID)
+	account, hasDeliveryAccount, err := h.resolvePreferredMessengerAccount(r.Context(), user.ID)
 	if err != nil {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
 		return
 	}
-	if !found || !hasTelegramIdentity {
+	if !found || !hasDeliveryAccount {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.invalid_id"))
 		return
 	}
@@ -54,14 +55,14 @@ func (h *Handler) sendUserMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
-	if err := h.tg.SendMessage(r.Context(), telegramID, text, nil); err != nil {
-		h.logAdminTargetAudit(r, user, 0, domain.AuditActionAdminMessageSendFailed, err.Error())
+	if err := h.sendViaMessengerAccount(r.Context(), account, messenger.OutgoingMessage{Text: text}); err != nil {
+		h.logAdminTargetAuditForAccount(r, user, account, 0, domain.AuditActionAdminMessageSendFailed, err.Error())
 		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, err.Error())
 		return
 	}
 
 	_ = now
-	h.logAdminTargetAudit(r, user, 0, domain.AuditActionAdminMessageSent, trimAuditDetails(text, 500))
+	h.logAdminTargetAuditForAccount(r, user, account, 0, domain.AuditActionAdminMessageSent, trimAuditDetails(text, 500))
 	h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.actions.message_sent"))
 }
 
@@ -94,12 +95,12 @@ func (h *Handler) sendUserPaymentLink(w http.ResponseWriter, r *http.Request) {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
 		return
 	}
-	telegramID, _, hasTelegramIdentity, err := h.resolveTelegramIdentity(r.Context(), user.ID)
+	account, hasDeliveryAccount, err := h.resolvePreferredMessengerAccount(r.Context(), user.ID)
 	if err != nil {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
 		return
 	}
-	if !foundUser || !hasTelegramIdentity || (subID <= 0 && connectorID <= 0) {
+	if !foundUser || !hasDeliveryAccount || (subID <= 0 && connectorID <= 0) {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.invalid_id"))
 		return
 	}
@@ -124,31 +125,21 @@ func (h *Handler) sendUserPaymentLink(w http.ResponseWriter, r *http.Request) {
 		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.actions.paylink_unavailable"))
 		return
 	}
-	renewURL := buildAdminBotStartURL(h.botUsername, connector.StartPayload)
-	if renewURL == "" {
+	msg, ok := h.buildPaymentLinkMessage(lang, account, connector)
+	if !ok {
 		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.actions.paylink_unavailable"))
 		return
 	}
-
-	text := t(lang, "users.actions.paylink_text")
-	if strings.TrimSpace(connector.Name) != "" {
-		text = fmt.Sprintf(t(lang, "users.actions.paylink_text_named"), connector.Name)
-	}
-	keyboard := &models.InlineKeyboardMarkup{
-		InlineKeyboard: [][]models.InlineKeyboardButton{{
-			{Text: t(lang, "users.actions.paylink_button"), URL: renewURL},
-		}},
-	}
 	now := time.Now().UTC()
-	if err := h.tg.SendMessage(r.Context(), telegramID, text, keyboard); err != nil {
+	if err := h.sendViaMessengerAccount(r.Context(), account, msg); err != nil {
 		_ = now
-		h.logAdminTargetAudit(r, user, connector.ID, domain.AuditActionAdminPaymentLinkSendFailed, err.Error())
+		h.logAdminTargetAuditForAccount(r, user, account, connector.ID, domain.AuditActionAdminPaymentLinkSendFailed, err.Error())
 		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, err.Error())
 		return
 	}
 
 	_ = now
-	h.logAdminTargetAudit(r, user, connector.ID, domain.AuditActionAdminPaymentLinkSent, "subscription_id="+strconv.FormatInt(subID, 10)+",connector_id="+strconv.FormatInt(connectorID, 10))
+	h.logAdminTargetAuditForAccount(r, user, account, connector.ID, domain.AuditActionAdminPaymentLinkSent, "subscription_id="+strconv.FormatInt(subID, 10)+",connector_id="+strconv.FormatInt(connectorID, 10))
 	h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.actions.paylink_sent"))
 }
 

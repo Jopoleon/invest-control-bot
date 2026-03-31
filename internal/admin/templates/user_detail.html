@@ -390,7 +390,7 @@
     <div class="action-grid">
       <div class="action-card">
         <h4>{{index .I18N "users.actions.message"}}</h4>
-        {{if .User.HasTelegram}}
+        {{if .User.CanDirectMessage}}
         <form method="POST" action="{{.MessageActionURL}}">
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
           <input type="hidden" name="user_id" value="{{.User.UserID}}">

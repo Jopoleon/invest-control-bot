@@ -66,6 +66,11 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
 		return
 	}
+	preferredAccount, hasDirectMessageAccount, err := h.resolvePreferredMessengerAccount(ctx, item.ID)
+	if err != nil {
+		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
+		return
+	}
 	payments, err := h.store.ListPayments(ctx, domain.PaymentListQuery{UserID: item.ID, Limit: 200})
 	if err != nil {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
@@ -118,6 +123,7 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 			TelegramID:       telegramID,
 			TelegramUsername: telegramUsername,
 			HasTelegram:      hasTelegramIdentity,
+			CanDirectMessage: hasDirectMessageAccount,
 			FullName:         item.FullName,
 			Phone:            item.Phone,
 			Email:            item.Email,
@@ -195,8 +201,11 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 		statusLabel, statusClass := subscriptionStatusBadge(lang, s.Status)
 		autoPayLabel, autoPayClass := autoPayBadge(lang, s.AutoPayEnabled, true)
 		canSendPayLink := false
-		if connector, found, err := h.store.GetConnector(ctx, s.ConnectorID); err == nil && found {
-			canSendPayLink = buildAdminBotStartURL(h.botUsername, connector.StartPayload) != ""
+		if hasDirectMessageAccount {
+			if connector, found, err := h.store.GetConnector(ctx, s.ConnectorID); err == nil && found {
+				msg, ok := h.buildPaymentLinkMessage(lang, preferredAccount, connector)
+				canSendPayLink = ok && (len(msg.Buttons) > 0 || strings.TrimSpace(msg.Text) != "")
+			}
 		}
 		data.Subscriptions = append(data.Subscriptions, subscriptionView{
 			ID:               s.ID,

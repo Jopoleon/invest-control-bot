@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 )
 
 // resolveUser prefers the internal user ID and falls back to the legacy Telegram-based lookup.
@@ -62,6 +63,44 @@ func (h *Handler) buildTelegramIdentityLookup(ctx context.Context) func(userID i
 			err:        err,
 		}
 		return telegramID, username, found, err
+	}
+}
+
+func (h *Handler) resolvePreferredMessengerAccount(ctx context.Context, userID int64) (domain.UserMessengerAccount, bool, error) {
+	if userID <= 0 {
+		return domain.UserMessengerAccount{}, false, nil
+	}
+	accounts, err := h.store.ListUserMessengerAccounts(ctx, userID)
+	if err != nil {
+		return domain.UserMessengerAccount{}, false, err
+	}
+	account, found := pickPreferredMessengerAccount(accounts)
+	return account, found, nil
+}
+
+func pickPreferredMessengerAccount(accounts []domain.UserMessengerAccount) (domain.UserMessengerAccount, bool) {
+	for _, account := range accounts {
+		if account.MessengerKind == domain.MessengerKindTelegram {
+			return account, true
+		}
+	}
+	for _, account := range accounts {
+		if account.MessengerKind == domain.MessengerKindMAX {
+			return account, true
+		}
+	}
+	if len(accounts) == 0 {
+		return domain.UserMessengerAccount{}, false
+	}
+	return accounts[0], true
+}
+
+func senderKindForAccount(account domain.UserMessengerAccount) messenger.Kind {
+	switch account.MessengerKind {
+	case domain.MessengerKindMAX:
+		return messenger.KindMAX
+	default:
+		return messenger.KindTelegram
 	}
 }
 

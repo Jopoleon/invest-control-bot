@@ -169,6 +169,7 @@ When you make meaningful product or architecture changes, update the relevant do
 - `docs/MAX_IMPLEMENTATION_PLAN.md` - MAX-specific track
 - `docs/APP_REFACTOR_PLAN.md` - current cycle plan for reducing and restructuring `internal/app`
 - `docs/REFACTORING_AND_TEST_PLAN.md` - engineering backlog for tests, deduplication and safe refactors
+- `docs/CONNECTOR_PERIOD_MODEL_PLAN.md` - target connector period model and migration path for duration/month/deadline semantics
 - `docs/PAYMENTS_FLOW_RU.md` - payment/autopay explanation
 - `docs/robokassa-recurring-checklist.md` - recurring operational/legal checklist
 

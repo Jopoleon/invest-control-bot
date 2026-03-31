@@ -120,7 +120,7 @@ func newApplication(cfg config.Config, st store.Store, opts appInitOptions) (*ap
 		robokassaService:   robokassaService,
 	}
 	appCtx.maxAdapter = max.NewAdapter(appCtx.maxBotHandler)
-	appCtx.adminHandler = admin.NewHandler(st, cfg.Security.AdminToken, cfg.Telegram.BotUsername, maxLaunchUsername, publicBase, cfg.Security.EncryptionKey, tgClient, func(ctx context.Context, subscriptionID int64) (admin.RebillResult, error) {
+	appCtx.adminHandler = admin.NewHandler(st, cfg.Security.AdminToken, cfg.Telegram.BotUsername, maxLaunchUsername, publicBase, cfg.Security.EncryptionKey, tgClient, maxSender, func(ctx context.Context, subscriptionID int64) (admin.RebillResult, error) {
 		payload, err := appCtx.triggerRebill(ctx, subscriptionID, "admin_ui")
 		if err != nil {
 			return admin.RebillResult{}, err

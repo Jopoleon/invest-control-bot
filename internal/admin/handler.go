@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 	"github.com/Jopoleon/invest-control-bot/internal/recurringlink"
 	"github.com/Jopoleon/invest-control-bot/internal/store"
 	"github.com/Jopoleon/invest-control-bot/internal/telegram"
@@ -23,6 +24,7 @@ type Handler struct {
 	publicBaseURL   string
 	encryptionKey   string
 	tg              *telegram.Client
+	maxSender       messenger.Sender
 	renderer        *renderer
 	retriggerRebill func(ctx context.Context, subscriptionID int64) (RebillResult, error)
 
@@ -35,7 +37,7 @@ type RebillResult struct {
 }
 
 // NewHandler creates admin handler and preloads HTML templates.
-func NewHandler(st store.Store, adminToken, botUsername, maxBotUsername, publicBaseURL, encryptionKey string, tg *telegram.Client, rebillTrigger func(context.Context, int64) (RebillResult, error)) *Handler {
+func NewHandler(st store.Store, adminToken, botUsername, maxBotUsername, publicBaseURL, encryptionKey string, tg *telegram.Client, maxSender messenger.Sender, rebillTrigger func(context.Context, int64) (RebillResult, error)) *Handler {
 	r, err := newRenderer()
 	if err != nil {
 		panic(err)
@@ -48,6 +50,7 @@ func NewHandler(st store.Store, adminToken, botUsername, maxBotUsername, publicB
 		publicBaseURL:   strings.TrimRight(strings.TrimSpace(publicBaseURL), "/"),
 		encryptionKey:   strings.TrimSpace(encryptionKey),
 		tg:              tg,
+		maxSender:       maxSender,
 		renderer:        r,
 		retriggerRebill: rebillTrigger,
 
@@ -77,6 +80,10 @@ func (h *Handler) logAdminAudit(r *http.Request, action, details string) {
 }
 
 func (h *Handler) logAdminTargetAudit(r *http.Request, user domain.User, connectorID int64, action, details string) {
+	h.logAdminTargetAuditForAccount(r, user, domain.UserMessengerAccount{}, connectorID, action, details)
+}
+
+func (h *Handler) logAdminTargetAuditForAccount(r *http.Request, user domain.User, account domain.UserMessengerAccount, connectorID int64, action, details string) {
 	event := domain.AuditEvent{
 		ActorType:    domain.AuditActorTypeAdmin,
 		ActorSubject: "admin_panel",
@@ -86,7 +93,10 @@ func (h *Handler) logAdminTargetAudit(r *http.Request, user domain.User, connect
 		Details:      details,
 		CreatedAt:    time.Now().UTC(),
 	}
-	if telegramID, _, found, err := h.resolveTelegramIdentity(r.Context(), user.ID); err == nil && found {
+	if strings.TrimSpace(account.MessengerUserID) != "" {
+		event.TargetMessengerKind = account.MessengerKind
+		event.TargetMessengerUserID = account.MessengerUserID
+	} else if telegramID, _, found, err := h.resolveTelegramIdentity(r.Context(), user.ID); err == nil && found {
 		event.TargetMessengerKind = domain.MessengerKindTelegram
 		event.TargetMessengerUserID = strconv.FormatInt(telegramID, 10)
 	}
