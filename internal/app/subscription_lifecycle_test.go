@@ -342,6 +342,211 @@ func TestProcessExpiredSubscriptions_MAXDoesNotWriteTelegramRevokeAudit(t *testi
 	}
 }
 
+func TestProcessExpiredSubscriptions_SkipsExpiredNotificationWhenRenewalAlreadyActive(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	tg, err := telegram.NewClient("", "")
+	if err != nil {
+		t.Fatalf("create telegram client: %v", err)
+	}
+	maxSpy := &spySender{}
+	now := time.Now().UTC()
+
+	connectorID := seedConnector(t, ctx, st, "in-renewed-short-period")
+	maxUser, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465777", "Федор Николаевич")
+	if err != nil {
+		t.Fatalf("create max user: %v", err)
+	}
+
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPaid,
+		Token:          "sub-old-period",
+		UserID:         maxUser.ID,
+		ConnectorID:    connectorID,
+		AmountRUB:      2322,
+		AutoPayEnabled: true,
+		CreatedAt:      now.Add(-5 * time.Minute),
+		UpdatedAt:      now.Add(-5 * time.Minute),
+		PaidAt:         ptrTime(now.Add(-5 * time.Minute)),
+	})
+	oldPayment, found, err := st.GetPaymentByToken(ctx, "sub-old-period")
+	if err != nil || !found {
+		t.Fatalf("old payment found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         maxUser.ID,
+		ConnectorID:    connectorID,
+		PaymentID:      oldPayment.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       now.Add(-4 * time.Minute),
+		EndsAt:         now.Add(-30 * time.Second),
+		CreatedAt:      now.Add(-4 * time.Minute),
+		UpdatedAt:      now.Add(-4 * time.Minute),
+	}); err != nil {
+		t.Fatalf("upsert old subscription: %v", err)
+	}
+
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPaid,
+		Token:          "sub-new-period",
+		UserID:         maxUser.ID,
+		ConnectorID:    connectorID,
+		AmountRUB:      2322,
+		AutoPayEnabled: true,
+		CreatedAt:      now.Add(-20 * time.Second),
+		UpdatedAt:      now.Add(-20 * time.Second),
+		PaidAt:         ptrTime(now.Add(-20 * time.Second)),
+	})
+	newPayment, found, err := st.GetPaymentByToken(ctx, "sub-new-period")
+	if err != nil || !found {
+		t.Fatalf("new payment found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         maxUser.ID,
+		ConnectorID:    connectorID,
+		PaymentID:      newPayment.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       now.Add(-20 * time.Second),
+		EndsAt:         now.Add(3 * time.Minute),
+		CreatedAt:      now.Add(-20 * time.Second),
+		UpdatedAt:      now.Add(-20 * time.Second),
+	}); err != nil {
+		t.Fatalf("upsert new subscription: %v", err)
+	}
+
+	appCtx := &application{
+		config:         config.Config{Telegram: config.TelegramConfig{BotUsername: "test_bot"}},
+		store:          st,
+		telegramClient: tg,
+		maxSender:      maxSpy,
+	}
+
+	processExpiredSubscriptions(ctx, appCtx)
+
+	if len(maxSpy.sent) != 0 {
+		t.Fatalf("expired notifications=%d want 0 when replacement active", len(maxSpy.sent))
+	}
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionExpired); got != 1 {
+		t.Fatalf("subscription_expired count=%d want 1", got)
+	}
+}
+
+func TestProcessExpiredSubscriptions_DefersShortPeriodExpiryWhilePendingRebillExists(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	tg, err := telegram.NewClient("", "")
+	if err != nil {
+		t.Fatalf("create telegram client: %v", err)
+	}
+	maxSpy := &spySender{}
+	now := time.Now().UTC()
+
+	maxUser, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465778", "Федор Николаевич")
+	if err != nil {
+		t.Fatalf("create max user: %v", err)
+	}
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-short-expiry-grace",
+		Name:          "short recurring",
+		PriceRUB:      2,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 4 * 60,
+		IsActive:      true,
+		CreatedAt:     now.Add(-10 * time.Minute),
+	}); err != nil {
+		t.Fatalf("create connector: %v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-short-expiry-grace")
+	if err != nil || !found {
+		t.Fatalf("get connector found=%v err=%v", found, err)
+	}
+
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPaid,
+		Token:          "parent-short-grace",
+		UserID:         maxUser.ID,
+		ConnectorID:    connector.ID,
+		AmountRUB:      2,
+		AutoPayEnabled: true,
+		CreatedAt:      now.Add(-5 * time.Minute),
+		UpdatedAt:      now.Add(-5 * time.Minute),
+		PaidAt:         ptrTime(now.Add(-5 * time.Minute)),
+	})
+	parentPayment, found, err := st.GetPaymentByToken(ctx, "parent-short-grace")
+	if err != nil || !found {
+		t.Fatalf("parent payment found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         maxUser.ID,
+		ConnectorID:    connector.ID,
+		PaymentID:      parentPayment.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       now.Add(-4 * time.Minute),
+		EndsAt:         now.Add(-10 * time.Second),
+		CreatedAt:      now.Add(-4 * time.Minute),
+		UpdatedAt:      now.Add(-4 * time.Minute),
+	}); err != nil {
+		t.Fatalf("upsert subscription: %v", err)
+	}
+	sub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, maxUser.ID, connector.ID)
+	if err != nil || !found {
+		t.Fatalf("get latest subscription found=%v err=%v", found, err)
+	}
+
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:          "robokassa",
+		ProviderPaymentID: "rebill_parent:" + parentPayment.Token,
+		Status:            domain.PaymentStatusPending,
+		Token:             "pending-short-grace",
+		UserID:            maxUser.ID,
+		ConnectorID:       connector.ID,
+		SubscriptionID:    sub.ID,
+		ParentPaymentID:   parentPayment.ID,
+		AmountRUB:         2,
+		AutoPayEnabled:    true,
+		CreatedAt:         now.Add(-20 * time.Second),
+		UpdatedAt:         now.Add(-20 * time.Second),
+	})
+
+	appCtx := &application{
+		config:         config.Config{Telegram: config.TelegramConfig{BotUsername: "test_bot"}},
+		store:          st,
+		telegramClient: tg,
+		maxSender:      maxSpy,
+	}
+
+	processExpiredSubscriptions(ctx, appCtx)
+
+	sub, found, err = st.GetSubscriptionByID(ctx, sub.ID)
+	if err != nil || !found {
+		t.Fatalf("get subscription by id found=%v err=%v", found, err)
+	}
+	if sub.Status != domain.SubscriptionStatusActive {
+		t.Fatalf("subscription status=%s want active during short-period grace", sub.Status)
+	}
+	if len(maxSpy.sent) != 0 {
+		t.Fatalf("expired notifications=%d want 0 during grace", len(maxSpy.sent))
+	}
+}
+
+func ptrTime(t time.Time) *time.Time {
+	return &t
+}
+
 func TestBuildRenewalNotification_WithoutPayloadLeavesPlainText(t *testing.T) {
 	t.Helper()
 

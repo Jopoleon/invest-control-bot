@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -104,11 +105,26 @@ func processRecurringRebills(ctx context.Context, appCtx *application) {
 		if !sub.AutoPayEnabled {
 			continue
 		}
-		shouldTrigger, err := appCtx.shouldTriggerScheduledRebill(ctx, sub, now)
+		decision, err := appCtx.evaluateScheduledRebill(ctx, sub, now)
 		if err != nil {
 			continue
 		}
-		if !shouldTrigger {
+		if decision.ShortDuration {
+			slog.Info("short-period rebill scheduler decision",
+				"subscription_id", sub.ID,
+				"user_id", sub.UserID,
+				"connector_id", sub.ConnectorID,
+				"remaining", decision.Remaining,
+				"target_attempt", decision.TargetAttempt,
+				"failed_attempts", decision.FailedAttempts,
+				"reason", decision.Reason,
+				"trigger", decision.Trigger,
+			)
+		}
+		if decision.PendingPayment != nil {
+			appCtx.recurringService().ReportStalePendingRebill(ctx, sub, decision, now)
+		}
+		if !decision.Trigger {
 			continue
 		}
 		if _, err := appCtx.triggerRebill(ctx, sub.ID, "scheduler"); err != nil {

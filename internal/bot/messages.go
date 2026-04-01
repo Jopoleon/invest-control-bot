@@ -91,8 +91,11 @@ func botStartCardText(connector domain.Connector, offerURL, privacyURL string) s
 	)
 }
 
-func botPaymentLinkCreated(provider string) string {
-	return fmt.Sprintf("Сформирована ссылка оплаты через %s в тестовом режиме.", provider)
+func botPaymentLinkCreated(provider string, testMode bool) string {
+	if testMode {
+		return fmt.Sprintf("Сформирована ссылка оплаты через %s в тестовом режиме.", provider)
+	}
+	return fmt.Sprintf("Сформирована ссылка оплаты через %s.", provider)
 }
 
 func botSubscriptionOverviewLines(sub domain.Subscription, connector domain.Connector, channel string) []string {

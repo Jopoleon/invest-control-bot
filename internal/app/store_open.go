@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/Jopoleon/invest-control-bot/internal/config"
@@ -30,10 +31,15 @@ func OpenStore(cfg config.Config) (store.Store, func(), error) {
 			return nil, func() {}, err
 		}
 		if cfg.Postgres.WithMigration {
-			if _, err := migrations.ApplyUp(db); err != nil {
+			slog.Info("applying database migrations", "database", cfg.Postgres.Database)
+			applied, err := migrations.ApplyUp(db)
+			if err != nil {
 				_ = db.Close()
 				return nil, func() {}, err
 			}
+			slog.Info("database migrations applied", "database", cfg.Postgres.Database, "applied", applied)
+		} else {
+			slog.Info("database migrations skipped", "database", cfg.Postgres.Database, "reason", "DB_WITH_MIGRATION=false")
 		}
 		return postgresstore.New(db), func() { _ = db.Close() }, nil
 	default:

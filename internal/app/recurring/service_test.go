@@ -34,15 +34,37 @@ func TestAttemptOrdinal(t *testing.T) {
 
 func TestAttemptOrdinalForPeriod_UsesShortTestWindows(t *testing.T) {
 	now := time.Now().UTC()
+	connector := domain.Connector{
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 120,
+	}
 
-	if got := attemptOrdinalForPeriod(now, now.Add(90*time.Second), 120); got != 0 {
-		t.Fatalf("attemptOrdinalForPeriod(90s remaining)=%d want=0", got)
+	if got := attemptOrdinalForConnector(now, now.Add(90*time.Second), connector); got != 0 {
+		t.Fatalf("attemptOrdinalForConnector(90s remaining)=%d want=0", got)
 	}
-	if got := attemptOrdinalForPeriod(now, now.Add(25*time.Second), 120); got != 1 {
-		t.Fatalf("attemptOrdinalForPeriod(25s remaining)=%d want=1", got)
+	if got := attemptOrdinalForConnector(now, now.Add(40*time.Second), connector); got != 1 {
+		t.Fatalf("attemptOrdinalForConnector(40s remaining)=%d want=1", got)
 	}
-	if got := attemptOrdinalForPeriod(now, now.Add(8*time.Second), 120); got != 2 {
-		t.Fatalf("attemptOrdinalForPeriod(8s remaining)=%d want=2", got)
+	if got := attemptOrdinalForConnector(now, now.Add(12*time.Second), connector); got != 2 {
+		t.Fatalf("attemptOrdinalForConnector(12s remaining)=%d want=2", got)
+	}
+}
+
+func TestAttemptOrdinalForConnector_UsesFourMinuteRecurringPolicy(t *testing.T) {
+	now := time.Now().UTC()
+	connector := domain.Connector{
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 4 * 60,
+	}
+
+	if got := attemptOrdinalForConnector(now, now.Add(90*time.Second), connector); got != 0 {
+		t.Fatalf("attemptOrdinalForConnector(90s remaining)=%d want=0", got)
+	}
+	if got := attemptOrdinalForConnector(now, now.Add(70*time.Second), connector); got != 1 {
+		t.Fatalf("attemptOrdinalForConnector(70s remaining)=%d want=1", got)
+	}
+	if got := attemptOrdinalForConnector(now, now.Add(20*time.Second), connector); got != 2 {
+		t.Fatalf("attemptOrdinalForConnector(20s remaining)=%d want=2", got)
 	}
 }
 
@@ -205,6 +227,94 @@ func TestShouldTriggerScheduledRebill_DisabledForFixedDeadline(t *testing.T) {
 	}
 	if ok {
 		t.Fatal("ShouldTriggerScheduledRebill=true want false for fixed deadline")
+	}
+}
+
+func TestEvaluateScheduledRebill_ReturnsPendingDecisionForShortPeriod(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Now().UTC()
+
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-short-pending",
+		Name:          "short-window",
+		PriceRUB:      500,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 180,
+		IsActive:      true,
+		CreatedAt:     now,
+	}); err != nil {
+		t.Fatalf("CreateConnector err=%v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-short-pending")
+	if err != nil || !found {
+		t.Fatalf("GetConnectorByStartPayload found=%v err=%v", found, err)
+	}
+
+	if err := st.CreatePayment(ctx, domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPaid,
+		Token:          "short-parent-pending",
+		UserID:         42,
+		ConnectorID:    connector.ID,
+		AmountRUB:      500,
+		AutoPayEnabled: true,
+		CreatedAt:      now.Add(-time.Minute),
+		UpdatedAt:      now.Add(-time.Minute),
+	}); err != nil {
+		t.Fatalf("CreatePayment err=%v", err)
+	}
+	parentPayment, found, err := st.GetPaymentByToken(ctx, "short-parent-pending")
+	if err != nil || !found {
+		t.Fatalf("GetPaymentByToken found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         parentPayment.UserID,
+		ConnectorID:    connector.ID,
+		PaymentID:      parentPayment.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       now.Add(-time.Minute),
+		EndsAt:         now.Add(20 * time.Second),
+		CreatedAt:      now.Add(-time.Minute),
+		UpdatedAt:      now.Add(-time.Minute),
+	}); err != nil {
+		t.Fatalf("UpsertSubscriptionByPayment err=%v", err)
+	}
+	sub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, parentPayment.UserID, connector.ID)
+	if err != nil || !found {
+		t.Fatalf("GetLatestSubscriptionByUserConnector found=%v err=%v", found, err)
+	}
+	if err := st.CreatePayment(ctx, domain.Payment{
+		Provider:          "robokassa",
+		ProviderPaymentID: "rebill_parent:" + parentPayment.Token,
+		Status:            domain.PaymentStatusPending,
+		Token:             "rebill-pending-short",
+		UserID:            parentPayment.UserID,
+		ConnectorID:       connector.ID,
+		SubscriptionID:    sub.ID,
+		ParentPaymentID:   parentPayment.ID,
+		AmountRUB:         500,
+		AutoPayEnabled:    true,
+		CreatedAt:         now.Add(-15 * time.Second),
+		UpdatedAt:         now.Add(-15 * time.Second),
+	}); err != nil {
+		t.Fatalf("CreatePayment pending err=%v", err)
+	}
+
+	service := &Service{Store: st}
+	decision, err := service.EvaluateScheduledRebill(ctx, sub, now)
+	if err != nil {
+		t.Fatalf("EvaluateScheduledRebill err=%v", err)
+	}
+	if decision.Reason != "pending_rebill_exists" {
+		t.Fatalf("reason=%q want pending_rebill_exists", decision.Reason)
+	}
+	if decision.PendingPayment == nil || decision.PendingPayment.Token != "rebill-pending-short" {
+		t.Fatalf("pending payment=%+v", decision.PendingPayment)
+	}
+	if decision.Trigger {
+		t.Fatal("decision.Trigger=true want false")
 	}
 }
 

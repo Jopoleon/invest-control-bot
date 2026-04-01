@@ -18,6 +18,7 @@ type Request struct {
 type Service interface {
 	CreateCheckoutURL(ctx context.Context, req Request) (string, error)
 	ProviderName() string
+	IsTestMode() bool
 }
 
 // RebillRequest contains data for provider-side recurring charge creation.

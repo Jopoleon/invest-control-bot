@@ -26,6 +26,9 @@ func NewMockService(baseURL string) *MockService {
 // ProviderName returns provider identifier used in user messages/logs.
 func (m *MockService) ProviderName() string { return "mock" }
 
+// IsTestMode reports whether provider runs in non-production checkout mode.
+func (m *MockService) IsTestMode() bool { return true }
+
 // CreateCheckoutURL builds test checkout URL with request payload in query params.
 func (m *MockService) CreateCheckoutURL(_ context.Context, req Request) (string, error) {
 	token := strings.TrimSpace(req.InvoiceID)

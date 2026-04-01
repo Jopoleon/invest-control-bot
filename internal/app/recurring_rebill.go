@@ -23,6 +23,10 @@ func (a *application) shouldTriggerScheduledRebill(ctx context.Context, sub doma
 	return a.recurringService().ShouldTriggerScheduledRebill(ctx, sub, now)
 }
 
+func (a *application) evaluateScheduledRebill(ctx context.Context, sub domain.Subscription, now time.Time) (apprecurring.ScheduledRebillDecision, error) {
+	return a.recurringService().EvaluateScheduledRebill(ctx, sub, now)
+}
+
 func (a *application) recurringService() *apprecurring.Service {
 	return &apprecurring.Service{
 		Store:                                 a.store,

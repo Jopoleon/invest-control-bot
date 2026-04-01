@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Jopoleon/invest-control-bot/internal/app/periodpolicy"
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
 	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 	"github.com/Jopoleon/invest-control-bot/internal/payment"
@@ -20,6 +21,17 @@ type RebillResult struct {
 	OK        bool
 	InvoiceID string
 	Existing  bool
+}
+
+type ScheduledRebillDecision struct {
+	Trigger        bool
+	Reason         string
+	ShortDuration  bool
+	Remaining      time.Duration
+	TargetAttempt  int
+	FailedAttempts int
+	PendingPayment *domain.Payment
+	Connector      domain.Connector
 }
 
 // Service owns recurring rebill orchestration and eligibility checks.
@@ -67,17 +79,6 @@ type CancelSubscriptionView struct {
 	EndsAtLabel    string
 	ChannelURL     string
 }
-
-const (
-	// Short-period connectors exist only for live recurring smoke tests. They
-	// cannot reuse monthly 72h/48h/24h windows because that would trigger
-	// rebill almost immediately after the first payment.
-	shortPeriodFirstAttemptLead   = 30 * time.Second
-	shortPeriodSecondAttemptLead  = 10 * time.Second
-	shortPeriodFirstAttemptFloor  = 15 * time.Second
-	shortPeriodSecondAttemptFloor = 5 * time.Second
-	shortRecurringPeriodThreshold = 10 * time.Minute
-)
 
 func (s *Service) TriggerRebill(ctx context.Context, subscriptionID int64, source string) (RebillResult, error) {
 	if s.RobokassaService == nil {
@@ -189,20 +190,29 @@ func (s *Service) TriggerRebill(ctx context.Context, subscriptionID int64, sourc
 }
 
 func (s *Service) ShouldTriggerScheduledRebill(ctx context.Context, sub domain.Subscription, now time.Time) (bool, error) {
-	connector, found, err := s.Store.GetConnector(ctx, sub.ConnectorID)
+	decision, err := s.EvaluateScheduledRebill(ctx, sub, now)
 	if err != nil {
 		return false, err
 	}
+	return decision.Trigger, nil
+}
+
+func (s *Service) EvaluateScheduledRebill(ctx context.Context, sub domain.Subscription, now time.Time) (ScheduledRebillDecision, error) {
+	connector, found, err := s.Store.GetConnector(ctx, sub.ConnectorID)
+	if err != nil {
+		return ScheduledRebillDecision{}, err
+	}
 	if !found {
-		return false, errors.New("connector not found")
+		return ScheduledRebillDecision{}, errors.New("connector not found")
+	}
+	decision := ScheduledRebillDecision{
+		Connector:     connector,
+		ShortDuration: periodpolicy.Resolve(connector).ShortDuration,
+		Remaining:     sub.EndsAt.Sub(now),
 	}
 	if !connector.SupportsRecurring() {
-		return false, nil
-	}
-
-	targetAttempt := attemptOrdinalForConnector(now, sub.EndsAt, connector)
-	if targetAttempt == 0 {
-		return false, nil
+		decision.Reason = "connector_not_recurring"
+		return decision, nil
 	}
 
 	payments, err := s.Store.ListPayments(ctx, domain.PaymentListQuery{
@@ -210,7 +220,7 @@ func (s *Service) ShouldTriggerScheduledRebill(ctx context.Context, sub domain.S
 		Limit:  500,
 	})
 	if err != nil {
-		return false, err
+		return ScheduledRebillDecision{}, err
 	}
 
 	attempts := 0
@@ -220,7 +230,14 @@ func (s *Service) ShouldTriggerScheduledRebill(ctx context.Context, sub domain.S
 		}
 		switch paymentRow.Status {
 		case domain.PaymentStatusPending, domain.PaymentStatusPaid:
-			return false, nil
+			decision.PendingPayment = &paymentRow
+			if paymentRow.Status == domain.PaymentStatusPending {
+				decision.Reason = "pending_rebill_exists"
+			} else {
+				decision.Reason = "rebill_already_paid"
+			}
+			decision.FailedAttempts = attempts
+			return decision, nil
 		case domain.PaymentStatusFailed:
 			attempts++
 		default:
@@ -228,7 +245,83 @@ func (s *Service) ShouldTriggerScheduledRebill(ctx context.Context, sub domain.S
 		}
 	}
 
-	return attempts < targetAttempt, nil
+	decision.FailedAttempts = attempts
+	decision.TargetAttempt = attemptOrdinalForConnector(now, sub.EndsAt, connector)
+	if decision.TargetAttempt == 0 {
+		decision.Reason = "outside_rebill_window"
+		return decision, nil
+	}
+	if attempts >= decision.TargetAttempt {
+		decision.Reason = "attempt_budget_exhausted"
+		return decision, nil
+	}
+	decision.Trigger = true
+	decision.Reason = "rebill_due"
+	return decision, nil
+}
+
+func (s *Service) ReportStalePendingRebill(ctx context.Context, sub domain.Subscription, decision ScheduledRebillDecision, now time.Time) {
+	if decision.PendingPayment == nil || !decision.ShortDuration {
+		return
+	}
+	pending := *decision.PendingPayment
+	if pending.Status != domain.PaymentStatusPending {
+		return
+	}
+	timing := periodpolicy.Resolve(decision.Connector)
+	if !timing.ShouldDeferExpiration(now, sub.EndsAt) {
+		return
+	}
+	if now.Before(sub.EndsAt) {
+		return
+	}
+	details := "subscription_id=" + strconv.FormatInt(sub.ID, 10) +
+		";payment_id=" + strconv.FormatInt(pending.ID, 10) +
+		";invoice_id=" + pending.Token +
+		";pending_since=" + pending.CreatedAt.UTC().Format(time.RFC3339) +
+		";ends_at=" + sub.EndsAt.UTC().Format(time.RFC3339)
+	alreadyLogged, err := s.hasStalePendingAudit(ctx, sub, pending.ID)
+	if err != nil {
+		slog.Error("lookup stale rebill audit failed", "error", err, "subscription_id", sub.ID, "payment_id", pending.ID)
+	}
+	if alreadyLogged {
+		return
+	}
+	slog.Warn("stale pending rebill without callback",
+		"subscription_id", sub.ID,
+		"payment_id", pending.ID,
+		"invoice_id", pending.Token,
+		"connector_id", sub.ConnectorID,
+		"user_id", sub.UserID,
+		"pending_age", now.Sub(pending.CreatedAt),
+		"ended_ago", now.Sub(sub.EndsAt),
+	)
+	_ = s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(
+		ctx,
+		sub.UserID,
+		"",
+		sub.ConnectorID,
+		domain.AuditActionRebillPendingStale,
+		details,
+		now,
+	))
+}
+
+func (s *Service) hasStalePendingAudit(ctx context.Context, sub domain.Subscription, paymentID int64) (bool, error) {
+	events, _, err := s.Store.ListAuditEvents(ctx, domain.AuditEventListQuery{
+		TargetUserID: sub.UserID,
+		ConnectorID:  sub.ConnectorID,
+		Action:       domain.AuditActionRebillPendingStale,
+		Search:       "payment_id=" + strconv.FormatInt(paymentID, 10),
+		Page:         1,
+		PageSize:     1,
+		SortBy:       "created_at",
+		SortDesc:     true,
+	})
+	if err != nil {
+		return false, err
+	}
+	return len(events) > 0, nil
 }
 
 // BuildCancelPageData materializes the current cancel-page state for the
@@ -334,21 +427,18 @@ func (s *Service) ProcessCancelRequest(ctx context.Context, token string, messen
 }
 
 func AttemptOrdinal(now, endsAt time.Time) int {
-	return attemptOrdinalForPeriod(now, endsAt, 0)
+	return attemptOrdinalForPeriod(now, endsAt)
 }
 
 func attemptOrdinalForConnector(now, endsAt time.Time, connector domain.Connector) int {
-	if duration, ok := connector.DurationPeriod(); ok && duration > 0 && duration <= shortRecurringPeriodThreshold {
-		return shortPeriodAttemptOrdinal(endsAt.Sub(now), duration)
+	if timing := periodpolicy.Resolve(connector); timing.ShortDuration {
+		return timing.RebillAttemptOrdinal(now, endsAt)
 	}
-	return attemptOrdinalForPeriod(now, endsAt, 0)
+	return attemptOrdinalForPeriod(now, endsAt)
 }
 
-func attemptOrdinalForPeriod(now, endsAt time.Time, testPeriodSeconds int) int {
+func attemptOrdinalForPeriod(now, endsAt time.Time) int {
 	remaining := endsAt.Sub(now)
-	if testPeriodSeconds > 0 {
-		return shortPeriodAttemptOrdinal(remaining, time.Duration(testPeriodSeconds)*time.Second)
-	}
 	switch {
 	case remaining <= 0:
 		return 0
@@ -361,41 +451,6 @@ func attemptOrdinalForPeriod(now, endsAt time.Time, testPeriodSeconds int) int {
 	default:
 		return 0
 	}
-}
-
-func shortPeriodAttemptOrdinal(remaining, period time.Duration) int {
-	if remaining <= 0 || period <= 0 {
-		return 0
-	}
-
-	// Short smoke-test periods use explicit second-based windows. The scheduler
-	// runs frequently enough to hit these windows without creating a rebill
-	// almost immediately after the first payment.
-	firstLead := minDuration(shortPeriodFirstAttemptLead, maxDuration(shortPeriodFirstAttemptFloor, period/2))
-	secondLead := minDuration(shortPeriodSecondAttemptLead, maxDuration(shortPeriodSecondAttemptFloor, period/6))
-
-	switch {
-	case remaining <= secondLead:
-		return 2
-	case remaining <= firstLead:
-		return 1
-	default:
-		return 0
-	}
-}
-
-func minDuration(a, b time.Duration) time.Duration {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func maxDuration(a, b time.Duration) time.Duration {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 func (s *Service) subscriptionMatchesMessengerUserID(ctx context.Context, sub domain.Subscription, messengerUserID int64) bool {

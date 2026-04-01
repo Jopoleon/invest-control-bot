@@ -97,7 +97,7 @@ func (h *Handler) handlePay(ctx context.Context, cb messenger.IncomingAction) {
 	h.logAuditEvent(ctx, cb.User, connectorID, domain.AuditActionPaymentCreated, "token="+token)
 
 	out := messenger.OutgoingMessage{
-		Text: botPaymentLinkCreated(h.payment.ProviderName()),
+		Text: botPaymentLinkCreated(h.payment.ProviderName(), h.payment.IsTestMode()),
 		Buttons: [][]messenger.ActionButton{{
 			buttonURL(botBtnGoToPayment, checkoutURL),
 		}},

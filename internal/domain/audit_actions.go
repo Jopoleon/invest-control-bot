@@ -24,6 +24,7 @@ const (
 	AuditActionPaymentFailed                 = "payment_failed"
 	AuditActionRebillRequestFailed           = "rebill_request_failed"
 	AuditActionRebillRequested               = "rebill_requested"
+	AuditActionRebillPendingStale            = "rebill_pending_stale"
 	AuditActionSubscriptionActivated         = "subscription_activated"
 	AuditActionPaymentSuccessNotified        = "payment_success_notified"
 	AuditActionSubscriptionReminderSent      = "subscription_reminder_sent"

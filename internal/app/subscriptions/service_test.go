@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
 	"github.com/Jopoleon/invest-control-bot/internal/messenger"
@@ -45,10 +44,9 @@ func TestBuildRenewalNotification_TelegramUsesButton(t *testing.T) {
 }
 
 func TestShouldSendReminder_SkipsShortTestPeriods(t *testing.T) {
-	now := time.Now().UTC()
 	connector := domain.Connector{PeriodMode: domain.ConnectorPeriodModeDuration, PeriodSeconds: 120}
 
-	if shouldSendReminder(now, now.Add(20*time.Second), connector) {
+	if shouldSendReminder(connector) {
 		t.Fatalf("shouldSendReminder(short period)=true want false")
 	}
 }

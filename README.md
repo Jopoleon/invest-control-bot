@@ -64,8 +64,8 @@ go run ./cmd/server
 Он:
 - локально собирает `./cmd/server` под `linux/amd64`
 - копирует бинарник на сервер по `scp`
-- раскладывает релиз в `releases/<timestamp>-<commit>`
-- переключает симлинк `current` на новый релиз
+- по умолчанию просто перезаписывает бинарник в `current/`
+- versioned releases включает только по явному флагу
 
 По умолчанию скрипт использует SSH host `investcontrol` и директорию
 `/home/investcontrol/apps/invest-control-bot` на сервере.
@@ -73,6 +73,16 @@ go run ./cmd/server
 Минимальный запуск:
 ```bash
 bash scripts/deploy_vps.sh
+```
+
+По умолчанию layout теперь простой:
+- бинарник кладется в `/home/investcontrol/apps/invest-control-bot/current/invest-control-bot`
+- рядом пишется `REVISION`
+- новые versioned release директории не создаются
+
+Если все-таки нужен старый release-based deploy:
+```bash
+DEPLOY_LAYOUT=releases bash scripts/deploy_vps.sh
 ```
 
 По умолчанию скрипт после выкладки перезапускает `systemd`-сервис
@@ -91,6 +101,17 @@ REMOTE_SERVICE_NAME=invest-control-bot bash scripts/deploy_vps.sh
 Если нужен deploy без рестарта процесса:
 ```bash
 SKIP_RESTART=1 bash scripts/deploy_vps.sh
+```
+
+Если нужно сразу вывести статус и journald-логи сервиса:
+```bash
+SHOW_SERVICE_STATUS=1 SHOW_SERVICE_LOGS=1 bash scripts/deploy_vps.sh
+```
+
+По умолчанию отдельный file log не используется.
+Если сервис запущен через `systemd`, смотреть логи нужно через:
+```bash
+sudo journalctl -u invest-control-bot -n 100 --no-pager
 ```
 
 ### Systemd service на VPS

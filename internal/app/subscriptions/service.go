@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Jopoleon/invest-control-bot/internal/app/periodpolicy"
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
 	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 	"github.com/Jopoleon/invest-control-bot/internal/store"
@@ -55,7 +56,7 @@ func (s *Service) ProcessSubscriptionReminders(ctx context.Context) {
 		if !ok {
 			continue
 		}
-		if !shouldSendReminder(now, sub.EndsAt, connector) {
+		if !shouldSendReminder(connector) {
 			continue
 		}
 
@@ -120,10 +121,24 @@ func (s *Service) ProcessExpiredSubscriptions(ctx context.Context) {
 		if err != nil {
 			slog.Error("load connector for expiration failed", "error", err, "subscription_id", sub.ID, "connector_id", sub.ConnectorID)
 		}
+		if connectorFound && s.shouldDeferExpirationForPendingRebill(ctx, sub, connector, now) {
+			continue
+		}
 
 		// Business status transition to expired.
 		if err := s.Store.UpdateSubscriptionStatus(ctx, sub.ID, domain.SubscriptionStatusExpired, now); err != nil {
 			slog.Error("update subscription status failed", "error", err, "subscription_id", sub.ID)
+			continue
+		}
+		replacementActive := s.hasActiveReplacementSubscription(ctx, sub, now)
+		expiredAuditDetails := "subscription_id=" + strconv.FormatInt(sub.ID, 10)
+		if replacementActive {
+			// Renewals create a new subscription row tied to the new payment. Once
+			// the old period ends, the old row must transition to expired without
+			// sending an "access lost" notification or revoking chat access from
+			// the already-renewed user.
+			expiredAuditDetails += ";replacement_active=true"
+			_ = s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(ctx, sub.UserID, "", sub.ConnectorID, domain.AuditActionSubscriptionExpired, expiredAuditDetails, now))
 			continue
 		}
 
@@ -157,7 +172,7 @@ func (s *Service) ProcessExpiredSubscriptions(ctx context.Context) {
 		if err := s.SendUserNotification(ctx, sub.UserID, preferredMessengerUserID, msg); err != nil {
 			slog.Error("send subscription expired message failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "preferred_messenger_user_id", preferredMessengerUserID)
 		}
-		_ = s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionExpired, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
+		_ = s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionExpired, expiredAuditDetails, now))
 	}
 }
 
@@ -207,26 +222,35 @@ func normalizeTelegramChatID(chatIDRaw string) (int64, bool) {
 	return -value, true
 }
 
-func shouldSendReminder(_ time.Time, _ time.Time, connector domain.Connector) bool {
-	_, ok := shortTestPeriodDuration(connector)
-	if !ok {
-		return true
-	}
-	return false
+func shouldSendReminder(connector domain.Connector) bool {
+	return !periodpolicy.Resolve(connector).SuppressPreExpiryNotifications()
 }
 
 func shouldSendExpiryNotice(connector domain.Connector) bool {
-	_, ok := shortTestPeriodDuration(connector)
-	return !ok
+	return !periodpolicy.Resolve(connector).SuppressPreExpiryNotifications()
 }
 
-func shortTestPeriodDuration(connector domain.Connector) (time.Duration, bool) {
-	duration, ok := connector.DurationPeriod()
-	if !ok || duration <= 0 {
-		return 0, false
+func (s *Service) shouldDeferExpirationForPendingRebill(ctx context.Context, sub domain.Subscription, connector domain.Connector, now time.Time) bool {
+	timing := periodpolicy.Resolve(connector)
+	if !timing.ShouldDeferExpiration(now, sub.EndsAt) {
+		return false
 	}
-	if duration > 10*time.Minute {
-		return 0, false
+	pending, found, err := s.Store.GetPendingRebillPaymentBySubscription(ctx, sub.ID)
+	if err != nil {
+		slog.Error("load pending rebill before expiration failed", "error", err, "subscription_id", sub.ID)
+		return false
 	}
-	return duration, true
+	return found && pending.Status == domain.PaymentStatusPending
+}
+
+func (s *Service) hasActiveReplacementSubscription(ctx context.Context, sub domain.Subscription, now time.Time) bool {
+	latestSub, found, err := s.Store.GetLatestSubscriptionByUserConnector(ctx, sub.UserID, sub.ConnectorID)
+	if err != nil {
+		slog.Error("load latest subscription during expiration failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "connector_id", sub.ConnectorID)
+		return false
+	}
+	if !found || latestSub.ID == sub.ID {
+		return false
+	}
+	return latestSub.Status == domain.SubscriptionStatusActive && latestSub.EndsAt.After(now)
 }

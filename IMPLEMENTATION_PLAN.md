@@ -73,12 +73,17 @@
 
 ### Обновление 2026-04-01
 - Для short-period live recurring smoke tests внедрена отдельная scheduler semantics:
-  - recurring rebill для коннекторов с `test_period_seconds > 0` больше не использует боевые окна `72h/48h/24h`;
-  - reminder и pre-expiry notice для таких тестовых коннекторов отключены, чтобы не шуметь и не искажать smoke-тест;
-  - scheduler cadence уменьшен до `10s`, чтобы тестовые периоды `60s/120s` реально могли попадать в rebill windows.
+  - recurring/lifecycle timing policy теперь вынесен в отдельный app-layer пакет `internal/app/periodpolicy`, а не размазан по legacy helper-веткам;
+  - короткие duration-коннекторы (`<= 10m`) больше не используют боевые окна `72h/48h/24h`, а считают rebill lead times из реальной длины периода;
+  - reminder и pre-expiry notice для таких коротких периодов отключены, чтобы не шуметь и не искажать smoke-тест;
+  - при `pending` rebill для короткой подписки expiration path теперь имеет явный short grace window и не шлет ложный `expired`, если callback опаздывает на несколько секунд;
+  - если новый period уже активирован, истечение старой subscription row больше не приводит к revoke/expired notify по уже продленному доступу;
+  - scheduler cadence уменьшен до `10s`, чтобы тестовые периоды `60s/120s/180s/240s` реально могли попадать в rebill windows.
 - На уровне тестов добавлены прямые regression checks для:
   - short-period rebill eligibility;
   - отсутствия pre-expiry reminders/notices для short-period subscriptions;
+  - defer-expiry при `pending` rebill на коротком периоде;
+  - отсутствия ложного `subscription expired` после уже активированного следующего периода;
   - сохранения зеленого `GOCACHE=/tmp/go-build go test ./...`.
 - Admin operations перестали быть Telegram-only:
   - direct user message теперь отправляется в preferred linked messenger account;

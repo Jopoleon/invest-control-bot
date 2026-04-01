@@ -1,7 +1,7 @@
 # Прод: трек текущих багов и план исправления
 
 Дата: 2026-04-01
-Статус: active
+Статус: active, partially resolved
 
 ## Контекст
 
@@ -13,6 +13,11 @@
 - recurring/autopay сценарий.
 
 Ниже зафиксированы выводы по логам и по текущему коду.
+
+Обновление после cleanup:
+- short-period recurring больше не использует day-based rebill windows;
+- short-period expiration теперь умеет откладываться на короткий grace window при `pending` rebill;
+- истечение старого subscription row после уже успешного продления больше не шлет ложный expired-notify и не должно пытаться revoke-нуть уже продленного пользователя.
 
 ## Короткое резюме
 
@@ -98,7 +103,22 @@ Recurring scheduler использует day-based окна, которые по
 
 Поэтому short-period smoke на проде сейчас не тестирует «месячный recurring в миниатюре», а ломает production windows и попадает в неподходящую зону поведения.
 
-### Что исправлять
+### Что исправлено
+
+Сейчас в коде уже сделано:
+1. Явный period-derived timing policy в:
+- [policy.go](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/internal/app/periodpolicy/policy.go)
+2. Rebill windows для коротких duration-периодов считаются от длины периода, а не от `72h/48h/24h`.
+3. При `pending` rebill short-period подписка не уходит мгновенно в `expired`, если callback слегка задержался.
+4. Если по тому же `user_id + connector_id` уже существует более новый active period, старая строка подписки спокойно истекает без ложного revoke/expired-notify.
+
+### Что еще проверить live
+
+1. Реальный provider latency на `3–4 min` периодах.
+2. Что одного `pending` rebill действительно достаточно и второй attempt не стартует раньше времени.
+3. Что callback стабильно приходит до конца short grace window.
+
+### Что исправлять дальше
 
 Нужен явный `short-period strategy` для коннекторов с `TestPeriodSeconds > 0`.
 

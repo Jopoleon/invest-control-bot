@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -57,6 +58,9 @@ func NewRobokassaService(cfg RobokassaConfig) *RobokassaService {
 
 // ProviderName returns provider identifier used in persistence and logs.
 func (s *RobokassaService) ProviderName() string { return "robokassa" }
+
+// IsTestMode reports whether Robokassa checkout/rebill requests include IsTest.
+func (s *RobokassaService) IsTestMode() bool { return s.isTest }
 
 // CreateCheckoutURL forms Robokassa payment link with MD5 signature.
 // req.InvoiceID is our merchant-side Robokassa `InvId` and must match the
@@ -141,6 +145,14 @@ func (s *RobokassaService) CreateRebill(ctx context.Context, req RebillRequest) 
 		form.Set("IsTest", "1")
 	}
 
+	slog.Info("robokassa rebill request",
+		"invoice_id", invoiceID,
+		"previous_invoice_id", previousInvoiceID,
+		"amount_rub", req.AmountRUB,
+		"is_test", s.isTest,
+		"url", s.rebillURL,
+	)
+
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, s.rebillURL, strings.NewReader(form.Encode()))
 	if err != nil {
 		return fmt.Errorf("build rebill request: %w", err)
@@ -155,6 +167,12 @@ func (s *RobokassaService) CreateRebill(ctx context.Context, req RebillRequest) 
 
 	bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 	body := strings.TrimSpace(string(bodyBytes))
+	slog.Info("robokassa rebill response",
+		"invoice_id", invoiceID,
+		"previous_invoice_id", previousInvoiceID,
+		"status_code", resp.StatusCode,
+		"body", body,
+	)
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("rebill status %d: %s", resp.StatusCode, body)
 	}
