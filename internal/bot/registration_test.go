@@ -153,15 +153,16 @@ func TestHandleCallback_LeavesConsentVersionsEmptyForConnectorCustomURLs(t *test
 	h := NewHandler(st, tg, payment.NewMockService("http://localhost:8080"), false, "http://localhost:8080", "test-encryption-key-123456789012345")
 
 	if err := st.CreateConnector(ctx, domain.Connector{
-		StartPayload: "in-consent-custom",
-		Name:         "custom-consent-connector",
-		ChatID:       "1003626584986",
-		PriceRUB:     4444,
-		PeriodDays:   30,
-		OfferURL:     "https://example.com/custom-offer",
-		PrivacyURL:   "https://example.com/custom-privacy",
-		IsActive:     true,
-		CreatedAt:    time.Now().UTC(),
+		StartPayload:  "in-consent-custom",
+		Name:          "custom-consent-connector",
+		ChatID:        "1003626584986",
+		PriceRUB:      4444,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 30 * 24 * 60 * 60,
+		OfferURL:      "https://example.com/custom-offer",
+		PrivacyURL:    "https://example.com/custom-privacy",
+		IsActive:      true,
+		CreatedAt:     time.Now().UTC(),
 	}); err != nil {
 		t.Fatalf("create connector: %v", err)
 	}
@@ -403,13 +404,14 @@ func seedBotConnector(t *testing.T, ctx context.Context, st *memory.Store, paylo
 	t.Helper()
 
 	if err := st.CreateConnector(ctx, domain.Connector{
-		StartPayload: payload,
-		Name:         "test-connector",
-		ChatID:       "1003626584986",
-		PriceRUB:     4444,
-		PeriodDays:   30,
-		IsActive:     true,
-		CreatedAt:    time.Now().UTC(),
+		StartPayload:  payload,
+		Name:          "test-connector",
+		ChatID:        "1003626584986",
+		PriceRUB:      4444,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 30 * 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     time.Now().UTC(),
 	}); err != nil {
 		t.Fatalf("create connector: %v", err)
 	}

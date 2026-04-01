@@ -66,6 +66,22 @@ func (h *Handler) buildTelegramIdentityLookup(ctx context.Context) func(userID i
 	}
 }
 
+func (h *Handler) buildMessengerAccountPresentationLookup(ctx context.Context, lang string) func(userID int64) (messengerAccountPresentation, error) {
+	cache := make(map[int64]messengerAccountPresentation)
+	return func(userID int64) (messengerAccountPresentation, error) {
+		if cached, ok := cache[userID]; ok {
+			return cached, nil
+		}
+		accounts, err := h.store.ListUserMessengerAccounts(ctx, userID)
+		if err != nil {
+			return messengerAccountPresentation{}, err
+		}
+		presentation := buildMessengerAccountPresentation(lang, accounts)
+		cache[userID] = presentation
+		return presentation, nil
+	}
+}
+
 func (h *Handler) resolvePreferredMessengerAccount(ctx context.Context, userID int64) (domain.UserMessengerAccount, bool, error) {
 	if userID <= 0 {
 		return domain.UserMessengerAccount{}, false, nil

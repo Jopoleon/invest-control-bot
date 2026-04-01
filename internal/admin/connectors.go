@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -18,8 +19,10 @@ import (
 var (
 	errCreateConnectorRequired   = errors.New("create_connector_required")
 	errCreateConnectorPrice      = errors.New("create_connector_price")
-	errCreateConnectorPeriod     = errors.New("create_connector_period")
-	errCreateConnectorTestPeriod = errors.New("create_connector_test_period")
+	errCreateConnectorPeriodMode = errors.New("create_connector_period_mode")
+	errCreateConnectorDuration   = errors.New("create_connector_duration")
+	errCreateConnectorMonths     = errors.New("create_connector_months")
+	errCreateConnectorDeadline   = errors.New("create_connector_deadline")
 	errCreateConnectorChatOrURL  = errors.New("create_connector_chat_or_url_required")
 )
 
@@ -141,17 +144,16 @@ func (h *Handler) createConnector(ctx context.Context, r *http.Request) error {
 	description := strings.TrimSpace(r.FormValue("description"))
 	chatID := strings.TrimSpace(r.FormValue("chat_id"))
 	priceRaw := strings.TrimSpace(r.FormValue("price_rub"))
-	periodRaw := strings.TrimSpace(r.FormValue("period_days"))
-	testPeriodRaw := strings.TrimSpace(r.FormValue("test_period"))
+	periodModeRaw := strings.TrimSpace(r.FormValue("period_mode"))
+	durationRaw := strings.TrimSpace(r.FormValue("period_value"))
+	monthsRaw := strings.TrimSpace(r.FormValue("period_months"))
+	fixedEndsAtRaw := strings.TrimSpace(r.FormValue("fixed_ends_at"))
 	offerURL := strings.TrimSpace(r.FormValue("offer_url"))
 	privacyURL := strings.TrimSpace(r.FormValue("privacy_url"))
 	channelURL := strings.TrimSpace(r.FormValue("channel_url"))
 
 	if startPayload == "" {
 		startPayload = "in-" + generateToken(8)
-	}
-	if periodRaw == "" {
-		periodRaw = "30"
 	}
 
 	if name == "" || priceRaw == "" {
@@ -167,28 +169,26 @@ func (h *Handler) createConnector(ctx context.Context, r *http.Request) error {
 	if err != nil || price <= 0 {
 		return errCreateConnectorPrice
 	}
-	periodDays, err := strconv.Atoi(periodRaw)
-	if err != nil || periodDays <= 0 {
-		return errCreateConnectorPeriod
-	}
-	testPeriodSeconds, err := parseTestConnectorPeriod(testPeriodRaw)
+	periodMode, periodSeconds, periodMonths, fixedEndsAt, err := parseConnectorPeriodModel(periodModeRaw, durationRaw, monthsRaw, fixedEndsAtRaw, time.Now().UTC())
 	if err != nil {
-		return errCreateConnectorTestPeriod
+		return err
 	}
 
 	connector := domain.Connector{
-		StartPayload:      startPayload,
-		Name:              name,
-		Description:       description,
-		ChatID:            chatID,
-		ChannelURL:        channelURL,
-		PriceRUB:          price,
-		PeriodDays:        periodDays,
-		TestPeriodSeconds: testPeriodSeconds,
-		OfferURL:          offerURL,
-		PrivacyURL:        privacyURL,
-		IsActive:          true,
-		CreatedAt:         time.Now().UTC(),
+		StartPayload:  startPayload,
+		Name:          name,
+		Description:   description,
+		ChatID:        chatID,
+		ChannelURL:    channelURL,
+		PriceRUB:      price,
+		PeriodMode:    periodMode,
+		PeriodSeconds: periodSeconds,
+		PeriodMonths:  periodMonths,
+		FixedEndsAt:   fixedEndsAt,
+		OfferURL:      offerURL,
+		PrivacyURL:    privacyURL,
+		IsActive:      true,
+		CreatedAt:     time.Now().UTC(),
 	}
 
 	if err := h.store.CreateConnector(ctx, connector); err != nil {
@@ -220,25 +220,23 @@ func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWrite
 		}
 		activeLabel, activeClass := connectorActiveBadge(lang, c.IsActive)
 		rows = append(rows, connectorView{
-			ID:                c.ID,
-			StartPayload:      c.StartPayload,
-			Name:              c.Name,
-			ChatID:            c.ChatID,
-			ChannelURL:        c.ChannelURL,
-			PriceRUB:          c.PriceRUB,
-			PeriodDays:        c.PeriodDays,
-			TestPeriodSeconds: c.TestPeriodSeconds,
-			PeriodLabel:       adminConnectorPeriodLabel(c),
-			OfferURL:          c.OfferURL,
-			PrivacyURL:        c.PrivacyURL,
-			TelegramBotLink:   buildAdminBotStartURL(botUsername, c.StartPayload),
-			MAXBotLink:        buildAdminMAXStartURL(maxBotUsername, c.StartPayload),
-			MAXStartCommand:   buildAdminStartCommand(c.StartPayload),
-			IsActive:          c.IsActive,
-			ActiveLabel:       activeLabel,
-			ActiveClass:       activeClass,
-			ToggleTo:          toggleTo,
-			ToggleLabel:       toggleLabel,
+			ID:              c.ID,
+			StartPayload:    c.StartPayload,
+			Name:            c.Name,
+			ChatID:          c.ChatID,
+			ChannelURL:      c.ChannelURL,
+			PriceRUB:        c.PriceRUB,
+			PeriodLabel:     adminConnectorPeriodLabel(c),
+			OfferURL:        c.OfferURL,
+			PrivacyURL:      c.PrivacyURL,
+			TelegramBotLink: buildAdminBotStartURL(botUsername, c.StartPayload),
+			MAXBotLink:      buildAdminMAXStartURL(maxBotUsername, c.StartPayload),
+			MAXStartCommand: buildAdminStartCommand(c.StartPayload),
+			IsActive:        c.IsActive,
+			ActiveLabel:     activeLabel,
+			ActiveClass:     activeClass,
+			ToggleTo:        toggleTo,
+			ToggleLabel:     toggleLabel,
 		})
 	}
 
@@ -274,10 +272,14 @@ func (h *Handler) localizeCreateConnectorError(lang string, err error) string {
 		return t(lang, "connectors.required")
 	case errors.Is(err, errCreateConnectorPrice):
 		return t(lang, "connector.validation.price")
-	case errors.Is(err, errCreateConnectorPeriod):
-		return t(lang, "connector.validation.period")
-	case errors.Is(err, errCreateConnectorTestPeriod):
-		return t(lang, "connector.validation.test_period")
+	case errors.Is(err, errCreateConnectorPeriodMode):
+		return t(lang, "connector.validation.period_mode")
+	case errors.Is(err, errCreateConnectorDuration):
+		return t(lang, "connector.validation.period_duration")
+	case errors.Is(err, errCreateConnectorMonths):
+		return t(lang, "connector.validation.period_months")
+	case errors.Is(err, errCreateConnectorDeadline):
+		return t(lang, "connector.validation.period_deadline")
 	case errors.Is(err, errCreateConnectorChatOrURL):
 		return t(lang, "connector.validation.chat_or_url")
 	default:
@@ -308,34 +310,101 @@ func parseConnectorID(raw string) (int64, error) {
 	return id, nil
 }
 
-func parseTestConnectorPeriod(raw string) (int, error) {
-	raw = strings.TrimSpace(raw)
+func parseConnectorPeriodModel(periodModeRaw, durationRaw, monthsRaw, fixedEndsAtRaw string, now time.Time) (domain.ConnectorPeriodMode, int64, int, *time.Time, error) {
+	periodMode := domain.ConnectorPeriodMode(strings.TrimSpace(periodModeRaw))
+	if periodMode == "" {
+		periodMode = domain.ConnectorPeriodModeDuration
+	}
+
+	switch periodMode {
+	case domain.ConnectorPeriodModeDuration:
+		if durationRaw == "" {
+			durationRaw = "30d"
+		}
+		seconds, err := parseConnectorDuration(durationRaw)
+		if err != nil {
+			return "", 0, 0, nil, errCreateConnectorDuration
+		}
+		return periodMode, seconds, 0, nil, nil
+	case domain.ConnectorPeriodModeCalendarMonths:
+		months, err := strconv.Atoi(strings.TrimSpace(monthsRaw))
+		if err != nil || months <= 0 {
+			return "", 0, 0, nil, errCreateConnectorMonths
+		}
+		return periodMode, 0, months, nil, nil
+	case domain.ConnectorPeriodModeFixedDeadline:
+		fixedEndsAt, err := parseConnectorFixedDeadline(fixedEndsAtRaw)
+		if err != nil || !fixedEndsAt.After(now) {
+			return "", 0, 0, nil, errCreateConnectorDeadline
+		}
+		return periodMode, 0, 0, &fixedEndsAt, nil
+	default:
+		return "", 0, 0, nil, errCreateConnectorPeriodMode
+	}
+}
+
+func parseConnectorDuration(raw string) (int64, error) {
+	raw = strings.TrimSpace(strings.ToLower(raw))
 	if raw == "" {
-		return 0, nil
+		return 0, errors.New("empty duration")
+	}
+	if strings.HasSuffix(raw, "d") {
+		daysRaw := strings.TrimSpace(strings.TrimSuffix(raw, "d"))
+		days, err := strconv.ParseInt(daysRaw, 10, 64)
+		if err != nil || days <= 0 {
+			return 0, errors.New("invalid day duration")
+		}
+		return days * 24 * 60 * 60, nil
 	}
 	d, err := time.ParseDuration(raw)
 	if err != nil {
 		return 0, err
 	}
-	seconds := int(d / time.Second)
+	seconds := int64(d / time.Second)
 	if seconds <= 0 {
 		return 0, errors.New("duration must be at least one second")
 	}
 	return seconds, nil
 }
 
-func adminConnectorPeriodLabel(c domain.Connector) string {
-	if c.TestPeriodSeconds > 0 {
-		if c.TestPeriodSeconds%60 == 0 {
-			return strconv.Itoa(c.TestPeriodSeconds/60) + " мин. (test)"
+func parseConnectorFixedDeadline(raw string) (time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, errors.New("empty deadline")
+	}
+	for _, layout := range []string{"2006-01-02T15:04", time.RFC3339} {
+		if ts, err := time.ParseInLocation(layout, raw, time.Local); err == nil {
+			return ts.UTC(), nil
 		}
-		return strconv.Itoa(c.TestPeriodSeconds) + " сек. (test)"
 	}
-	periodDays := c.PeriodDays
-	if periodDays <= 0 {
-		periodDays = 30
+	return time.Time{}, fmt.Errorf("invalid deadline %q", raw)
+}
+
+func adminConnectorPeriodLabel(c domain.Connector) string {
+	if fixedEndsAt, ok := c.FixedDeadline(); ok {
+		return "до " + fixedEndsAt.In(time.Local).Format("02.01.2006 15:04")
 	}
-	return strconv.Itoa(periodDays) + " дн."
+	if months, ok := c.CalendarMonthsPeriod(); ok {
+		return strconv.Itoa(months) + " мес."
+	}
+	if duration, ok := c.DurationPeriod(); ok {
+		return formatAdminDurationLabel(duration)
+	}
+	return "30 дн."
+}
+
+func formatAdminDurationLabel(duration time.Duration) string {
+	seconds := int64(duration / time.Second)
+	switch {
+	case seconds%(24*60*60) == 0:
+		return strconv.FormatInt(seconds/(24*60*60), 10) + " дн."
+	case seconds%(60*60) == 0:
+		return strconv.FormatInt(seconds/(60*60), 10) + " ч."
+	case seconds%60 == 0:
+		return strconv.FormatInt(seconds/60, 10) + " мин."
+	default:
+		return strconv.FormatInt(seconds, 10) + " сек."
+	}
 }
 
 // generateToken creates random hex token for IDs/payloads in admin form defaults.

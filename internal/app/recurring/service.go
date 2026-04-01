@@ -76,6 +76,7 @@ const (
 	shortPeriodSecondAttemptLead  = 10 * time.Second
 	shortPeriodFirstAttemptFloor  = 15 * time.Second
 	shortPeriodSecondAttemptFloor = 5 * time.Second
+	shortRecurringPeriodThreshold = 10 * time.Minute
 )
 
 func (s *Service) TriggerRebill(ctx context.Context, subscriptionID int64, source string) (RebillResult, error) {
@@ -116,6 +117,9 @@ func (s *Service) TriggerRebill(ctx context.Context, subscriptionID int64, sourc
 	}
 	if !found {
 		return RebillResult{}, errors.New("connector not found")
+	}
+	if !connector.SupportsRecurring() {
+		return RebillResult{}, errors.New("connector does not support recurring")
 	}
 
 	invoiceID := s.GenerateInvoiceID()
@@ -191,6 +195,9 @@ func (s *Service) ShouldTriggerScheduledRebill(ctx context.Context, sub domain.S
 	}
 	if !found {
 		return false, errors.New("connector not found")
+	}
+	if !connector.SupportsRecurring() {
+		return false, nil
 	}
 
 	targetAttempt := attemptOrdinalForConnector(now, sub.EndsAt, connector)
@@ -331,7 +338,10 @@ func AttemptOrdinal(now, endsAt time.Time) int {
 }
 
 func attemptOrdinalForConnector(now, endsAt time.Time, connector domain.Connector) int {
-	return attemptOrdinalForPeriod(now, endsAt, connector.TestPeriodSeconds)
+	if duration, ok := connector.DurationPeriod(); ok && duration > 0 && duration <= shortRecurringPeriodThreshold {
+		return shortPeriodAttemptOrdinal(endsAt.Sub(now), duration)
+	}
+	return attemptOrdinalForPeriod(now, endsAt, 0)
 }
 
 func attemptOrdinalForPeriod(now, endsAt time.Time, testPeriodSeconds int) int {

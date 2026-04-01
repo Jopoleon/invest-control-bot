@@ -50,7 +50,15 @@
           </select>
         </label>
         <label class="filter-field">
-          <span>Messenger User ID</span>
+          <span>{{index .I18N "events.filter.messenger_kind"}}</span>
+          <select name="messenger_kind">
+            <option value="" {{if eq .MessengerKind ""}}selected{{end}}>{{index .I18N "events.filter.any"}}</option>
+            <option value="telegram" {{if eq .MessengerKind "telegram"}}selected{{end}}>{{index .I18N "common.messenger.telegram"}}</option>
+            <option value="max" {{if eq .MessengerKind "max"}}selected{{end}}>{{index .I18N "common.messenger.max"}}</option>
+          </select>
+        </label>
+        <label class="filter-field">
+          <span>{{index .I18N "events.filter.messenger_user_id"}}</span>
           <input name="messenger_user_id" value="{{.MessengerUserID}}" placeholder="264704572">
         </label>
         <label class="filter-field">
@@ -127,8 +135,8 @@
         <thead>
           <tr>
             <th>{{index .I18N "events.table.time"}}</th>
-            <th>Actor</th>
-            <th>Messenger User ID</th>
+            <th>{{index .I18N "events.table.actor"}}</th>
+            <th>{{index .I18N "events.table.target_account"}}</th>
             <th>{{index .I18N "events.table.connector"}}</th>
             <th>{{index .I18N "events.table.action"}}</th>
             <th>{{index .I18N "events.table.details"}}</th>
@@ -139,7 +147,7 @@
           <tr>
             <td class="mono">{{.CreatedAt}}</td>
             <td class="mono">{{.ActorType}}</td>
-            <td class="mono">{{.TargetMessengerUserID}}</td>
+            <td class="mono">{{.TargetAccount}}</td>
             <td>{{.Connector}}</td>
             <td class="mono">{{.Action}}</td>
             <td class="mono">{{.Details}}</td>

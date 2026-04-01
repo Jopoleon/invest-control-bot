@@ -267,14 +267,14 @@ func TestActivateSuccessfulPayment_UsesShortTestPeriodWhenConfigured(t *testing.
 	now := time.Now().UTC().Truncate(time.Second)
 	userID := seedTelegramUser(t, ctx, st, 888888)
 	if err := st.CreateConnector(ctx, domain.Connector{
-		StartPayload:      "in-short-period",
-		Name:              "short-period-test",
-		ChatID:            "1003626584986",
-		PriceRUB:          2322,
-		PeriodDays:        30,
-		TestPeriodSeconds: 90,
-		IsActive:          true,
-		CreatedAt:         now,
+		StartPayload:  "in-short-period",
+		Name:          "short-period-test",
+		ChatID:        "1003626584986",
+		PriceRUB:      2322,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 90,
+		IsActive:      true,
+		CreatedAt:     now,
 	}); err != nil {
 		t.Fatalf("create connector: %v", err)
 	}
@@ -471,13 +471,14 @@ func TestPaymentSuccessPage_MAXActionsUseMAXLinks(t *testing.T) {
 	}
 
 	if err := st.CreateConnector(ctx, domain.Connector{
-		StartPayload: "in-max-page-success",
-		Name:         "max-page-connector",
-		ChannelURL:   "https://web.max.ru/-72598909498032",
-		PriceRUB:     2322,
-		PeriodDays:   30,
-		IsActive:     true,
-		CreatedAt:    time.Now().UTC(),
+		StartPayload:  "in-max-page-success",
+		Name:          "max-page-connector",
+		ChannelURL:    "https://web.max.ru/-72598909498032",
+		PriceRUB:      2322,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 30 * 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     time.Now().UTC(),
 	}); err != nil {
 		t.Fatalf("create connector: %v", err)
 	}
@@ -647,13 +648,14 @@ func TestPaymentFailPage_MAXActionsUseMAXLinks(t *testing.T) {
 	}
 
 	if err := st.CreateConnector(ctx, domain.Connector{
-		StartPayload: "in-max-page-fail",
-		Name:         "max-fail-connector",
-		ChannelURL:   "https://web.max.ru/-72598909498032",
-		PriceRUB:     2322,
-		PeriodDays:   30,
-		IsActive:     true,
-		CreatedAt:    time.Now().UTC(),
+		StartPayload:  "in-max-page-fail",
+		Name:          "max-fail-connector",
+		ChannelURL:    "https://web.max.ru/-72598909498032",
+		PriceRUB:      2322,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 30 * 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     time.Now().UTC(),
 	}); err != nil {
 		t.Fatalf("create connector: %v", err)
 	}
@@ -1082,13 +1084,14 @@ func seedConnector(t *testing.T, ctx context.Context, st store.Store, payload st
 	t.Helper()
 
 	err := st.CreateConnector(ctx, domain.Connector{
-		StartPayload: payload,
-		Name:         "test-connector",
-		ChatID:       "1003626584986",
-		PriceRUB:     2322,
-		PeriodDays:   30,
-		IsActive:     true,
-		CreatedAt:    time.Now().UTC(),
+		StartPayload:  payload,
+		Name:          "test-connector",
+		ChatID:        "1003626584986",
+		PriceRUB:      2322,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 30 * 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     time.Now().UTC(),
 	})
 	if err != nil {
 		t.Fatalf("create connector: %v", err)
@@ -1108,14 +1111,14 @@ func seedShortPeriodConnector(t *testing.T, ctx context.Context, st store.Store,
 	t.Helper()
 
 	err := st.CreateConnector(ctx, domain.Connector{
-		StartPayload:      payload,
-		Name:              "test-short-connector",
-		ChatID:            "1003626584986",
-		PriceRUB:          2322,
-		PeriodDays:        30,
-		TestPeriodSeconds: testPeriodSeconds,
-		IsActive:          true,
-		CreatedAt:         time.Now().UTC(),
+		StartPayload:  payload,
+		Name:          "test-short-connector",
+		ChatID:        "1003626584986",
+		PriceRUB:      2322,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: int64(testPeriodSeconds),
+		IsActive:      true,
+		CreatedAt:     time.Now().UTC(),
 	})
 	if err != nil {
 		t.Fatalf("create short connector: %v", err)

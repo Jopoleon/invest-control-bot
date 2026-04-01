@@ -15,14 +15,17 @@ func TestGetConnector(t *testing.T) {
 	defer cleanup()
 
 	createdAt := time.Date(2026, 3, 24, 12, 0, 0, 0, time.UTC)
+	fixedEndsAt := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
 	rows := sqlmock.NewRows([]string{
-		"id", "start_payload", "name", "description", "chat_id", "channel_url", "price_rub", "period_days",
-		"test_period_seconds", "offer_url", "privacy_url", "is_active", "created_at",
-	}).AddRow(11, "in-abc", "Recurring", "desc", "", "https://t.me/test", 2300, 30, 900, "http://offer", "http://policy", true, createdAt)
+		"id", "start_payload", "name", "description", "chat_id", "channel_url", "price_rub",
+		"period_mode", "period_seconds", "period_months", "fixed_ends_at",
+		"offer_url", "privacy_url", "is_active", "created_at",
+	}).AddRow(11, "in-abc", "Recurring", "desc", "", "https://t.me/test", 2300, "duration", 900, 0, fixedEndsAt, "http://offer", "http://policy", true, createdAt)
 
 	mock.ExpectQuery(regexp.QuoteMeta(`
-		SELECT id, start_payload, name, description, chat_id, channel_url, price_rub, period_days,
-		       test_period_seconds, offer_url, privacy_url, is_active, created_at
+		SELECT id, start_payload, name, description, chat_id, channel_url, price_rub,
+		       period_mode, period_seconds, period_months, fixed_ends_at,
+		       offer_url, privacy_url, is_active, created_at
 		FROM connectors
 		WHERE id = $1
 	`)).WithArgs(int64(11)).WillReturnRows(rows)
@@ -37,8 +40,11 @@ func TestGetConnector(t *testing.T) {
 	if connector.Name != "Recurring" || connector.StartPayload != "in-abc" || connector.PriceRUB != 2300 {
 		t.Fatalf("unexpected connector: %+v", connector)
 	}
-	if connector.TestPeriodSeconds != 900 {
-		t.Fatalf("unexpected test period seconds: %+v", connector)
+	if connector.PeriodMode != "duration" || connector.PeriodSeconds != 900 {
+		t.Fatalf("unexpected explicit period model: %+v", connector)
+	}
+	if connector.FixedEndsAt == nil || !connector.FixedEndsAt.Equal(fixedEndsAt) {
+		t.Fatalf("unexpected fixed_ends_at: %+v", connector.FixedEndsAt)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("sql expectations: %v", err)

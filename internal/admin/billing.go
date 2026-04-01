@@ -87,11 +87,11 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	connectorNames := h.loadConnectorNames(r.Context())
-	resolveTelegramIdentity := h.buildTelegramIdentityLookup(r.Context())
+	resolveAccountPresentation := h.buildMessengerAccountPresentationLookup(r.Context(), lang)
 
 	data.Payments = make([]paymentView, 0, len(payments))
 	for _, p := range payments {
-		telegramID, _, _, err := resolveTelegramIdentity(p.UserID)
+		accountPresentation, err := resolveAccountPresentation(p.UserID)
 		if err != nil {
 			data.Notice = t(lang, "billing.load_error")
 			h.renderer.render(w, "billing.html", data)
@@ -106,6 +106,7 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 		data.Payments = append(data.Payments, paymentView{
 			ID:                p.ID,
 			UserID:            p.UserID,
+			PrimaryAccount:    accountPresentation.PrimaryAccount,
 			Provider:          p.Provider,
 			ProviderPaymentID: p.ProviderPaymentID,
 			Status:            string(p.Status),
@@ -114,7 +115,6 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 			AutoPayEnabled:    p.AutoPayEnabled,
 			AutoPayLabel:      autoPayLabel,
 			AutoPayClass:      autoPayClass,
-			TelegramID:        telegramID,
 			ConnectorID:       p.ConnectorID,
 			Connector:         connectorDisplayName(connectorNames, p.ConnectorID),
 			AmountRUB:         p.AmountRUB,
@@ -125,7 +125,7 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 
 	data.Subscriptions = make([]subscriptionView, 0, len(subs))
 	for _, s := range subs {
-		telegramID, _, _, err := resolveTelegramIdentity(s.UserID)
+		accountPresentation, err := resolveAccountPresentation(s.UserID)
 		if err != nil {
 			data.Notice = t(lang, "billing.load_error")
 			h.renderer.render(w, "billing.html", data)
@@ -136,13 +136,13 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 		data.Subscriptions = append(data.Subscriptions, subscriptionView{
 			ID:             s.ID,
 			UserID:         s.UserID,
+			PrimaryAccount: accountPresentation.PrimaryAccount,
 			Status:         string(s.Status),
 			StatusLabel:    statusLabel,
 			StatusClass:    statusClass,
 			AutoPayEnabled: s.AutoPayEnabled,
 			AutoPayLabel:   autoPayLabel,
 			AutoPayClass:   autoPayClass,
-			TelegramID:     telegramID,
 			ConnectorID:    s.ConnectorID,
 			Connector:      connectorDisplayName(connectorNames, s.ConnectorID),
 			PaymentID:      s.PaymentID,

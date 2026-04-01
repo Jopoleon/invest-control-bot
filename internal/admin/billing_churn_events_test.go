@@ -1,0 +1,197 @@
+package admin
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/Jopoleon/invest-control-bot/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/store/memory"
+)
+
+func TestBillingPage_ShowsPrimaryMessengerInsteadOfTelegramID(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil, nil)
+
+	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465776", "fedor")
+	if err != nil {
+		t.Fatalf("GetOrCreateUserByMessenger: %v", err)
+	}
+	user.FullName = "Fedor"
+	user.UpdatedAt = time.Now().UTC()
+	if err := st.SaveUser(ctx, user); err != nil {
+		t.Fatalf("SaveUser: %v", err)
+	}
+
+	connector := domain.Connector{
+		StartPayload:  "in-billing-max",
+		Name:          "MAX tariff",
+		PriceRUB:      500,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 30 * 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     time.Now().UTC(),
+	}
+	if err := st.CreateConnector(ctx, connector); err != nil {
+		t.Fatalf("CreateConnector: %v", err)
+	}
+	connectorRow, found, err := st.GetConnectorByStartPayload(ctx, "in-billing-max")
+	if err != nil || !found {
+		t.Fatalf("GetConnectorByStartPayload found=%v err=%v", found, err)
+	}
+	if err := st.CreatePayment(ctx, domain.Payment{
+		Provider:    "robokassa",
+		Status:      domain.PaymentStatusPaid,
+		Token:       "billing-max-payment",
+		UserID:      user.ID,
+		ConnectorID: connectorRow.ID,
+		AmountRUB:   connectorRow.PriceRUB,
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreatePayment: %v", err)
+	}
+	payment, found, err := st.GetPaymentByToken(ctx, "billing-max-payment")
+	if err != nil || !found {
+		t.Fatalf("GetPaymentByToken found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         user.ID,
+		ConnectorID:    connectorRow.ID,
+		PaymentID:      payment.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       time.Now().UTC(),
+		EndsAt:         time.Now().UTC().Add(30 * 24 * time.Hour),
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("UpsertSubscriptionByPayment: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/billing?lang=ru&user_id=1", nil)
+	rec := httptest.NewRecorder()
+	h.billingPage(rec, withAdminAuthorized(req, &authorizedSession{session: domain.AdminSession{ID: 1}}))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Основной мессенджер") {
+		t.Fatalf("response does not contain primary messenger header: %q", body)
+	}
+	if !strings.Contains(body, "MAX · 193465776 · @fedor") {
+		t.Fatalf("response does not contain MAX primary account: %q", body)
+	}
+	if strings.Contains(body, ">Telegram ID<") {
+		t.Fatalf("response still contains Telegram-first column: %q", body)
+	}
+}
+
+func TestChurnPage_ShowsMessengerNeutralUserSummary(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil, nil)
+
+	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465776", "fedor")
+	if err != nil {
+		t.Fatalf("GetOrCreateUserByMessenger: %v", err)
+	}
+	user.FullName = "Fedor"
+	if err := st.SaveUser(ctx, user); err != nil {
+		t.Fatalf("SaveUser: %v", err)
+	}
+
+	connector := domain.Connector{
+		StartPayload:  "in-churn-max",
+		Name:          "MAX churn",
+		PriceRUB:      200,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 30 * 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     time.Now().UTC(),
+	}
+	if err := st.CreateConnector(ctx, connector); err != nil {
+		t.Fatalf("CreateConnector: %v", err)
+	}
+	connectorRow, found, err := st.GetConnectorByStartPayload(ctx, "in-churn-max")
+	if err != nil || !found {
+		t.Fatalf("GetConnectorByStartPayload found=%v err=%v", found, err)
+	}
+	if err := st.CreatePayment(ctx, domain.Payment{
+		Provider:    "robokassa",
+		Status:      domain.PaymentStatusFailed,
+		Token:       "churn-max-payment",
+		UserID:      user.ID,
+		ConnectorID: connectorRow.ID,
+		AmountRUB:   connectorRow.PriceRUB,
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreatePayment: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/churn?lang=ru&user_id=1", nil)
+	rec := httptest.NewRecorder()
+	h.churnPage(rec, withAdminAuthorized(req, &authorizedSession{session: domain.AdminSession{ID: 1}}))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "MAX · 193465776 · @fedor") {
+		t.Fatalf("response does not contain MAX account summary: %q", body)
+	}
+	if strings.Contains(body, "telegram_id=") {
+		t.Fatalf("response still contains telegram_id marker: %q", body)
+	}
+}
+
+func TestEventsPage_FiltersAndRendersMAXTargetAccount(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil, nil)
+
+	if err := st.SaveAuditEvent(ctx, domain.AuditEvent{
+		ActorType:             domain.AuditActorTypeApp,
+		TargetMessengerKind:   domain.MessengerKindMAX,
+		TargetMessengerUserID: "193465776",
+		Action:                "max_action",
+		Details:               "max target",
+		CreatedAt:             time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("SaveAuditEvent max: %v", err)
+	}
+	if err := st.SaveAuditEvent(ctx, domain.AuditEvent{
+		ActorType:             domain.AuditActorTypeApp,
+		TargetMessengerKind:   domain.MessengerKindTelegram,
+		TargetMessengerUserID: "264704572",
+		Action:                "telegram_action",
+		Details:               "telegram target",
+		CreatedAt:             time.Now().UTC().Add(-time.Minute),
+	}); err != nil {
+		t.Fatalf("SaveAuditEvent telegram: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/events?lang=ru&messenger_kind=max&messenger_user_id=193465776", nil)
+	rec := httptest.NewRecorder()
+	h.eventsPage(rec, withAdminAuthorized(req, &authorizedSession{session: domain.AdminSession{ID: 1}}))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "MAX · 193465776") {
+		t.Fatalf("response does not contain MAX target account: %q", body)
+	}
+	if !strings.Contains(body, "max_action") {
+		t.Fatalf("response does not contain filtered MAX event: %q", body)
+	}
+	if strings.Contains(body, "telegram_action") {
+		t.Fatalf("response still contains telegram event after MAX filter: %q", body)
+	}
+}

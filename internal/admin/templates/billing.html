@@ -44,10 +44,6 @@
           <input name="user_id" value="{{.UserID}}" placeholder="42">
         </label>
         <label class="filter-field">
-          <span>{{index .I18N "billing.filter.telegram_id"}}</span>
-          <input name="telegram_id" value="{{.TelegramID}}" placeholder="264704572">
-        </label>
-        <label class="filter-field">
           <span>{{index .I18N "billing.filter.connector_id"}}</span>
           <input name="connector_id" value="{{.ConnectorID}}" placeholder="17">
         </label>
@@ -165,10 +161,10 @@
           <tr>
             <th>{{index .I18N "billing.table.payment.id"}}</th>
             <th>{{index .I18N "billing.table.payment.user_id"}}</th>
+            <th>{{index .I18N "billing.table.payment.primary_account"}}</th>
             <th>{{index .I18N "billing.table.payment.provider"}}</th>
             <th>{{index .I18N "billing.table.payment.status"}}</th>
             <th>{{index .I18N "billing.table.payment.autopay"}}</th>
-            <th>{{index .I18N "billing.table.payment.telegram_id"}}</th>
             <th>{{index .I18N "billing.table.payment.connector"}}</th>
             <th>{{index .I18N "billing.table.payment.amount"}}</th>
             <th>{{index .I18N "billing.table.payment.created"}}</th>
@@ -180,10 +176,10 @@
           <tr>
             <td class="mono">{{.ID}}</td>
             <td class="mono">{{.UserID}}</td>
+            <td class="mono">{{.PrimaryAccount}}</td>
             <td>{{.Provider}}</td>
             <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
             <td><span class="badge {{.AutoPayClass}}">{{.AutoPayLabel}}</span></td>
-            <td class="mono">{{.TelegramID}}</td>
             <td>{{.Connector}}</td>
             <td>{{.AmountRUB}}</td>
             <td class="mono">{{.CreatedAt}}</td>
@@ -210,9 +206,9 @@
           <tr>
             <th>{{index .I18N "billing.table.subscription.id"}}</th>
             <th>{{index .I18N "billing.table.subscription.user_id"}}</th>
+            <th>{{index .I18N "billing.table.subscription.primary_account"}}</th>
             <th>{{index .I18N "billing.table.subscription.status"}}</th>
             <th>{{index .I18N "billing.table.subscription.autopay"}}</th>
-            <th>{{index .I18N "billing.table.subscription.telegram_id"}}</th>
             <th>{{index .I18N "billing.table.subscription.connector"}}</th>
             <th>{{index .I18N "billing.table.subscription.payment"}}</th>
             <th>{{index .I18N "billing.table.subscription.starts"}}</th>
@@ -225,9 +221,9 @@
           <tr>
             <td class="mono">{{.ID}}</td>
             <td class="mono">{{.UserID}}</td>
+            <td class="mono">{{.PrimaryAccount}}</td>
             <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
             <td><span class="badge {{.AutoPayClass}}">{{.AutoPayLabel}}</span></td>
-            <td class="mono">{{.TelegramID}}</td>
             <td>{{.Connector}}</td>
             <td class="mono">{{.PaymentID}}</td>
             <td class="mono">{{.StartsAt}}</td>

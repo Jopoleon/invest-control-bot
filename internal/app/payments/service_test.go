@@ -34,7 +34,7 @@ func TestActivateSuccessfulPayment_ExtendsFromCurrentSubscriptionEnd(t *testing.
 	ctx := context.Background()
 	st := memory.New()
 	now := time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC)
-	connector := domain.Connector{ID: 1, StartPayload: "in-payments-pkg", Name: "tariff", PriceRUB: 1000, PeriodDays: 30, IsActive: true, CreatedAt: now}
+	connector := domain.Connector{ID: 1, StartPayload: "in-payments-pkg", Name: "tariff", PriceRUB: 1000, PeriodMode: domain.ConnectorPeriodModeDuration, PeriodSeconds: 30 * 24 * 60 * 60, IsActive: true, CreatedAt: now}
 	if err := st.CreateConnector(ctx, connector); err != nil {
 		t.Fatalf("CreateConnector err=%v", err)
 	}

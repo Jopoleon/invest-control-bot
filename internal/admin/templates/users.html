@@ -77,8 +77,9 @@
         <thead>
           <tr>
             <th>{{index .I18N "users.table.user_id"}}</th>
-            <th>{{index .I18N "users.table.telegram_id"}}</th>
-            <th>{{index .I18N "users.table.telegram_username"}}</th>
+            <th>{{index .I18N "users.table.profile"}}</th>
+            <th>{{index .I18N "users.table.primary_account"}}</th>
+            <th>{{index .I18N "users.table.linked_accounts"}}</th>
             <th>{{index .I18N "users.table.full_name"}}</th>
             <th>{{index .I18N "users.table.phone"}}</th>
             <th>{{index .I18N "users.table.email"}}</th>
@@ -90,8 +91,13 @@
         {{range .Users}}
           <tr>
             <td class="mono"><a href="{{.DetailURL}}">{{.UserID}}</a></td>
-            <td class="mono">{{if .HasTelegram}}{{.TelegramID}}{{else}}—{{end}}</td>
-            <td>{{if .TelegramUsername}}<a href="{{.DetailURL}}">{{.TelegramUsername}}</a>{{else}}—{{end}}</td>
+            <td><a href="{{.DetailURL}}">{{.DisplayName}}</a></td>
+            <td class="mono">{{.PrimaryAccount}}</td>
+            <td>
+              {{if .LinkedAccounts}}
+                {{range .LinkedAccounts}}<div class="mono">{{.Display}}</div>{{end}}
+              {{else}}—{{end}}
+            </td>
             <td>{{.FullName}}</td>
             <td>{{.Phone}}</td>
             <td>{{.Email}}</td>

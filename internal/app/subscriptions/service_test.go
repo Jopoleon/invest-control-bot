@@ -46,7 +46,7 @@ func TestBuildRenewalNotification_TelegramUsesButton(t *testing.T) {
 
 func TestShouldSendReminder_SkipsShortTestPeriods(t *testing.T) {
 	now := time.Now().UTC()
-	connector := domain.Connector{TestPeriodSeconds: 120}
+	connector := domain.Connector{PeriodMode: domain.ConnectorPeriodModeDuration, PeriodSeconds: 120}
 
 	if shouldSendReminder(now, now.Add(20*time.Second), connector) {
 		t.Fatalf("shouldSendReminder(short period)=true want false")
@@ -54,10 +54,10 @@ func TestShouldSendReminder_SkipsShortTestPeriods(t *testing.T) {
 }
 
 func TestShouldSendExpiryNotice_SkipsShortTestPeriods(t *testing.T) {
-	if shouldSendExpiryNotice(domain.Connector{TestPeriodSeconds: 120}) {
+	if shouldSendExpiryNotice(domain.Connector{PeriodMode: domain.ConnectorPeriodModeDuration, PeriodSeconds: 120}) {
 		t.Fatalf("shouldSendExpiryNotice(short period)=true want false")
 	}
-	if !shouldSendExpiryNotice(domain.Connector{PeriodDays: 30}) {
+	if !shouldSendExpiryNotice(domain.Connector{PeriodMode: domain.ConnectorPeriodModeDuration, PeriodSeconds: 30 * 24 * 60 * 60}) {
 		t.Fatalf("shouldSendExpiryNotice(normal period)=false want true")
 	}
 }

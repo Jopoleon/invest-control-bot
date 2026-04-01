@@ -44,7 +44,7 @@ func (h *Handler) handlePay(ctx context.Context, cb messenger.IncomingAction) {
 	}
 	effectiveRecurring := false
 	if hasExplicitRecurring {
-		effectiveRecurring = h.recurringEnabled && selectedRecurring
+		effectiveRecurring = h.recurringEnabled && selectedRecurring && connector.SupportsRecurring()
 	}
 	invoiceID := generateInvoiceID()
 

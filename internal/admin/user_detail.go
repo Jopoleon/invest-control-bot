@@ -61,16 +61,14 @@ func (h *Handler) renderUserDetailPage(ctx context.Context, w http.ResponseWrite
 }
 
 func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.ResponseWriter, r *http.Request, lang string, item domain.User, notice string) {
-	telegramID, telegramUsername, hasTelegramIdentity, err := h.resolveTelegramIdentity(ctx, item.ID)
+	accounts, err := h.store.ListUserMessengerAccounts(ctx, item.ID)
 	if err != nil {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
 		return
 	}
-	preferredAccount, hasDirectMessageAccount, err := h.resolvePreferredMessengerAccount(ctx, item.ID)
-	if err != nil {
-		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
-		return
-	}
+	accountPresentation := buildMessengerAccountPresentation(lang, accounts)
+	preferredAccount, hasDirectMessageAccount := pickPreferredMessengerAccount(accounts)
+	telegramID, _ := resolveTelegramIdentityFromAccounts(accounts)
 	payments, err := h.store.ListPayments(ctx, domain.PaymentListQuery{UserID: item.ID, Limit: 200})
 	if err != nil {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
@@ -104,7 +102,6 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 	}
 
 	connectorNames := h.loadConnectorNames(ctx)
-	resolveTelegramIdentity := h.buildTelegramIdentityLookup(ctx)
 	autoPayEnabled, hasAutoPaySettings := summarizeAutopayFromSubscriptions(subs)
 	data := userDetailPageData{
 		basePageData: basePageData{
@@ -119,15 +116,17 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 		MessageActionURL: "/admin/users/message?lang=" + lang,
 		AutopayCancelURL: h.buildAutopayCancelURL(telegramID),
 		User: userView{
-			UserID:           item.ID,
-			TelegramID:       telegramID,
-			TelegramUsername: telegramUsername,
-			HasTelegram:      hasTelegramIdentity,
-			CanDirectMessage: hasDirectMessageAccount,
-			FullName:         item.FullName,
-			Phone:            item.Phone,
-			Email:            item.Email,
-			AutoPay:          func() string { label, _ := autoPayBadge(lang, autoPayEnabled, hasAutoPaySettings); return label }(),
+			UserID:              item.ID,
+			DisplayName:         coalesceUserDisplayName(item.FullName, accountPresentation.DisplayName, item.ID),
+			CanDirectMessage:    hasDirectMessageAccount,
+			DirectMessageTarget: accountPresentation.DirectMessageTarget,
+			PrimaryAccount:      accountPresentation.PrimaryAccount,
+			LinkedAccounts:      accountPresentation.Accounts,
+			HasTelegramIdentity: accountPresentation.HasTelegramIdentity,
+			FullName:            item.FullName,
+			Phone:               item.Phone,
+			Email:               item.Email,
+			AutoPay:             func() string { label, _ := autoPayBadge(lang, autoPayEnabled, hasAutoPaySettings); return label }(),
 			AutoPayClass: func() string {
 				_, className := autoPayBadge(lang, autoPayEnabled, hasAutoPaySettings)
 				return className
@@ -160,11 +159,6 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 
 	data.Payments = make([]paymentView, 0, len(payments))
 	for _, p := range payments {
-		paymentTelegramID, _, _, err := resolveTelegramIdentity(p.UserID)
-		if err != nil {
-			renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
-			return
-		}
 		paidAt := ""
 		if p.PaidAt != nil {
 			paidAt = p.PaidAt.In(time.Local).Format("2006-01-02 15:04:05")
@@ -182,7 +176,6 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 			AutoPayEnabled:    p.AutoPayEnabled,
 			AutoPayLabel:      autoPayLabel,
 			AutoPayClass:      autoPayClass,
-			TelegramID:        paymentTelegramID,
 			ConnectorID:       p.ConnectorID,
 			Connector:         connectorDisplayName(connectorNames, p.ConnectorID),
 			AmountRUB:         p.AmountRUB,
@@ -193,11 +186,6 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 
 	data.Subscriptions = make([]subscriptionView, 0, len(subs))
 	for _, s := range subs {
-		subscriptionTelegramID, _, _, err := resolveTelegramIdentity(s.UserID)
-		if err != nil {
-			renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
-			return
-		}
 		statusLabel, statusClass := subscriptionStatusBadge(lang, s.Status)
 		autoPayLabel, autoPayClass := autoPayBadge(lang, s.AutoPayEnabled, true)
 		canSendPayLink := false
@@ -216,7 +204,6 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 			AutoPayEnabled:   s.AutoPayEnabled,
 			AutoPayLabel:     autoPayLabel,
 			AutoPayClass:     autoPayClass,
-			TelegramID:       subscriptionTelegramID,
 			ConnectorID:      s.ConnectorID,
 			Connector:        connectorDisplayName(connectorNames, s.ConnectorID),
 			PaymentID:        s.PaymentID,
@@ -244,11 +231,25 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 			Details:               event.Details,
 		})
 	}
-	if !hasTelegramIdentity {
+	if !accountPresentation.HasTelegramIdentity {
 		data.AutopayCancelURL = ""
 	}
 
 	h.renderer.render(w, "user_detail.html", data)
+}
+
+func resolveTelegramIdentityFromAccounts(accounts []domain.UserMessengerAccount) (int64, string) {
+	for _, account := range accounts {
+		if account.MessengerKind != domain.MessengerKindTelegram {
+			continue
+		}
+		telegramID, err := strconv.ParseInt(strings.TrimSpace(account.MessengerUserID), 10, 64)
+		if err != nil || telegramID <= 0 {
+			return 0, account.Username
+		}
+		return telegramID, account.Username
+	}
+	return 0, ""
 }
 
 func consentDocumentLabel(lang string, documentID int64, version int) string {

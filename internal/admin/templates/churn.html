@@ -51,10 +51,6 @@
           <input name="user_id" value="{{.UserID}}" placeholder="42">
         </label>
         <label class="filter-field">
-          <span>{{index .I18N "users.filter.telegram_id"}}</span>
-          <input name="telegram_id" value="{{.TelegramID}}" placeholder="264704572">
-        </label>
-        <label class="filter-field">
           <span>{{index .I18N "billing.filter.connector_id"}}</span>
           <input name="connector_id" value="{{.ConnectorID}}" placeholder="17">
         </label>
@@ -128,10 +124,10 @@
         {{range .Issues}}
           <tr>
             <td class="churn-user">
-              <strong><a href="{{.UserDetailURL}}">{{if .FullName}}{{.FullName}}{{else}}{{.TelegramID}}{{end}}</a></strong>
+              <strong><a href="{{.UserDetailURL}}">{{.DisplayName}}</a></strong>
               <small class="mono">user_id={{.UserID}}</small>
-              {{if .TelegramID}}<small class="mono">telegram_id={{.TelegramID}}</small>{{end}}
-              {{if .TelegramUsername}}<small>@{{.TelegramUsername}}</small>{{end}}
+              <small class="mono">{{.PrimaryAccount}}</small>
+              {{if .Email}}<small>{{.Email}}</small>{{end}}
             </td>
             <td>{{.Connector}}</td>
             <td><span class="badge {{.IssueClass}}">{{.IssueLabel}}</span></td>

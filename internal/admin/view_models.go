@@ -11,25 +11,23 @@ type basePageData struct {
 
 // connectorView is a template-friendly representation of connector row.
 type connectorView struct {
-	ID                int64
-	StartPayload      string
-	Name              string
-	ChatID            string
-	ChannelURL        string
-	PriceRUB          int64
-	PeriodDays        int
-	TestPeriodSeconds int
-	PeriodLabel       string
-	OfferURL          string
-	PrivacyURL        string
-	TelegramBotLink   string
-	MAXBotLink        string
-	MAXStartCommand   string
-	IsActive          bool
-	ActiveLabel       string
-	ActiveClass       string
-	ToggleTo          bool
-	ToggleLabel       string
+	ID              int64
+	StartPayload    string
+	Name            string
+	ChatID          string
+	ChannelURL      string
+	PriceRUB        int64
+	PeriodLabel     string
+	OfferURL        string
+	PrivacyURL      string
+	TelegramBotLink string
+	MAXBotLink      string
+	MAXStartCommand string
+	IsActive        bool
+	ActiveLabel     string
+	ActiveClass     string
+	ToggleTo        bool
+	ToggleLabel     string
 }
 
 // connectorsPageData is context passed into connectors.html template.
@@ -62,6 +60,8 @@ type loginPageData struct {
 type auditEventView struct {
 	CreatedAt             string
 	ActorType             string
+	TargetAccount         string
+	TargetMessengerKind   string
 	TargetMessengerUserID string
 	ConnectorID           int64
 	Connector             string
@@ -78,6 +78,7 @@ type eventsPageData struct {
 	Rows      []auditEventView
 
 	ActorType       string
+	MessengerKind   string
 	MessengerUserID string
 	ConnectorID     string
 	Action          string
@@ -104,6 +105,7 @@ type eventsPageData struct {
 type paymentView struct {
 	ID                int64
 	UserID            int64
+	PrimaryAccount    string
 	Provider          string
 	ProviderPaymentID string
 	Status            string
@@ -112,7 +114,6 @@ type paymentView struct {
 	AutoPayEnabled    bool
 	AutoPayLabel      string
 	AutoPayClass      string
-	TelegramID        int64
 	ConnectorID       int64
 	Connector         string
 	AmountRUB         int64
@@ -123,13 +124,13 @@ type paymentView struct {
 type subscriptionView struct {
 	ID               int64
 	UserID           int64
+	PrimaryAccount   string
 	Status           string
 	StatusLabel      string
 	StatusClass      string
 	AutoPayEnabled   bool
 	AutoPayLabel     string
 	AutoPayClass     string
-	TelegramID       int64
 	ConnectorID      int64
 	Connector        string
 	PaymentID        int64
@@ -184,19 +185,28 @@ type billingGroupView struct {
 	ActiveSubscriptions int
 }
 
+type messengerAccountView struct {
+	KindLabel       string
+	MessengerUserID string
+	Username        string
+	Display         string
+}
+
 type userView struct {
-	UserID           int64
-	TelegramID       int64
-	TelegramUsername string
-	HasTelegram      bool
-	CanDirectMessage bool
-	FullName         string
-	Phone            string
-	Email            string
-	AutoPay          string
-	AutoPayClass     string
-	UpdatedAt        string
-	DetailURL        string
+	UserID              int64
+	DisplayName         string
+	CanDirectMessage    bool
+	DirectMessageTarget string
+	PrimaryAccount      string
+	LinkedAccounts      []messengerAccountView
+	HasTelegramIdentity bool
+	FullName            string
+	Phone               string
+	Email               string
+	AutoPay             string
+	AutoPayClass        string
+	UpdatedAt           string
+	DetailURL           string
 }
 
 type usersPageData struct {
@@ -256,8 +266,8 @@ type recurringSummaryView struct {
 
 type churnIssueView struct {
 	UserID             int64
-	TelegramID         int64
-	TelegramUsername   string
+	DisplayName        string
+	PrimaryAccount     string
 	FullName           string
 	Email              string
 	Phone              string

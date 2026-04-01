@@ -23,8 +23,8 @@ const (
 
 type churnIssueRecord struct {
 	userID             int64
-	telegramID         int64
-	telegramUsername   string
+	displayName        string
+	primaryAccount     string
 	fullName           string
 	email              string
 	phone              string
@@ -94,7 +94,7 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang string, userFilterI
 		return nil, err
 	}
 	connectorNames := h.loadConnectorNames(ctx)
-	resolveTelegramIdentity := h.buildTelegramIdentityLookup(ctx)
+	resolveAccountPresentation := h.buildMessengerAccountPresentationLookup(ctx, lang)
 
 	userMap := make(map[int64]domain.UserListItem, len(users))
 	for _, user := range users {
@@ -143,10 +143,11 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang string, userFilterI
 		if userFilterID > 0 && k.userID != userFilterID {
 			continue
 		}
-		resolvedTelegramID, telegramUsername, _, err := resolveTelegramIdentity(k.userID)
+		accountPresentation, err := resolveAccountPresentation(k.userID)
 		if err != nil {
 			return nil, err
 		}
+		resolvedTelegramID, _ := resolveTelegramIdentityFromUserListItem(userMap[k.userID])
 		if telegramFilter > 0 && resolvedTelegramID != telegramFilter {
 			continue
 		}
@@ -188,7 +189,8 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang string, userFilterI
 		if search != "" {
 			haystack := strings.ToLower(strings.Join([]string{
 				strconv.FormatInt(resolvedTelegramID, 10),
-				telegramUsername,
+				accountPresentation.DisplayName,
+				accountPresentation.PrimaryAccount,
 				user.FullName,
 				user.Email,
 				user.Phone,
@@ -209,8 +211,8 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang string, userFilterI
 
 		records = append(records, churnIssueRecord{
 			userID:             user.UserID,
-			telegramID:         resolvedTelegramID,
-			telegramUsername:   telegramUsername,
+			displayName:        coalesceUserDisplayName(user.FullName, accountPresentation.DisplayName, user.UserID),
+			primaryAccount:     accountPresentation.PrimaryAccount,
 			fullName:           user.FullName,
 			email:              user.Email,
 			phone:              user.Phone,
@@ -229,10 +231,10 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang string, userFilterI
 
 	sort.Slice(records, func(i, j int) bool {
 		if records[i].lastEventAt.Equal(records[j].lastEventAt) {
-			if records[i].telegramID == records[j].telegramID {
+			if records[i].displayName == records[j].displayName {
 				return records[i].connector < records[j].connector
 			}
-			return records[i].telegramID < records[j].telegramID
+			return records[i].displayName < records[j].displayName
 		}
 		return records[i].lastEventAt.After(records[j].lastEventAt)
 	})
@@ -250,8 +252,8 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang string, userFilterI
 		}
 		result = append(result, churnIssueView{
 			UserID:             item.userID,
-			TelegramID:         item.telegramID,
-			TelegramUsername:   item.telegramUsername,
+			DisplayName:        item.displayName,
+			PrimaryAccount:     item.primaryAccount,
 			FullName:           item.fullName,
 			Email:              item.email,
 			Phone:              item.phone,
@@ -314,4 +316,8 @@ func buildConnectorPaymentLinkURL(lang string, userID, connectorID int64) string
 	params.Set("user_id", strconv.FormatInt(userID, 10))
 	params.Set("connector_id", strconv.FormatInt(connectorID, 10))
 	return "/admin/users/send-payment-link?" + params.Encode()
+}
+
+func resolveTelegramIdentityFromUserListItem(user domain.UserListItem) (int64, string) {
+	return user.TelegramID, user.TelegramUsername
 }

@@ -26,9 +26,14 @@ func (h *Handler) exportConnectorsCSV(w http.ResponseWriter, r *http.Request) {
 	records := make([][]string, 0, len(rows)+1)
 	records = append(records, []string{
 		"id", "start_payload", "name", "description", "chat_id", "channel_url",
-		"price_rub", "period_days", "test_period_seconds", "offer_url", "privacy_url", "is_active", "created_at",
+		"price_rub", "period_mode", "period_seconds", "period_months", "fixed_ends_at",
+		"period_label", "offer_url", "privacy_url", "is_active", "created_at",
 	})
 	for _, c := range rows {
+		fixedEndsAt := ""
+		if c.FixedEndsAt != nil {
+			fixedEndsAt = c.FixedEndsAt.In(time.Local).Format(time.RFC3339)
+		}
 		records = append(records, []string{
 			strconv.FormatInt(c.ID, 10),
 			c.StartPayload,
@@ -37,8 +42,11 @@ func (h *Handler) exportConnectorsCSV(w http.ResponseWriter, r *http.Request) {
 			c.ChatID,
 			c.ChannelURL,
 			strconv.FormatInt(c.PriceRUB, 10),
-			strconv.Itoa(c.PeriodDays),
-			strconv.Itoa(c.TestPeriodSeconds),
+			string(c.ResolvedPeriodMode()),
+			strconv.FormatInt(c.PeriodSeconds, 10),
+			strconv.Itoa(c.PeriodMonths),
+			fixedEndsAt,
+			adminConnectorPeriodLabel(c),
 			c.OfferURL,
 			c.PrivacyURL,
 			strconv.FormatBool(c.IsActive),
@@ -93,17 +101,24 @@ func (h *Handler) exportUsersCSV(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	resolveAccountPresentation := h.buildMessengerAccountPresentationLookup(r.Context(), h.resolveLang(w, r))
 
 	records := make([][]string, 0, len(rows)+1)
 	records = append(records, []string{
-		"user_id", "telegram_id", "telegram_username", "full_name", "phone", "email",
+		"user_id", "display_name", "primary_account", "linked_accounts", "full_name", "phone", "email",
 		"auto_pay_enabled", "has_auto_pay_settings", "updated_at",
 	})
 	for _, user := range rows {
+		accountPresentation, err := resolveAccountPresentation(user.UserID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		records = append(records, []string{
 			strconv.FormatInt(user.UserID, 10),
-			strconv.FormatInt(user.TelegramID, 10),
-			user.TelegramUsername,
+			coalesceUserDisplayName(user.FullName, accountPresentation.DisplayName, user.UserID),
+			accountPresentation.PrimaryAccount,
+			joinAccountDisplays(accountPresentation.Accounts),
 			user.FullName,
 			user.Phone,
 			user.Email,
@@ -129,14 +144,16 @@ func (h *Handler) exportEventsCSV(w http.ResponseWriter, r *http.Request) {
 
 	records := make([][]string, 0, len(rows)+1)
 	records = append(records, []string{
-		"id", "created_at", "actor_type", "target_messenger_user_id", "connector_id", "connector", "action", "details",
+		"id", "created_at", "actor_type", "target_messenger_kind", "target_messenger_user_id", "target_account", "connector_id", "connector", "action", "details",
 	})
 	for _, event := range rows {
 		records = append(records, []string{
 			strconv.FormatInt(event.ID, 10),
 			event.CreatedAt.In(time.Local).Format(time.RFC3339),
 			string(event.ActorType),
+			string(event.TargetMessengerKind),
 			event.TargetMessengerUserID,
+			buildMessengerAccountDisplay(messengerKindLabel(h.resolveLang(w, r), event.TargetMessengerKind), event.TargetMessengerUserID, ""),
 			strconv.FormatInt(event.ConnectorID, 10),
 			connectorDisplayName(connectorNames, event.ConnectorID),
 			event.Action,
@@ -163,16 +180,16 @@ func (h *Handler) exportPaymentsCSV(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	connectorNames := h.loadConnectorNames(r.Context())
-	resolveTelegramIdentity := h.buildTelegramIdentityLookup(r.Context())
+	resolveAccountPresentation := h.buildMessengerAccountPresentationLookup(r.Context(), h.resolveLang(w, r))
 
 	records := make([][]string, 0, len(rows)+1)
 	records = append(records, []string{
-		"id", "provider", "provider_payment_id", "status", "token", "telegram_id", "connector_id",
+		"id", "user_id", "primary_account", "provider", "provider_payment_id", "status", "token", "connector_id",
 		"connector", "subscription_id", "parent_payment_id", "amount_rub", "auto_pay_enabled",
 		"checkout_url", "created_at", "paid_at", "updated_at",
 	})
 	for _, payment := range rows {
-		telegramID, _, _, err := resolveTelegramIdentity(payment.UserID)
+		accountPresentation, err := resolveAccountPresentation(payment.UserID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -183,11 +200,12 @@ func (h *Handler) exportPaymentsCSV(w http.ResponseWriter, r *http.Request) {
 		}
 		records = append(records, []string{
 			strconv.FormatInt(payment.ID, 10),
+			strconv.FormatInt(payment.UserID, 10),
+			accountPresentation.PrimaryAccount,
 			payment.Provider,
 			payment.ProviderPaymentID,
 			string(payment.Status),
 			payment.Token,
-			strconv.FormatInt(telegramID, 10),
 			strconv.FormatInt(payment.ConnectorID, 10),
 			connectorDisplayName(connectorNames, payment.ConnectorID),
 			strconv.FormatInt(payment.SubscriptionID, 10),
@@ -220,23 +238,24 @@ func (h *Handler) exportSubscriptionsCSV(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	connectorNames := h.loadConnectorNames(r.Context())
-	resolveTelegramIdentity := h.buildTelegramIdentityLookup(r.Context())
+	resolveAccountPresentation := h.buildMessengerAccountPresentationLookup(r.Context(), h.resolveLang(w, r))
 
 	records := make([][]string, 0, len(rows)+1)
 	records = append(records, []string{
-		"id", "telegram_id", "connector_id", "connector", "payment_id", "status",
+		"id", "user_id", "primary_account", "connector_id", "connector", "payment_id", "status",
 		"auto_pay_enabled", "starts_at", "ends_at", "reminder_sent_at",
 		"expiry_notice_sent_at", "created_at", "updated_at",
 	})
 	for _, sub := range rows {
-		telegramID, _, _, err := resolveTelegramIdentity(sub.UserID)
+		accountPresentation, err := resolveAccountPresentation(sub.UserID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		records = append(records, []string{
 			strconv.FormatInt(sub.ID, 10),
-			strconv.FormatInt(telegramID, 10),
+			strconv.FormatInt(sub.UserID, 10),
+			accountPresentation.PrimaryAccount,
 			strconv.FormatInt(sub.ConnectorID, 10),
 			connectorDisplayName(connectorNames, sub.ConnectorID),
 			strconv.FormatInt(sub.PaymentID, 10),
@@ -282,15 +301,15 @@ func (h *Handler) exportChurnCSV(w http.ResponseWriter, r *http.Request) {
 
 	records := make([][]string, 0, len(rows)+1)
 	records = append(records, []string{
-		"user_id", "telegram_id", "telegram_username", "full_name", "email", "phone",
+		"user_id", "display_name", "primary_account", "full_name", "email", "phone",
 		"connector_id", "connector", "issue_type", "autopay", "retry_state", "last_retry_at", "payment_status",
 		"subscription_id", "subscription_status", "last_amount_rub", "last_event_at",
 	})
 	for _, row := range rows {
 		records = append(records, []string{
 			strconv.FormatInt(row.UserID, 10),
-			strconv.FormatInt(row.TelegramID, 10),
-			row.TelegramUsername,
+			row.DisplayName,
+			row.PrimaryAccount,
 			row.FullName,
 			row.Email,
 			row.Phone,
@@ -368,10 +387,11 @@ func parseEventsQuery(params url.Values) domain.AuditEventListQuery {
 	if rawActorType == string(domain.AuditActorTypeAdmin) || rawActorType == string(domain.AuditActorTypeUser) || rawActorType == string(domain.AuditActorTypeApp) {
 		query.ActorType = domain.AuditActorType(rawActorType)
 	}
-	query.TargetMessengerUserID = strings.TrimSpace(params.Get("messenger_user_id"))
-	if query.TargetMessengerUserID != "" {
-		query.TargetMessengerKind = domain.MessengerKindTelegram
+	rawMessengerKind := strings.TrimSpace(params.Get("messenger_kind"))
+	if rawMessengerKind == string(domain.MessengerKindTelegram) || rawMessengerKind == string(domain.MessengerKindMAX) {
+		query.TargetMessengerKind = domain.MessengerKind(rawMessengerKind)
 	}
+	query.TargetMessengerUserID = strings.TrimSpace(params.Get("messenger_user_id"))
 	if id, err := strconv.ParseInt(strings.TrimSpace(params.Get("connector_id")), 10, 64); err == nil && id > 0 {
 		query.ConnectorID = id
 	}
@@ -408,6 +428,20 @@ func formatOptionalTime(value *time.Time) string {
 		return ""
 	}
 	return value.In(time.Local).Format(time.RFC3339)
+}
+
+func joinAccountDisplays(accounts []messengerAccountView) string {
+	if len(accounts) == 0 {
+		return ""
+	}
+	values := make([]string, 0, len(accounts))
+	for _, account := range accounts {
+		if strings.TrimSpace(account.Display) == "" {
+			continue
+		}
+		values = append(values, account.Display)
+	}
+	return strings.Join(values, " | ")
 }
 
 func writeCSV(w http.ResponseWriter, filename string, records [][]string) {

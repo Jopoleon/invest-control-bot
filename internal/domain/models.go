@@ -10,39 +10,99 @@ const (
 	MessengerKindMAX      MessengerKind = "max"
 )
 
+// ConnectorPeriodMode defines how a connector computes the access end date.
+type ConnectorPeriodMode string
+
+const (
+	ConnectorPeriodModeDuration       ConnectorPeriodMode = "duration"
+	ConnectorPeriodModeCalendarMonths ConnectorPeriodMode = "calendar_months"
+	ConnectorPeriodModeFixedDeadline  ConnectorPeriodMode = "fixed_deadline"
+)
+
 // Connector describes a tariff and start payload used to enter the bot flow.
 type Connector struct {
-	ID           int64  `db:"id" json:"id"`
-	StartPayload string `db:"start_payload" json:"start_payload"`
-	Name         string `db:"name" json:"name"`
-	Description  string `db:"description" json:"description"`
-	ChatID       string `db:"chat_id" json:"chat_id"`
-	ChannelURL   string `db:"channel_url" json:"channel_url"`
-	PriceRUB     int64  `db:"price_rub" json:"price_rub"`
-	// TODO(testing): for real-money recurring smoke tests we may need a
-	// non-production-only override that allows very short periods (minutes or
-	// seconds). Keep production semantics centered on days unless that mode is
-	// explicitly introduced and guarded by config/env.
-	PeriodDays        int       `db:"period_days" json:"period_days"`
-	TestPeriodSeconds int       `db:"test_period_seconds" json:"test_period_seconds"`
-	OfferURL          string    `db:"offer_url" json:"offer_url"`
-	PrivacyURL        string    `db:"privacy_url" json:"privacy_url"`
-	IsActive          bool      `db:"is_active" json:"is_active"`
-	CreatedAt         time.Time `db:"created_at" json:"created_at"`
+	ID            int64               `db:"id" json:"id"`
+	StartPayload  string              `db:"start_payload" json:"start_payload"`
+	Name          string              `db:"name" json:"name"`
+	Description   string              `db:"description" json:"description"`
+	ChatID        string              `db:"chat_id" json:"chat_id"`
+	ChannelURL    string              `db:"channel_url" json:"channel_url"`
+	PriceRUB      int64               `db:"price_rub" json:"price_rub"`
+	PeriodMode    ConnectorPeriodMode `db:"period_mode" json:"period_mode"`
+	PeriodSeconds int64               `db:"period_seconds" json:"period_seconds"`
+	PeriodMonths  int                 `db:"period_months" json:"period_months"`
+	FixedEndsAt   *time.Time          `db:"fixed_ends_at" json:"fixed_ends_at,omitempty"`
+	OfferURL      string              `db:"offer_url" json:"offer_url"`
+	PrivacyURL    string              `db:"privacy_url" json:"privacy_url"`
+	IsActive      bool                `db:"is_active" json:"is_active"`
+	CreatedAt     time.Time           `db:"created_at" json:"created_at"`
 }
 
-// SubscriptionEndsAt returns the next access boundary for this connector while
-// preserving the normal day-based production path unless an explicit short
-// test period override is set for recurring/payment smoke tests.
+// SubscriptionEndsAt returns the next access boundary for this connector using
+// the canonical period model.
 func (c Connector) SubscriptionEndsAt(start time.Time) time.Time {
-	if c.TestPeriodSeconds > 0 {
-		return start.Add(time.Duration(c.TestPeriodSeconds) * time.Second)
+	if fixedEndsAt, ok := c.FixedDeadline(); ok {
+		return fixedEndsAt
 	}
-	periodDays := c.PeriodDays
-	if periodDays <= 0 {
-		periodDays = 30
+	if months, ok := c.CalendarMonthsPeriod(); ok {
+		return start.AddDate(0, months, 0)
 	}
-	return start.AddDate(0, 0, periodDays)
+	if duration, ok := c.DurationPeriod(); ok {
+		return start.Add(duration)
+	}
+	return start.AddDate(0, 0, 30)
+}
+
+// SupportsRecurring reports whether this connector period policy can be used
+// for recurring/autopay semantics. Fixed deadlines are intentionally excluded
+// because "access until date X" is typically a one-shot commercial scenario.
+func (c Connector) SupportsRecurring() bool {
+	return c.ResolvedPeriodMode() != ConnectorPeriodModeFixedDeadline
+}
+
+// ResolvedPeriodMode returns the effective period mode, defaulting to duration
+// when the connector row has no explicit mode yet.
+func (c Connector) ResolvedPeriodMode() ConnectorPeriodMode {
+	switch c.PeriodMode {
+	case ConnectorPeriodModeDuration, ConnectorPeriodModeCalendarMonths, ConnectorPeriodModeFixedDeadline:
+		return c.PeriodMode
+	}
+	return ConnectorPeriodModeDuration
+}
+
+// DurationPeriod resolves a connector period into a relative duration when the
+// effective mode supports it.
+func (c Connector) DurationPeriod() (time.Duration, bool) {
+	switch c.ResolvedPeriodMode() {
+	case ConnectorPeriodModeCalendarMonths, ConnectorPeriodModeFixedDeadline:
+		return 0, false
+	}
+	if c.PeriodSeconds > 0 {
+		return time.Duration(c.PeriodSeconds) * time.Second, true
+	}
+	return 30 * 24 * time.Hour, true
+}
+
+// CalendarMonthsPeriod resolves a connector period into calendar-month count.
+func (c Connector) CalendarMonthsPeriod() (int, bool) {
+	if c.ResolvedPeriodMode() != ConnectorPeriodModeCalendarMonths {
+		return 0, false
+	}
+	if c.PeriodMonths <= 0 {
+		return 0, false
+	}
+	return c.PeriodMonths, true
+}
+
+// FixedDeadline resolves a connector period into an absolute end timestamp.
+func (c Connector) FixedDeadline() (time.Time, bool) {
+	if c.ResolvedPeriodMode() != ConnectorPeriodModeFixedDeadline {
+		return time.Time{}, false
+	}
+	if c.FixedEndsAt == nil || c.FixedEndsAt.IsZero() {
+		return time.Time{}, false
+	}
+	return c.FixedEndsAt.UTC(), true
 }
 
 // User stores user profile fields collected during onboarding.

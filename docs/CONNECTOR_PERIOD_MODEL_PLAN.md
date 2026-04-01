@@ -1,7 +1,33 @@
 # План: новая period model для коннекторов
 
-Статус: proposed
+Статус: completed
 Дата: 2026-04-01
+
+## Статус внедрения на 2026-04-01
+
+Результат:
+- additive migration `migrations/0003_connector_period_model.sql`;
+- новые поля в `domain.Connector`:
+  - `period_mode`
+  - `period_seconds`
+  - `period_months`
+  - `fixed_ends_at`;
+- canonical resolver в `SubscriptionEndsAt(...)`;
+- runtime support в recurring/lifecycle:
+  - short duration считается напрямую через `period_mode = duration`;
+  - `fixed_deadline` исключен из recurring/autopay path;
+- admin create flow переведен на новую period form:
+  - `duration`
+  - `calendar_months`
+  - `fixed_deadline`.
+- baseline schema `0001_init.sql` переписана под final shape;
+- `0002` и `0003` переведены в historical no-op;
+- `0004_drop_legacy_connector_period_fields.sql` удаляет `period_days` и `test_period_seconds` из существующих БД.
+
+Закрыто:
+- legacy read/write path через `period_days` / `test_period_seconds`;
+- legacy runtime branching в bot/app/admin code;
+- зависимость short-period smoke tests от специальных test-period полей.
 
 ## Зачем
 

@@ -221,8 +221,12 @@ func shouldSendExpiryNotice(connector domain.Connector) bool {
 }
 
 func shortTestPeriodDuration(connector domain.Connector) (time.Duration, bool) {
-	if connector.TestPeriodSeconds <= 0 {
+	duration, ok := connector.DurationPeriod()
+	if !ok || duration <= 0 {
 		return 0, false
 	}
-	return time.Duration(connector.TestPeriodSeconds) * time.Second, true
+	if duration > 10*time.Minute {
+		return 0, false
+	}
+	return duration, true
 }

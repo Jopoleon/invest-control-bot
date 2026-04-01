@@ -215,6 +215,10 @@ func (h *Handler) reactivateAutopayForSubscription(ctx context.Context, cb messe
 		h.sendTo(ctx, cb.ChatID, cb.User, botMsgTariffNotFound)
 		return
 	}
+	if !connector.SupportsRecurring() {
+		h.sendTo(ctx, cb.ChatID, cb.User, botMsgAutopayReactivationUnavailable)
+		return
+	}
 	user, resolved := h.resolveMessengerUser(ctx, cb.User)
 	if !resolved {
 		h.sendTo(ctx, cb.ChatID, cb.User, botMsgAutopayConsentConfirmFailed)

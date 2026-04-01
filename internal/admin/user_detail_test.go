@@ -96,3 +96,34 @@ func TestUserDetailPage_AllowsUserIDLookup(t *testing.T) {
 		t.Fatalf("response does not contain user full name: %q", rec.Body.String())
 	}
 }
+
+func TestUserDetailPage_ShowsPrimaryMessengerForMAXUser(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil, nil)
+
+	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465776", "fedor")
+	if err != nil {
+		t.Fatalf("GetOrCreateUserByMessenger: %v", err)
+	}
+	user.FullName = "Fedor"
+	user.UpdatedAt = time.Now().UTC()
+	if err := st.SaveUser(ctx, user); err != nil {
+		t.Fatalf("SaveUser: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/users/view?lang=ru&user_id="+strconv.FormatInt(user.ID, 10), nil)
+	rec := httptest.NewRecorder()
+	h.userDetailPage(rec, withAdminAuthorized(req, &authorizedSession{session: domain.AdminSession{ID: 1}}))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Основной мессенджер") {
+		t.Fatalf("response does not contain primary messenger label: %q", body)
+	}
+	if !strings.Contains(body, "MAX · 193465776 · @fedor") {
+		t.Fatalf("response does not contain MAX identity: %q", body)
+	}
+}

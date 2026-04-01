@@ -172,12 +172,13 @@ func TestSendUserPaymentLink_DeliversToMAXOnlyUser(t *testing.T) {
 		t.Fatalf("GetOrCreateUserByMessenger: %v", err)
 	}
 	if err := st.CreateConnector(ctx, domain.Connector{
-		StartPayload: "in-paylink-max",
-		Name:         "MAX tariff",
-		PriceRUB:     500,
-		PeriodDays:   30,
-		IsActive:     true,
-		CreatedAt:    time.Now().UTC(),
+		StartPayload:  "in-paylink-max",
+		Name:          "MAX tariff",
+		PriceRUB:      500,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 30 * 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     time.Now().UTC(),
 	}); err != nil {
 		t.Fatalf("CreateConnector: %v", err)
 	}

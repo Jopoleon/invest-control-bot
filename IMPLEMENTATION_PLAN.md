@@ -84,6 +84,27 @@
   - direct user message теперь отправляется в preferred linked messenger account;
   - payment link из user detail теперь можно отправить и MAX-only пользователю;
   - для MAX payment-link сообщения добавлен fallback `/start <payload>` помимо deeplink.
+- Admin user-facing presentation начала уходить от Telegram-first UI:
+  - `users` registry теперь показывает primary messenger и linked accounts вместо двух Telegram-only колонок;
+  - `user detail` карточка выводит messenger-neutral identity summary и delivery target;
+  - autopay cancel page остается transport-specific action и явно помечена как Telegram-only public page.
+- Продолжен admin frontend cleanup для multi-messenger UX:
+  - `billing` и `churn` больше не показывают derived Telegram ID как основную колонку, а выводят primary messenger account;
+  - `events` больше не форсит Telegram-kind при фильтрации `messenger_user_id` и теперь нормально режется по `telegram|max`;
+  - таблица `connectors` упрощена: legal и launch детали свернуты в компактные disclosure-блоки вместо шумных отдельных колонок.
+- Начат переход на новую connector period model:
+  - добавлена additive migration `0003_connector_period_model.sql` с полями `period_mode`, `period_seconds`, `period_months`, `fixed_ends_at`;
+  - `domain.Connector.SubscriptionEndsAt(...)` переведен на canonical period policy;
+  - admin create flow переведен на явный выбор периода:
+    - `duration`
+    - `calendar_months`
+    - `fixed_deadline`;
+  - recurring/autopay path теперь сразу режет `fixed_deadline` как non-recurring сценарий;
+  - labels в bot/app/admin уже читают новую period model;
+  - baseline `0001_init.sql` переписан под final connector schema;
+  - `0002` и `0003` оставлены как historical no-op для линейного bootstrap chain;
+  - `0004_drop_legacy_connector_period_fields.sql` удаляет из живых БД legacy колонки `period_days` и `test_period_seconds`;
+  - runtime и storage больше не используют legacy period fields вообще.
 
 ## 2) Зафиксированные решения
 - Админка на первом этапе: встроенные server-rendered HTML-страницы на Go.

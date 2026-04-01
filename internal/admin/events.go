@@ -45,11 +45,16 @@ func (h *Handler) eventsPage(w http.ResponseWriter, r *http.Request) {
 		query.ActorType = domain.AuditActorType(data.ActorType)
 	}
 
+	data.MessengerKind = strings.TrimSpace(params.Get("messenger_kind"))
+	switch data.MessengerKind {
+	case string(domain.MessengerKindTelegram), string(domain.MessengerKindMAX):
+		query.TargetMessengerKind = domain.MessengerKind(data.MessengerKind)
+	default:
+		data.MessengerKind = ""
+	}
+
 	data.MessengerUserID = strings.TrimSpace(params.Get("messenger_user_id"))
 	query.TargetMessengerUserID = data.MessengerUserID
-	if query.TargetMessengerUserID != "" {
-		query.TargetMessengerKind = domain.MessengerKindTelegram
-	}
 
 	data.ConnectorID = strings.TrimSpace(params.Get("connector_id"))
 	if data.ConnectorID != "" {
@@ -130,6 +135,8 @@ func (h *Handler) eventsPage(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, auditEventView{
 			CreatedAt:             event.CreatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
 			ActorType:             string(event.ActorType),
+			TargetAccount:         buildMessengerAccountDisplay(messengerKindLabel(lang, event.TargetMessengerKind), event.TargetMessengerUserID, ""),
+			TargetMessengerKind:   string(event.TargetMessengerKind),
 			TargetMessengerUserID: event.TargetMessengerUserID,
 			ConnectorID:           event.ConnectorID,
 			Connector:             connectorDisplayName(connectorNames, event.ConnectorID),

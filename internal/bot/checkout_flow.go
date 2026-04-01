@@ -27,6 +27,9 @@ func (h *Handler) buildFinalPaymentStep(ctx context.Context, connectorID int64, 
 	if err != nil || !ok || !connector.IsActive {
 		return baseText, paymentKeyboard(connectorID, false, false)
 	}
+	if !connector.SupportsRecurring() {
+		return baseText, paymentKeyboard(connectorID, false, false)
+	}
 
 	offerURL, offerDoc, offerDocFound := h.resolveRecurringOfferLink(ctx, connector)
 	agreementURL, _, agreementDocFound := h.resolveLegalDocumentURL(ctx, domain.LegalDocumentTypeUserAgreement)
@@ -76,6 +79,9 @@ func (h *Handler) resolveRecurringOfferLink(ctx context.Context, connector domai
 }
 
 func (h *Handler) buildRecurringConsent(ctx context.Context, userID int64, connector domain.Connector) (domain.RecurringConsent, error) {
+	if !connector.SupportsRecurring() {
+		return domain.RecurringConsent{}, errors.New("connector does not support recurring")
+	}
 	_, offerDoc, offerDocFound := h.resolveRecurringOfferLink(ctx, connector)
 	_, agreementDoc, agreementFound := h.resolveLegalDocumentURL(ctx, domain.LegalDocumentTypeUserAgreement)
 	if !agreementFound {

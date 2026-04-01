@@ -70,7 +70,7 @@
     .table-wrap { overflow-x: auto; }
     .table-wrap table {
       width: 100%;
-      min-width: 1080px;
+      min-width: 940px;
       table-layout: auto;
     }
     td.mono, th.mono {
@@ -87,7 +87,6 @@
       min-width: 9rem;
     }
     .table-wrap td.price-cell,
-    .table-wrap td.chat-cell,
     .table-wrap td.period-cell,
     .table-wrap td.status-cell {
       white-space: nowrap;
@@ -101,15 +100,43 @@
       vertical-align: middle;
       white-space: nowrap;
     }
-    .table-wrap td.bot-link-cell,
-    .table-wrap td.bot-link-cell a {
+    .table-wrap td.channel-cell a {
+      max-width: 14rem;
+    }
+    .link-stack {
+      display: grid;
+      gap: .45rem;
+    }
+    .link-stack a,
+    .link-stack code {
       white-space: normal;
       word-break: break-all;
-      max-width: none;
-      overflow: visible;
-      text-overflow: clip;
-      font-family: inherit;
-      font-size: inherit;
+    }
+    .link-summary {
+      display: inline-flex;
+      align-items: center;
+      gap: .45rem;
+      cursor: pointer;
+      font-weight: 700;
+      color: #22344a;
+    }
+    .link-summary::-webkit-details-marker {
+      display: none;
+    }
+    .link-group {
+      border: 1px solid rgba(31, 61, 112, .09);
+      border-radius: 12px;
+      padding: .55rem .65rem;
+      background: rgba(247, 249, 253, .72);
+      min-width: 11rem;
+    }
+    .link-group small {
+      display: block;
+      margin-bottom: .35rem;
+      color: #5c6d82;
+      font-size: .72rem;
+      text-transform: uppercase;
+      letter-spacing: .04em;
     }
     @media (max-width: 960px) {
       .connector-core,
@@ -150,8 +177,30 @@
               <input name="price_rub" placeholder="{{index .I18N "connectors.form.price_ph"}}" required>
             </label>
             <label>
-              {{index .I18N "connectors.form.period_days"}}
-              <input name="period_days" value="30">
+              {{index .I18N "connectors.form.period_mode"}}
+              <select name="period_mode" id="period_mode">
+                <option value="duration">{{index .I18N "connectors.form.period_mode_duration"}}</option>
+                <option value="calendar_months">{{index .I18N "connectors.form.period_mode_calendar_months"}}</option>
+                <option value="fixed_deadline">{{index .I18N "connectors.form.period_mode_fixed_deadline"}}</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="connector-main-grid">
+            <label data-period-field="duration">
+              {{index .I18N "connectors.form.period_value"}}
+              <input name="period_value" value="30d" placeholder="30d">
+              <small>{{index .I18N "connectors.form.period_value_hint"}}</small>
+            </label>
+            <label data-period-field="calendar_months" hidden>
+              {{index .I18N "connectors.form.period_months"}}
+              <input name="period_months" value="1" inputmode="numeric">
+              <small>{{index .I18N "connectors.form.period_months_hint"}}</small>
+            </label>
+            <label data-period-field="fixed_deadline" hidden>
+              {{index .I18N "connectors.form.fixed_ends_at"}}
+              <input type="datetime-local" name="fixed_ends_at">
+              <small>{{index .I18N "connectors.form.fixed_ends_at_hint"}}</small>
             </label>
           </div>
 
@@ -182,11 +231,6 @@
               <span class="help-tip" tabindex="0" data-tip="{{index .I18N "connectors.form.payload_hint"}}">?</span>
             </span>
             <input name="start_payload" placeholder="in-94db7d6813507bc">
-          </label>
-          <label>
-            {{index .I18N "connectors.form.test_period"}}
-            <input name="test_period" placeholder="15m">
-            <small>{{index .I18N "connectors.form.test_period_hint"}}</small>
           </label>
           <label>
             {{index .I18N "connectors.form.offer_url"}}
@@ -225,13 +269,11 @@
           <tr>
             <th class="mono">{{index .I18N "connectors.table.id"}}</th>
             <th>{{index .I18N "connectors.table.name"}}</th>
-            <th class="mono">{{index .I18N "connectors.table.chat"}}</th>
             <th>{{index .I18N "connectors.table.price"}}</th>
             <th>{{index .I18N "connectors.table.period"}}</th>
-            <th>{{index .I18N "connectors.table.offer"}}</th>
-            <th>{{index .I18N "connectors.table.privacy"}}</th>
             <th>{{index .I18N "connectors.table.channel"}}</th>
-            <th>{{index .I18N "connectors.table.bot_link"}}</th>
+            <th>{{index .I18N "connectors.table.legal"}}</th>
+            <th>{{index .I18N "connectors.table.launch"}}</th>
             <th>{{index .I18N "connectors.table.active"}}</th>
             <th>{{index .I18N "connectors.table.action"}}</th>
           </tr>
@@ -241,16 +283,32 @@
           <tr>
             <td class="mono">{{.ID}}</td>
             <td class="name-cell">{{.Name}}</td>
-            <td class="mono chat-cell">{{.ChatID}}</td>
             <td class="price-cell">{{.PriceRUB}} ₽</td>
             <td class="period-cell">{{.PeriodLabel}}</td>
-            <td class="link-cell">{{if .OfferURL}}<a href="{{.OfferURL}}" target="_blank" rel="noreferrer">{{index $.I18N "connectors.table.open_link"}}</a>{{end}}</td>
-            <td class="link-cell">{{if .PrivacyURL}}<a href="{{.PrivacyURL}}" target="_blank" rel="noreferrer">{{index $.I18N "connectors.table.open_link"}}</a>{{end}}</td>
-            <td class="link-cell bot-link-cell">{{if .ChannelURL}}<a href="{{.ChannelURL}}" target="_blank" rel="noreferrer">{{.ChannelURL}}</a>{{end}}</td>
-            <td class="link-cell bot-link-cell">
-              {{if .TelegramBotLink}}<div><strong>{{index $.I18N "connectors.table.telegram_bot_link"}}:</strong> <a href="{{.TelegramBotLink}}" target="_blank" rel="noreferrer">{{.TelegramBotLink}}</a></div>{{end}}
-              {{if .MAXBotLink}}<div><strong>{{index $.I18N "connectors.table.max_bot_link"}}:</strong> <a href="{{.MAXBotLink}}" target="_blank" rel="noreferrer">{{.MAXBotLink}}</a></div>{{end}}
-              {{if .MAXStartCommand}}<div><strong>{{index $.I18N "connectors.table.max_start_command"}}:</strong> <code>{{.MAXStartCommand}}</code></div>{{end}}
+            <td class="link-cell channel-cell">{{if .ChannelURL}}<a href="{{.ChannelURL}}" target="_blank" rel="noreferrer">{{.ChannelURL}}</a>{{else}}—{{end}}</td>
+            <td class="link-cell">
+              {{if or .OfferURL .PrivacyURL}}
+              <details class="link-group">
+                <summary class="link-summary">{{index $.I18N "connectors.table.open_link"}}</summary>
+                <div class="link-stack">
+                  {{if .OfferURL}}<div><small>{{index $.I18N "connectors.table.offer"}}</small><a href="{{.OfferURL}}" target="_blank" rel="noreferrer">{{.OfferURL}}</a></div>{{end}}
+                  {{if .PrivacyURL}}<div><small>{{index $.I18N "connectors.table.privacy"}}</small><a href="{{.PrivacyURL}}" target="_blank" rel="noreferrer">{{.PrivacyURL}}</a></div>{{end}}
+                </div>
+              </details>
+              {{else}}—{{end}}
+            </td>
+            <td class="link-cell">
+              {{if or .TelegramBotLink .MAXBotLink .MAXStartCommand}}
+              <details class="link-group">
+                <summary class="link-summary">{{index $.I18N "connectors.table.bot_open"}}</summary>
+                <div class="link-stack">
+                  {{if .TelegramBotLink}}<div><small>{{index $.I18N "connectors.table.telegram_bot_link"}}</small><a href="{{.TelegramBotLink}}" target="_blank" rel="noreferrer">{{.TelegramBotLink}}</a></div>{{end}}
+                  {{if .MAXBotLink}}<div><small>{{index $.I18N "connectors.table.max_bot_link"}}</small><a href="{{.MAXBotLink}}" target="_blank" rel="noreferrer">{{.MAXBotLink}}</a></div>{{end}}
+                  {{if .MAXStartCommand}}<div><small>{{index $.I18N "connectors.table.max_start_command"}}</small><code>{{.MAXStartCommand}}</code></div>{{end}}
+                  {{if .ChatID}}<div><small>{{index $.I18N "connectors.table.chat"}}</small><code>{{.ChatID}}</code></div>{{end}}
+                </div>
+              </details>
+              {{else}}—{{end}}
             </td>
             <td class="status-cell"><span class="badge {{.ActiveClass}}">{{.ActiveLabel}}</span></td>
             <td class="actions">
@@ -279,6 +337,8 @@
     if (!form) return;
     const chat = form.querySelector("#chat_id");
     const channel = form.querySelector("#channel_url");
+    const periodMode = form.querySelector("#period_mode");
+    const periodFields = form.querySelectorAll("[data-period-field]");
     if (!chat || !channel) return;
 
     const message = "Заполните Chat ID или Channel URL";
@@ -296,6 +356,20 @@
 
     chat.addEventListener("input", syncValidity);
     channel.addEventListener("input", syncValidity);
+    const syncPeriodFields = () => {
+      if (!periodMode) return;
+      periodFields.forEach((field) => {
+        const active = field.getAttribute("data-period-field") === periodMode.value;
+        field.hidden = !active;
+        field.querySelectorAll("input").forEach((input) => {
+          input.disabled = !active;
+        });
+      });
+    };
+    if (periodMode) {
+      periodMode.addEventListener("change", syncPeriodFields);
+      syncPeriodFields();
+    }
     form.addEventListener("submit", function () {
       syncValidity();
     });

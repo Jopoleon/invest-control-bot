@@ -1,8 +1,10 @@
 -- +migrate Up
 
--- Allow explicit short-lived connector periods for payment and recurring smoke
--- tests without replacing the default day-based production period.
-ALTER TABLE connectors
-    ADD COLUMN test_period_seconds INT NOT NULL DEFAULT 0;
+-- Historical no-op.
+-- Short connector periods are now modeled by canonical connectors.period_mode = duration
+-- together with connectors.period_seconds. This migration name is retained so
+-- existing schema_migrations rows remain valid and fresh bootstrap stays linear.
 
-COMMENT ON COLUMN connectors.test_period_seconds IS 'Optional short-lived test override in seconds. Example: 900 for 15m or 90 for 90s. Value 0 keeps normal day-based period_days semantics.';
+-- +migrate Down
+
+-- Historical no-op.

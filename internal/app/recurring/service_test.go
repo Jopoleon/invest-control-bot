@@ -54,12 +54,13 @@ func TestShouldTriggerScheduledRebill_SkipsWhenPendingExists(t *testing.T) {
 	now := time.Now().UTC()
 
 	if err := st.CreateConnector(ctx, domain.Connector{
-		StartPayload: "in-pending-rebill",
-		Name:         "pending-rebill",
-		PriceRUB:     500,
-		PeriodDays:   30,
-		IsActive:     true,
-		CreatedAt:    now,
+		StartPayload:  "in-pending-rebill",
+		Name:          "pending-rebill",
+		PriceRUB:      500,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 30 * 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     now,
 	}); err != nil {
 		t.Fatalf("CreateConnector err=%v", err)
 	}
@@ -98,13 +99,13 @@ func TestShouldTriggerScheduledRebill_UsesShortTestPeriodWindows(t *testing.T) {
 	now := time.Now().UTC()
 
 	if err := st.CreateConnector(ctx, domain.Connector{
-		StartPayload:      "in-short-rebill-window",
-		Name:              "short-window",
-		PriceRUB:          500,
-		PeriodDays:        30,
-		TestPeriodSeconds: 120,
-		IsActive:          true,
-		CreatedAt:         now,
+		StartPayload:  "in-short-rebill-window",
+		Name:          "short-window",
+		PriceRUB:      500,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 120,
+		IsActive:      true,
+		CreatedAt:     now,
 	}); err != nil {
 		t.Fatalf("CreateConnector err=%v", err)
 	}
@@ -168,6 +169,45 @@ func TestShouldTriggerScheduledRebill_UsesShortTestPeriodWindows(t *testing.T) {
 	}
 }
 
+func TestShouldTriggerScheduledRebill_DisabledForFixedDeadline(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Now().UTC()
+	fixedEndsAt := now.Add(24 * time.Hour)
+
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload: "in-fixed-deadline",
+		Name:         "campaign",
+		PriceRUB:     500,
+		PeriodMode:   domain.ConnectorPeriodModeFixedDeadline,
+		FixedEndsAt:  &fixedEndsAt,
+		IsActive:     true,
+		CreatedAt:    now,
+	}); err != nil {
+		t.Fatalf("CreateConnector err=%v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-fixed-deadline")
+	if err != nil || !found {
+		t.Fatalf("GetConnectorByStartPayload found=%v err=%v", found, err)
+	}
+
+	service := &Service{Store: st}
+	ok, err := service.ShouldTriggerScheduledRebill(ctx, domain.Subscription{
+		ID:             1,
+		UserID:         42,
+		ConnectorID:    connector.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		EndsAt:         fixedEndsAt,
+	}, now)
+	if err != nil {
+		t.Fatalf("ShouldTriggerScheduledRebill err=%v", err)
+	}
+	if ok {
+		t.Fatal("ShouldTriggerScheduledRebill=true want false for fixed deadline")
+	}
+}
+
 func TestProcessCancelRequest_DisablesAutopayAndNotifiesUser(t *testing.T) {
 	ctx := context.Background()
 	st := memory.New()
@@ -178,12 +218,13 @@ func TestProcessCancelRequest_DisablesAutopayAndNotifiesUser(t *testing.T) {
 		t.Fatalf("GetOrCreateUserByMessenger err=%v", err)
 	}
 	if err := st.CreateConnector(ctx, domain.Connector{
-		StartPayload: "in-cancel-test",
-		Name:         "Tariff",
-		PriceRUB:     3200,
-		PeriodDays:   30,
-		IsActive:     true,
-		CreatedAt:    now,
+		StartPayload:  "in-cancel-test",
+		Name:          "Tariff",
+		PriceRUB:      3200,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 30 * 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     now,
 	}); err != nil {
 		t.Fatalf("CreateConnector err=%v", err)
 	}

@@ -114,17 +114,30 @@ func botSubscriptionOverviewLines(sub domain.Subscription, connector domain.Conn
 }
 
 func botConnectorPeriodLabel(connector domain.Connector) string {
-	if connector.TestPeriodSeconds > 0 {
-		if connector.TestPeriodSeconds%60 == 0 {
-			return fmt.Sprintf("%d мин.", connector.TestPeriodSeconds/60)
-		}
-		return fmt.Sprintf("%d сек.", connector.TestPeriodSeconds)
+	if fixedEndsAt, ok := connector.FixedDeadline(); ok {
+		return "до " + fixedEndsAt.In(time.Local).Format("02.01.2006 15:04")
 	}
-	periodDays := connector.PeriodDays
-	if periodDays <= 0 {
-		periodDays = 30
+	if months, ok := connector.CalendarMonthsPeriod(); ok {
+		return fmt.Sprintf("%d мес.", months)
 	}
-	return fmt.Sprintf("%d дн.", periodDays)
+	if duration, ok := connector.DurationPeriod(); ok {
+		return formatBotDurationLabel(duration)
+	}
+	return "30 дн."
+}
+
+func formatBotDurationLabel(duration time.Duration) string {
+	seconds := int64(duration / time.Second)
+	switch {
+	case seconds%(24*60*60) == 0:
+		return fmt.Sprintf("%d дн.", seconds/(24*60*60))
+	case seconds%(60*60) == 0:
+		return fmt.Sprintf("%d ч.", seconds/(60*60))
+	case seconds%60 == 0:
+		return fmt.Sprintf("%d мин.", seconds/60)
+	default:
+		return fmt.Sprintf("%d сек.", seconds)
+	}
 }
 
 func botPaymentHistoryLines(payment domain.Payment) []string {

@@ -280,7 +280,7 @@
       <span class="section-kicker">{{index .I18N "users.detail.profile"}}</span>
     </div>
     <h1>
-      {{if .User.FullName}}{{.User.FullName}}{{else if .User.TelegramUsername}}{{.User.TelegramUsername}}{{else}}{{.User.UserID}}{{end}}
+      {{.User.DisplayName}}
     </h1>
     <p class="hero-subtitle">
       Операционная карточка пользователя: профиль, подписки, платежи и история действий в одном месте.
@@ -290,16 +290,14 @@
         <small>{{index .I18N "users.table.user_id"}}</small>
         <strong class="mono">{{.User.UserID}}</strong>
       </div>
-      {{if .User.HasTelegram}}
       <div class="hero-tag">
-        <small>{{index .I18N "users.table.telegram_id"}}</small>
-        <strong class="mono">{{.User.TelegramID}}</strong>
+        <small>{{index .I18N "users.detail.primary_account"}}</small>
+        <strong class="mono">{{.User.PrimaryAccount}}</strong>
       </div>
       <div class="hero-tag">
-        <small>{{index .I18N "users.table.telegram_username"}}</small>
-        <strong>{{.User.TelegramUsername}}</strong>
+        <small>{{index .I18N "users.detail.linked_accounts"}}</small>
+        <strong>{{len .User.LinkedAccounts}}</strong>
       </div>
-      {{end}}
       <div class="hero-tag">
         <small>{{index .I18N "users.table.autopay"}}</small>
         <strong><span class="badge {{.User.AutoPayClass}}">{{.User.AutoPay}}</span></strong>
@@ -391,6 +389,7 @@
       <div class="action-card">
         <h4>{{index .I18N "users.actions.message"}}</h4>
         {{if .User.CanDirectMessage}}
+        <p class="action-note">{{index .I18N "users.actions.message_target"}} <span class="mono">{{.User.DirectMessageTarget}}</span></p>
         <form method="POST" action="{{.MessageActionURL}}">
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
           <input type="hidden" name="user_id" value="{{.User.UserID}}">
@@ -407,7 +406,7 @@
         {{if .AutopayCancelURL}}
         <div style="margin-top: 1rem; display: grid; gap: 0.75rem;">
           <a href="{{.AutopayCancelURL}}" target="_blank" rel="noreferrer" role="button" class="secondary">{{index .I18N "users.actions.autopay_cancel_page"}}</a>
-          <small>{{index .I18N "users.actions.autopay_cancel_hint"}}</small>
+          <small>{{index .I18N "users.actions.autopay_cancel_hint"}} {{index .I18N "users.actions.autopay_cancel_transport"}} <span class="mono">{{index .I18N "common.messenger.telegram"}}</span>.</small>
         </div>
         {{end}}
       </div>
@@ -488,14 +487,26 @@
         <small>{{index .I18N "users.table.user_id"}}</small>
         <strong class="mono">{{.User.UserID}}</strong>
       </div>
-      {{if .User.HasTelegram}}
       <div class="profile-card">
-        <small>{{index .I18N "users.table.telegram_id"}}</small>
-        <span class="mono">{{.User.TelegramID}}</span>
+        <small>{{index .I18N "users.detail.primary_account"}}</small>
+        <span class="mono">{{.User.PrimaryAccount}}</span>
       </div>
       <div class="profile-card">
-        <small>{{index .I18N "users.table.telegram_username"}}</small>
-        <span>{{.User.TelegramUsername}}</span>
+        <small>{{index .I18N "users.detail.linked_accounts"}}</small>
+        <span>
+          {{if .User.LinkedAccounts}}
+            {{range .User.LinkedAccounts}}<div class="mono">{{.Display}}</div>{{end}}
+          {{else}}—{{end}}
+        </span>
+      </div>
+      <div class="profile-card">
+        <small>{{index .I18N "users.actions.message"}}</small>
+        <span>{{if .User.CanDirectMessage}}<span class="mono">{{.User.DirectMessageTarget}}</span>{{else}}—{{end}}</span>
+      </div>
+      {{if .AutopayCancelURL}}
+      <div class="profile-card">
+        <small>{{index .I18N "users.actions.autopay_cancel_page"}}</small>
+        <span><a href="{{.AutopayCancelURL}}" target="_blank" rel="noreferrer">{{index .I18N "common.open"}}</a></span>
       </div>
       {{end}}
       <div class="profile-card">

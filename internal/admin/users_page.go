@@ -2,6 +2,7 @@ package admin
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -48,21 +49,41 @@ func (h *Handler) usersPage(w http.ResponseWriter, r *http.Request) {
 
 	data.Users = make([]userView, 0, len(users))
 	for _, user := range users {
+		// TODO: Replace this bounded N+1 lookup with a bulk account projection
+		// when the admin user list store query becomes fully messenger-neutral.
+		accounts, err := h.store.ListUserMessengerAccounts(r.Context(), user.UserID)
+		if err != nil {
+			data.Notice = t(lang, "users.load_error")
+			h.renderer.render(w, "users.html", data)
+			return
+		}
+		accountPresentation := buildMessengerAccountPresentation(lang, accounts)
 		autoPayLabel, autoPayClass := autoPayBadge(lang, user.AutoPayEnabled, user.HasAutoPaySettings)
 		data.Users = append(data.Users, userView{
-			UserID:           user.UserID,
-			TelegramID:       user.TelegramID,
-			TelegramUsername: user.TelegramUsername,
-			HasTelegram:      user.TelegramID > 0,
-			FullName:         user.FullName,
-			Phone:            user.Phone,
-			Email:            user.Email,
-			AutoPay:          autoPayLabel,
-			AutoPayClass:     autoPayClass,
-			UpdatedAt:        user.UpdatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
-			DetailURL:        buildUserDetailURL(lang, user.UserID),
+			UserID:              user.UserID,
+			DisplayName:         coalesceUserDisplayName(user.FullName, accountPresentation.DisplayName, user.UserID),
+			PrimaryAccount:      accountPresentation.PrimaryAccount,
+			LinkedAccounts:      accountPresentation.Accounts,
+			HasTelegramIdentity: accountPresentation.HasTelegramIdentity,
+			FullName:            user.FullName,
+			Phone:               user.Phone,
+			Email:               user.Email,
+			AutoPay:             autoPayLabel,
+			AutoPayClass:        autoPayClass,
+			UpdatedAt:           user.UpdatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
+			DetailURL:           buildUserDetailURL(lang, user.UserID),
 		})
 	}
 
 	h.renderer.render(w, "users.html", data)
+}
+
+func coalesceUserDisplayName(fullName, fallback string, userID int64) string {
+	if strings.TrimSpace(fullName) != "" {
+		return strings.TrimSpace(fullName)
+	}
+	if strings.TrimSpace(fallback) != "" {
+		return strings.TrimSpace(fallback)
+	}
+	return "#" + strings.TrimSpace(strconv.FormatInt(userID, 10))
 }

@@ -145,13 +145,14 @@ func seedAutopayConnector(t *testing.T, ctx context.Context, st *memory.Store, p
 	t.Helper()
 
 	if err := st.CreateConnector(ctx, domain.Connector{
-		StartPayload: payload,
-		Name:         name,
-		ChatID:       "@test_channel",
-		PriceRUB:     2300,
-		PeriodDays:   30,
-		IsActive:     true,
-		CreatedAt:    time.Now().UTC(),
+		StartPayload:  payload,
+		Name:          name,
+		ChatID:        "@test_channel",
+		PriceRUB:      2300,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 30 * 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     time.Now().UTC(),
 	}); err != nil {
 		t.Fatalf("create connector: %v", err)
 	}

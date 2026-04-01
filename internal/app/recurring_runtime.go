@@ -224,15 +224,28 @@ func recurringCheckoutPrimaryCTA(botUsername string) string {
 }
 
 func appConnectorPeriodLabel(connector domain.Connector) string {
-	if connector.TestPeriodSeconds > 0 {
-		if connector.TestPeriodSeconds%60 == 0 {
-			return strconv.Itoa(connector.TestPeriodSeconds/60) + " мин."
-		}
-		return strconv.Itoa(connector.TestPeriodSeconds) + " сек."
+	if fixedEndsAt, ok := connector.FixedDeadline(); ok {
+		return "до " + fixedEndsAt.In(time.Local).Format("02.01.2006 15:04")
 	}
-	periodDays := connector.PeriodDays
-	if periodDays <= 0 {
-		periodDays = 30
+	if months, ok := connector.CalendarMonthsPeriod(); ok {
+		return strconv.Itoa(months) + " мес."
 	}
-	return strconv.Itoa(periodDays) + " дн."
+	if duration, ok := connector.DurationPeriod(); ok {
+		return formatAppDurationLabel(duration)
+	}
+	return "30 дн."
+}
+
+func formatAppDurationLabel(duration time.Duration) string {
+	seconds := int64(duration / time.Second)
+	switch {
+	case seconds%(24*60*60) == 0:
+		return strconv.FormatInt(seconds/(24*60*60), 10) + " дн."
+	case seconds%(60*60) == 0:
+		return strconv.FormatInt(seconds/(60*60), 10) + " ч."
+	case seconds%60 == 0:
+		return strconv.FormatInt(seconds/60, 10) + " мин."
+	default:
+		return strconv.FormatInt(seconds, 10) + " сек."
+	}
 }

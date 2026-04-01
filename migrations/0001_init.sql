@@ -17,8 +17,14 @@ CREATE TABLE connectors (
     channel_url TEXT NOT NULL DEFAULT '',
     -- Price in RUB stored as whole integer amount. Example: 2300.
     price_rub BIGINT NOT NULL,
-    -- Billing period in days. Example: 30.
-    period_days INT NOT NULL,
+    -- Connector period policy discriminator. Example: duration, calendar_months, fixed_deadline.
+    period_mode TEXT NOT NULL DEFAULT 'duration',
+    -- Relative duration in seconds for period_mode=duration. Example: 2592000 for 30 days or 120 for 2 minutes.
+    period_seconds BIGINT NOT NULL DEFAULT 0,
+    -- Calendar month count for period_mode=calendar_months. Example: 1 or 3.
+    period_months INT NOT NULL DEFAULT 0,
+    -- Absolute access deadline for period_mode=fixed_deadline. Example: 2026-12-31T23:59:59Z.
+    fixed_ends_at TIMESTAMPTZ NULL,
     -- Optional connector-specific offer URL override. Example: https://site.example/oferta/8.
     offer_url TEXT NOT NULL DEFAULT '',
     -- Optional connector-specific privacy URL override. Example: https://site.example/policy/9.
@@ -37,11 +43,16 @@ COMMENT ON COLUMN connectors.description IS 'Optional marketing or support descr
 COMMENT ON COLUMN connectors.chat_id IS 'Transport-specific access target or join key. Example: @invest_channel or -1001234567890.';
 COMMENT ON COLUMN connectors.channel_url IS 'Explicit public channel link shown to user after payment. Example: https://web.max.ru/-72598909498032.';
 COMMENT ON COLUMN connectors.price_rub IS 'Price in RUB stored as whole integer amount. Example: 2300.';
-COMMENT ON COLUMN connectors.period_days IS 'Billing period in days. Example: 30.';
+COMMENT ON COLUMN connectors.period_mode IS 'Connector period policy discriminator. Example: duration, calendar_months, fixed_deadline.';
+COMMENT ON COLUMN connectors.period_seconds IS 'Relative duration in seconds for duration mode. Example: 2592000 for 30 days or 120 for 2 minutes.';
+COMMENT ON COLUMN connectors.period_months IS 'Calendar month count for calendar_months mode. Example: 1 or 3.';
+COMMENT ON COLUMN connectors.fixed_ends_at IS 'Absolute access deadline for fixed_deadline mode. Example: 2026-12-31T23:59:59Z.';
 COMMENT ON COLUMN connectors.offer_url IS 'Optional connector-specific offer URL override. Example: https://site.example/oferta/8.';
 COMMENT ON COLUMN connectors.privacy_url IS 'Optional connector-specific privacy URL override. Example: https://site.example/policy/9.';
 COMMENT ON COLUMN connectors.is_active IS 'Soft switch for selling or hiding the connector. Example: TRUE.';
 COMMENT ON COLUMN connectors.created_at IS 'Connector creation timestamp in UTC. Example: 2026-03-27T09:00:00Z.';
+
+CREATE INDEX idx_connectors_period_mode ON connectors (period_mode);
 
 -- users stores one internal person record shared across all linked channels.
 CREATE TABLE users (
