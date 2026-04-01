@@ -2,55 +2,108 @@
 
 ## Project
 
-`invest-control-bot` is a Go backend for paid access to Telegram channels/chats with:
+`invest-control-bot` is a Go backend for paid access to messenger channels with:
 - Telegram bot onboarding and payment flow
 - server-rendered admin panel
 - PostgreSQL storage
-- Robokassa recurring/autopay support
+- Robokassa payment and recurring/autopay support
 - public compliance pages for recurring checkout/cancel
-- ongoing refactor toward multi-messenger support, with MAX as the next channel
+- an ongoing messenger-neutral refactor with MAX already integrated as a second transport
 
-The current codebase is production-oriented, but still in active architectural refactor.
+The codebase is production-oriented and under active refactor. The current product priority is short-period recurring validation on real money without regressing the main Telegram flow.
 
 ## Primary Goals
 
 1. Keep the current Telegram product stable.
-2. Preserve and expand recurring/autopay logic.
-3. Continue refactoring toward messenger-neutral architecture without duplicating Telegram logic.
-4. Increase unit-test coverage while refactoring.
+2. Preserve and debug recurring/autopay logic before expanding product scope.
+3. Continue the messenger-neutral refactor without cloning Telegram business logic into MAX-specific forks.
+4. Add tests together with every non-trivial refactor.
+
+## Fresh Session Bootstrap
+
+For a clean Codex session in this repository:
+- start a new session from the repository root, not by resuming a session that was created in another repo
+- repo-local MCP config lives in `.codex/config.toml`
+- the expected local MCP server is `wsl_local_postgres`
+- the main verification command is:
+```bash
+GOCACHE=/tmp/go-build go test ./...
+```
+
+Useful first checks in a clean session:
+```bash
+git status --short
+GOCACHE=/tmp/go-build go test ./...
+```
+
+Useful recurring/ops logs to recognize quickly:
+- `applying database migrations`
+- `database migrations applied`
+- `short-period rebill scheduler decision`
+- `robokassa rebill request`
+- `robokassa rebill response`
+- `stale pending rebill without callback`
 
 ## Current Architectural State
 
 ### Stable layers
-- `internal/app`: HTTP server, payment callbacks, recurring lifecycle jobs, public pages
+- `internal/app`: HTTP server, payment callbacks, recurring lifecycle jobs, public pages, store bootstrap
 - `internal/admin`: admin panel and sessions
-- `internal/payment`: mock + Robokassa
+- `internal/payment`: mock + Robokassa providers
 - `internal/store/postgres`: primary persistence
-- `internal/store/memory`: local/dev support, lower priority for exhaustive tests
+- `internal/store/memory`: local/dev support and test scenarios
 
-### Messenger refactor status
-- `internal/messenger` already contains transport-neutral outbound and inbound models
+### Messenger-neutral foundation
+- `internal/messenger` contains transport-neutral outbound and inbound models
 - `internal/telegram/client.go` implements the sender contract
-- `internal/bot` no longer depends on Telegram DTOs internally; Telegram update mapping is localized in `internal/bot/update_router.go`
-- internal `user_id` foundation and messenger identities have been introduced in domain/store/migrations
-- `internal/bot` already started using `GetOrCreateUserByMessenger` in registration flow
+- `internal/max` is integrated as a real transport, not a parallel business flow
+- `internal/bot/update_router.go` localizes Telegram/MAX update mapping into internal messenger events
+- internal user identity is `users.id`
+- external messenger identity lives in `user_messenger_accounts`
+- `domain.Payment` and `domain.Subscription` no longer expose `TelegramID`
+- app-level notifications and audit helpers resolve messenger targets through linked accounts by `user_id`
 
-### Still not finished
-- many business records still use `telegram_id` directly:
-  - payments
-  - subscriptions
-  - consents
-  - recurring pages
-  - admin user detail / exports
-- do not try to replace all `telegram_id` references in one pass
-- the correct path is incremental: identity resolution first, downstream foreign-key migration later
- - `audit_events` has already been generalized into actor/target records and no longer assumes Telegram-only user context
+### Connector period model
+The canonical connector period model is already implemented.
+Do not reintroduce legacy duration fields.
+
+Current connector fields:
+- `period_mode`
+  - `duration`
+  - `calendar_months`
+  - `fixed_deadline`
+- `period_seconds`
+- `period_months`
+- `fixed_ends_at`
+
+Implications:
+- short smoke-test periods are ordinary `duration` connectors now
+- `fixed_deadline` is intentionally non-recurring
+- old `period_days` / `test_period_seconds` should stay dead
+
+### Recurring observability state
+Short-period recurring has dedicated timing policy and observability.
+Relevant code:
+- `internal/app/periodpolicy`
+- `internal/app/recurring/service.go`
+- `internal/app/subscriptions/service.go`
+- `internal/app/subscription_lifecycle.go`
+- `internal/payment/robokassa.go`
+
+What exists now:
+- short-duration rebill timing is centralized in `internal/app/periodpolicy`
+- scheduler logs a decision line for each short-period subscription it evaluates
+- Robokassa rebill calls log request and response metadata
+- stale pending rebills are surfaced through warning logs and audit events
+- short-duration expiry/reminder behavior is intentionally different from long-lived production periods
+
+This area is still considered sensitive and must be treated carefully.
 
 ## Repository Map
 
 - `cmd/server` - app entrypoint
 - `api` - Vercel entrypoints
-- `internal/app` - HTTP app, payment handlers, recurring pages, schedulers
+- `internal/app` - HTTP app, payment handlers, recurring pages, schedulers, store bootstrap
 - `internal/admin` - admin panel
 - `internal/bot` - user-facing messenger flow
 - `internal/messenger` - messenger-neutral transport contracts
@@ -60,49 +113,65 @@ The current codebase is production-oriented, but still in active architectural r
 - `internal/domain` - domain model
 - `migrations` - DB schema
 - `docs` - detailed project docs
+- `.codex/config.toml` - repo-local Codex MCP config for clean sessions
 
 ## Critical Business Invariants
 
 ### Payments / subscriptions
-- payment success is confirmed only by provider callback handling, not by redirect pages
+- payment success is confirmed only by provider callback handling, not redirect pages
 - recurring rebill success is confirmed only by provider result callback
 - subscription extension must use the existing business rule from current code: extend from `max(now, current period end)` where applicable
+- a pending rebill must never be treated as a successful renewal
+- stale pending rebills must be visible in logs/audit rather than silently ignored
 
 ### Robokassa recurring
 - recurring is explicit opt-in only
 - no pre-checked recurring consent
 - recurring consent history is stored separately from offer/privacy acceptance
-- disabling autopay must affect the specific subscription, not all subscriptions globally
+- disabling autopay affects the specific subscription, not all subscriptions globally
 - re-enabling autopay is allowed without new payment only when the existing subscription has a recurring-capable parent payment
+- for short-period smoke tests, provider callback visibility is currently the main risk area, not scheduler eligibility alone
 
 ### Public recurring pages
-- `/subscribe/{start_payload}` is a compliance/entry page, not a magic “retrofit recurring onto any old payment” switch
-- `/unsubscribe/{token}` must work for конкретная подписка logic and must not silently disable unrelated subscriptions
+- `/subscribe/{start_payload}` is a compliance/entry page, not a magic retrofit onto arbitrary historical payments
+- `/unsubscribe/{token}` must work for the specific subscription and must not silently disable unrelated subscriptions
 
 ### Messenger architecture
 - do not fork Telegram logic into a second MAX-only business flow
 - keep business logic messenger-neutral
 - adapters should map transport DTOs into internal events and sender contracts
+- admin delivery/actions should stay messenger-neutral unless a transport-specific action is truly unavoidable
 
-## User Identity Refactor Rules
+## Identity Refactor Rules
 
 Current direction:
 - internal user identity is `users.id`
-- external messenger identity is modeled separately
-- Telegram remains supported through `telegram_id`, but it is no longer the long-term canonical identity
-- `user_settings.auto_pay_enabled` has been removed from the runtime model; recurring state is derived from subscriptions and explicit checkout choice
-- `users` runtime/profile model no longer carries `telegram_id` / `telegram_username`; messenger metadata lives in `user_messenger_accounts`
-- postgres `payments` / `subscriptions` writes now align with the clean baseline schema; legacy `telegram_id` is treated as a derived runtime projection resolved through linked Telegram identity
-- `GetLatestSubscriptionByUserConnector` and `DisableAutoPayForActiveSubscriptions` are now `user_id`-first store APIs; bot/app runtime paths should prefer resolved internal users over Telegram IDs for ownership and recurring-state changes
-- app-level notification/audit helpers now resolve messenger targets through linked accounts by `user_id`; temporary preferred messenger ids may still be passed from mixed-mode records, but the helper contract is no longer built around `legacyExternalID`
-- `domain.Payment` and `domain.Subscription` no longer expose `TelegramID`; any caller that needs Telegram projection must resolve it through linked messenger identities
-- `internal/bootstrap` has been removed; store opening/migration bootstrap now lives directly in `internal/app/store_open.go`
+- messenger identity is modeled separately
+- Telegram remains supported but is not the long-term canonical identity
+- `users` runtime/profile model no longer stores messenger metadata inline
+- linked account resolution should happen in one place and then flow through `user_id`
+- mixed-mode compatibility still exists in some read paths and public/provider flows
 
 When changing code:
-1. Prefer using store methods that resolve users through messenger identity.
-2. Keep existing Telegram behavior unchanged.
-3. Avoid mass schema rewrites of payments/subscriptions until identity resolution is fully centralized.
-4. If a step only introduces new infrastructure, wire at least one real production path to it, so it does not remain dead code.
+1. Prefer store methods that resolve users through messenger identity.
+2. Keep existing Telegram behavior unchanged unless the bug/feature explicitly requires changing it.
+3. Do not attempt a repo-wide telegram-id purge in one pass.
+4. If a step introduces new infrastructure, wire at least one production path to it immediately.
+
+## Admin/UI State
+
+Admin is now mostly messenger-neutral across:
+- users
+- user detail
+- billing
+- churn
+- events
+- connectors table
+- exports
+- help text
+
+Do not reintroduce Telegram-first labels or mandatory Telegram-only assumptions in new admin work.
+Transport-specific actions may still exist, but they should be clearly marked as such.
 
 ## Testing Policy
 
@@ -113,71 +182,88 @@ Priority for tests:
 2. `internal/app`
 3. `internal/store/postgres`
 4. `internal/payment`
-5. `internal/store/memory` only when useful for workflow coverage, not as a primary target
+5. `internal/store/memory` only when it adds workflow coverage
 
 Preferred test style:
 - unit tests around use-case logic
 - sqlmock tests for postgres store methods
-- avoid brittle order-only assertions when behavior does not guarantee strict order
-- prefer scenario tests over tiny parser-only tests when the business branch is non-trivial
+- scenario tests for non-trivial business branches
+- avoid brittle order-only assertions unless order is a real contract
 
-Useful command:
+Main command:
 ```bash
 GOCACHE=/tmp/go-build go test ./...
 ```
 
-Default `go test ./...` should also stay green.
+Default `go test ./...` should stay green too.
 
-## Comment Policy
+## Comment / TODO Policy
 
 Comments are required where intent is not obvious:
 - transport boundaries
-- tricky recurring/autopay rules
+- recurring/autopay rules
 - identity resolution logic
 - non-obvious invariants
-- package-level `doc.go` comments for the main `internal/*` packages must be kept in sync with the actual role and boundaries of each package
+- package-level `doc.go` comments for the main `internal/*` packages
 
 Do not add noise comments for trivial assignments.
-When logic changes, comments must be updated in the same change.
-If a place remains intentionally incomplete, risky, environment-specific, or still under discussion, leave a searchable `TODO:` comment near the code instead of keeping the assumption implicit. This is especially important for payment, recurring, subscription duration, and messenger-delivery behavior.
+When logic changes, comments must change with it.
+
+If a place remains intentionally incomplete, risky, environment-specific, or still under discussion, leave a searchable `TODO:` comment nearby instead of keeping the assumption implicit.
+This is especially important for:
+- payment callbacks
+- recurring timing
+- short-period smoke-test behavior
+- subscription expiry/rebill coordination
+- messenger delivery behavior
 
 ## DB / Migration Rules
 
 - PostgreSQL is the source of truth
 - do not introduce schema changes without a migration
-- for risky schema transitions, prefer additive migrations first
-- keep backward-compatible read/write paths during migration windows whenever possible
-- clean-schema pass has already been executed for the current repository state:
-  - historical additive migrations were squashed into a fresh baseline
-  - `migrations/0001_init.sql` now represents the current canonical bootstrap schema
-  - local PostgreSQL was reset and the clean bootstrap was verified from an empty database
-  - future schema changes should continue from this new baseline using additive migrations
+- prefer additive migrations for risky transitions
+- keep compatibility windows only when they are actually needed
+- do not resurrect legacy connector period columns or legacy schema assumptions
 
-Current important migration baseline:
-- `0001_init.sql`
-  - contains the current canonical schema for connectors, users, messenger accounts, payments, subscriptions, recurring data and admin sessions
-  - reflects the post-refactor clean bootstrap state, not the historical step-by-step evolution
+Current baseline:
+- `migrations/0001_init.sql` is the canonical bootstrap schema
+- later migrations continue from that clean baseline
+- `internal/app/store_open.go` is responsible for store opening and startup migration logging
 
-Any further migration of payments/subscriptions from `telegram_id` to `user_id` should be staged, not done in one shot.
+Important operational note:
+- changing the contents of an already-applied historical migration does not upgrade an existing database
+- for existing databases, only new migration versions matter
+
+## Deploy / Ops Notes
+
+Current deploy script behavior:
+- `scripts/deploy_vps.sh` defaults to simple deploy mode
+- default behavior overwrites the live binary in `current/`
+- release-style deploy is opt-in through `DEPLOY_LAYOUT=releases`
+- service status/log printing is opt-in through flags
+
+Current payment-mode behavior:
+- bot payment-link text reflects the real provider mode now
+- production Robokassa should explicitly use `ROBOKASSA_IS_TEST_MODE=false`
 
 ## Docs To Keep In Sync
 
 When you make meaningful product or architecture changes, update the relevant docs:
+- `README.md`
+- `IMPLEMENTATION_PLAN.md`
+- `docs/PROD_BUGFIX_TRACK_2026-04-01.md`
+- `docs/MAX_IMPLEMENTATION_PLAN.md`
+- `docs/APP_REFACTOR_PLAN.md`
+- `docs/REFACTORING_AND_TEST_PLAN.md`
+- `docs/CONNECTOR_PERIOD_MODEL_PLAN.md`
+- `docs/PAYMENTS_FLOW_RU.md`
+- `docs/robokassa-recurring-checklist.md`
 
-- `README.md` - current operational/project summary
-- `IMPLEMENTATION_PLAN.md` - main working roadmap and progress log
-- `docs/MAX_IMPLEMENTATION_PLAN.md` - MAX-specific track
-- `docs/APP_REFACTOR_PLAN.md` - current cycle plan for reducing and restructuring `internal/app`
-- `docs/REFACTORING_AND_TEST_PLAN.md` - engineering backlog for tests, deduplication and safe refactors
-- `docs/CONNECTOR_PERIOD_MODEL_PLAN.md` - target connector period model and migration path for duration/month/deadline semantics
-- `docs/PAYMENTS_FLOW_RU.md` - payment/autopay explanation
-- `docs/robokassa-recurring-checklist.md` - recurring operational/legal checklist
-
-If the change affects recurring behavior, update docs immediately.
+If a change affects recurring behavior, update recurring docs immediately.
 
 ## Known Practical Constraints
 
-- `vendor/` exists and can drift; if default `go test ./...` breaks because of vendor mode, resync with:
+- `vendor/` exists and can drift; if `go test ./...` breaks because of vendor mode, resync with:
 ```bash
 GOCACHE=/tmp/go-build go mod vendor
 ```
@@ -186,33 +272,39 @@ GOCACHE=/tmp/go-build go mod vendor
   - offer
   - privacy
   - user agreement
+- a clean local/prod recurring smoke test is not valid unless the legal docs path is configured correctly
 
-## Current Recommended Next Steps
+## Current Top Priorities
 
-If continuing implementation from current state, the next sensible sequence is:
-
-1. Continue replacing direct Telegram user lookups in app/admin flows with centralized identity resolution.
-2. Add tests for every such refactor step.
-3. Only after that, start migrating business records toward `user_id`.
-4. Then implement the MAX adapter on top of the messenger-neutral bot core.
+1. Validate and debug real-money short-period recurring end-to-end.
+2. Improve provider/callback visibility around rebill attempts before making product-level assumptions.
+3. Continue the remaining identity cleanup incrementally.
+4. Only after that, keep pushing MAX parity on top of the messenger-neutral core.
 
 ## Known Follow-Ups To Preserve
 
-- Connector admin now supports an explicit short-lived test period override (`90s`, `15m`) for recurring/autopay smoke tests.
-- This should not silently leak into production defaults.
-- Keep explicit `TODO:` markers near subscription period calculation and recurring lifecycle code until reminder/expiry/rebill UX is fully validated for these short test periods.
+- short-period connectors are intentional and currently used for live recurring smoke tests
+- short-period timing policy is centralized in `internal/app/periodpolicy`
+- keep explicit `TODO:` markers near short-period recurring code until repeated live-money validation confirms the behavior
+- stale pending rebills should remain observable through both logs and audit events
+- startup migration logs are intentionally explicit and should stay that way
 
 ## Useful Files
 
+- `internal/app/periodpolicy/policy.go`
+- `internal/app/recurring/service.go`
+- `internal/app/subscriptions/service.go`
+- `internal/app/subscription_lifecycle.go`
+- `internal/app/store_open.go`
+- `internal/payment/robokassa.go`
 - `internal/bot/update_router.go`
 - `internal/bot/user_identity.go`
 - `internal/messenger/types.go`
 - `internal/messenger/events.go`
 - `internal/store/postgres/users.go`
-- `internal/store/memory/store.go`
 - `migrations/0001_init.sql`
-- `internal/app/store_open.go`
+- `.codex/config.toml`
 - `IMPLEMENTATION_PLAN.md`
-- `docs/MAX_IMPLEMENTATION_PLAN.md`
-- `docs/APP_REFACTOR_PLAN.md`
-- `docs/REFACTORING_AND_TEST_PLAN.md`
+- `docs/PROD_BUGFIX_TRACK_2026-04-01.md`
+- `docs/CONNECTOR_PERIOD_MODEL_PLAN.md`
+- `docs/robokassa-recurring-checklist.md`

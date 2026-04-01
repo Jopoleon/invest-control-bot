@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 	tgbot "github.com/go-telegram/bot"
@@ -228,6 +229,32 @@ func (c *Client) RemoveChatMember(ctx context.Context, chatID, userID int64) err
 		OnlyIfBanned: true,
 	})
 	return err
+}
+
+// CreateSingleUseInviteLink returns a one-time Telegram invite link for the target chat.
+func (c *Client) CreateSingleUseInviteLink(ctx context.Context, chatID int64, name string, expireAt time.Time) (string, error) {
+	if !c.enabled {
+		slog.Debug("telegram client disabled, skip createSingleUseInviteLink", "chat_id", chatID)
+		return "", nil
+	}
+
+	params := &tgbot.CreateChatInviteLinkParams{
+		ChatID:      chatID,
+		Name:        strings.TrimSpace(name),
+		MemberLimit: 1,
+	}
+	if !expireAt.IsZero() {
+		params.ExpireDate = int(expireAt.UTC().Unix())
+	}
+
+	link, err := c.bot.CreateChatInviteLink(ctx, params)
+	if err != nil {
+		return "", err
+	}
+	if link == nil {
+		return "", nil
+	}
+	return strings.TrimSpace(link.InviteLink), nil
 }
 
 func toTelegramKeyboard(rows [][]messenger.ActionButton) *models.InlineKeyboardMarkup {

@@ -33,6 +33,7 @@ type paymentRuntime struct {
 	telegramBotUsername      string
 	sendUserNotificationFn   func(context.Context, int64, string, messenger.OutgoingMessage) error
 	buildAppTargetAuditEvent func(context.Context, int64, string, int64, string, string, time.Time) domain.AuditEvent
+	buildTelegramAccessLink  func(context.Context, int64, domain.Connector) (string, error)
 	resolvePreferredKindFn   func(context.Context, int64, string) messenger.Kind
 	triggerRebillFn          func(context.Context, int64, string) (rebillResponse, error)
 }
@@ -45,6 +46,7 @@ func (a *application) payments() *paymentRuntime {
 		telegramBotUsername:      a.config.Telegram.BotUsername,
 		sendUserNotificationFn:   a.sendUserNotification,
 		buildAppTargetAuditEvent: a.buildAppTargetAuditEvent,
+		buildTelegramAccessLink:  a.buildTelegramPaymentAccessLink,
 		resolvePreferredKindFn:   a.resolvePreferredMessengerKind,
 		triggerRebillFn:          a.triggerRebill,
 	}
@@ -55,14 +57,15 @@ func (a *application) payments() *paymentRuntime {
 // subscription activation and recurring-failure notification rules directly.
 func (p *paymentRuntime) businessService() *apppayments.Service {
 	return &apppayments.Service{
-		Store:                  p.store,
-		TelegramBotUsername:    p.telegramBotUsername,
-		SuccessChannelHint:     appPaymentSuccessChannelHint,
-		OpenChannelActionLabel: appPaymentActionOpenChannel,
-		MySubscriptionAction:   appPaymentActionMySubscription,
-		FailedRecurringText:    appPaymentFailedRecurringText,
-		FailedRecurringButton:  appPaymentFailedRecurringButton,
-		PaymentSuccessMessage:  appPaymentSuccessMessage,
+		Store:                   p.store,
+		TelegramBotUsername:     p.telegramBotUsername,
+		SuccessChannelHint:      appPaymentSuccessChannelHint,
+		OpenChannelActionLabel:  appPaymentActionOpenChannel,
+		MySubscriptionAction:    appPaymentActionMySubscription,
+		FailedRecurringText:     appPaymentFailedRecurringText,
+		FailedRecurringButton:   appPaymentFailedRecurringButton,
+		PaymentSuccessMessage:   appPaymentSuccessMessage,
+		BuildTelegramAccessLink: p.buildTelegramAccessLink,
 		ResolveConnectorChannel: func(channelURL, chatID string) string {
 			return resolveConnectorChannelURL(channelURL, chatID)
 		},

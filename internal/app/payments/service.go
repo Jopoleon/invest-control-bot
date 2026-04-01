@@ -28,6 +28,7 @@ type Service struct {
 	FailedRecurringText     string
 	FailedRecurringButton   string
 	PaymentSuccessMessage   func(time.Time) string
+	BuildTelegramAccessLink func(context.Context, int64, domain.Connector) (string, error)
 	ResolveConnectorChannel func(string, string) string
 	SendUserNotification    func(context.Context, int64, string, messenger.OutgoingMessage) error
 	BuildTargetAuditEvent   func(context.Context, int64, string, int64, string, string, time.Time) domain.AuditEvent
@@ -110,7 +111,17 @@ func (s *Service) ActivateSuccessfulPayment(ctx context.Context, paymentRow doma
 	}
 	channelURL := ""
 	if connectorExists {
-		channelURL = s.ResolveConnectorChannel(connector.ChannelURL, connector.ChatID)
+		if s.BuildTelegramAccessLink != nil {
+			accessLink, err := s.BuildTelegramAccessLink(ctx, paymentRow.UserID, connector)
+			if err != nil {
+				slog.Error("build telegram access link failed", "error", err, "user_id", paymentRow.UserID, "connector_id", connector.ID, "payment_id", paymentRow.ID)
+			} else if strings.TrimSpace(accessLink) != "" {
+				channelURL = accessLink
+			}
+		}
+		if channelURL == "" {
+			channelURL = s.ResolveConnectorChannel(connector.ChannelURL, connector.ChatID)
+		}
 	}
 	successText := s.PaymentSuccessMessage(endsAt)
 	message := messenger.OutgoingMessage{Text: successText}
