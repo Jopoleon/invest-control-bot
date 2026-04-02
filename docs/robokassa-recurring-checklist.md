@@ -18,6 +18,7 @@ Recurring у Robokassa не считается доступным "по умол
 - Для recurring используем self-integration сценарий:
   - первый платеж с `Recurring=true`
   - повторные списания через `Merchant/Recurring`
+  - в `PreviousInvoiceID` нужно передавать номер первого recurring-capable платежа в серии, а не предыдущего child rebill
   - успешность списания подтверждается только через `ResultURL` / `ResultUrl2`
 - Ответ `OK+InvoiceID` от `Merchant/Recurring` сам по себе не означает успешную оплату.
 - Поддержка Robokassa попросила:

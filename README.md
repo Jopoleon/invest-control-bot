@@ -337,6 +337,7 @@ GOCACHE=/tmp/go-build go test ./...
   - scheduler для retry-окон `T-3 / T-2 / T-1`
   - уведомления о failed recurring payment с fallback на ручную оплату
   - operator tools в админке: recurring health, retry state, ручной `rebill`
+- Для Robokassa self-integration `PreviousInvoiceID` в `Merchant/Recurring` должен ссылаться на первый recurring-capable платеж в серии, а не на предыдущий child rebill.
 - Для production readiness нужно держать в актуальном состоянии юридические тексты и checkout/cancel UX.
 - Практический checklist находится в `docs/robokassa-recurring-checklist.md`.
 

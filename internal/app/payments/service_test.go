@@ -106,10 +106,14 @@ func TestActivateSuccessfulPayment_UsesTelegramAccessLinkWhenAvailable(t *testin
 	}
 
 	var sent messenger.OutgoingMessage
+	var linkUserID int64
+	var linkConnector domain.Connector
 	service := &Service{
 		Store:                 st,
 		PaymentSuccessMessage: func(time.Time) string { return "ok" },
-		BuildTelegramAccessLink: func(context.Context, int64, domain.Connector) (string, error) {
+		BuildTelegramAccessLink: func(_ context.Context, userID int64, accessConnector domain.Connector) (string, error) {
+			linkUserID = userID
+			linkConnector = accessConnector
 			return "https://t.me/+private_one_time_link", nil
 		},
 		ResolveConnectorChannel: func(a, b string) string { return a },
@@ -129,6 +133,12 @@ func TestActivateSuccessfulPayment_UsesTelegramAccessLinkWhenAvailable(t *testin
 
 	if len(sent.Buttons) == 0 || len(sent.Buttons[0]) == 0 {
 		t.Fatalf("buttons are empty")
+	}
+	if linkUserID != paymentRow.UserID {
+		t.Fatalf("link user id=%d want=%d", linkUserID, paymentRow.UserID)
+	}
+	if linkConnector.ID != connector.ID || linkConnector.ChatID != connector.ChatID {
+		t.Fatalf("connector passed to access link builder = %+v want id=%d chat_id=%q", linkConnector, connector.ID, connector.ChatID)
 	}
 	if got := sent.Buttons[0][0].URL; got != "https://t.me/+private_one_time_link" {
 		t.Fatalf("access link url=%q want telegram invite link", got)

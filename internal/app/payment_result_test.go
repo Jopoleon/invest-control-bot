@@ -823,6 +823,125 @@ func TestPaymentRebill_CreatesPendingRecurringPayment(t *testing.T) {
 	}
 }
 
+func TestPaymentRebill_UsesRootRecurringInvoiceAsPreviousInvoiceID(t *testing.T) {
+	t.Helper()
+
+	const (
+		adminToken = "admin-secret"
+		pass2      = "test-pass2"
+		rootInv    = "1000010001"
+		childInv   = "1000010002"
+	)
+
+	ctx := context.Background()
+	st := memory.New()
+	connectorID := seedConnector(t, ctx, st, "in-rebill-root-parent")
+
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPaid,
+		Token:          rootInv,
+		UserID:         seedTelegramUser(t, ctx, st, 778002),
+		ConnectorID:    connectorID,
+		AmountRUB:      2322,
+		AutoPayEnabled: true,
+		CreatedAt:      time.Now().UTC().Add(-48 * time.Hour),
+		UpdatedAt:      time.Now().UTC().Add(-48 * time.Hour),
+	})
+	rootPayment, found, err := st.GetPaymentByToken(ctx, rootInv)
+	if err != nil || !found {
+		t.Fatalf("root payment not found: found=%v err=%v", found, err)
+	}
+
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:          "robokassa",
+		ProviderPaymentID: "robokassa:" + childInv,
+		Status:            domain.PaymentStatusPaid,
+		Token:             childInv,
+		UserID:            rootPayment.UserID,
+		ConnectorID:       rootPayment.ConnectorID,
+		ParentPaymentID:   rootPayment.ID,
+		AmountRUB:         2322,
+		AutoPayEnabled:    true,
+		CreatedAt:         time.Now().UTC().Add(-24 * time.Hour),
+		PaidAt:            func() *time.Time { v := time.Now().UTC().Add(-24 * time.Hour); return &v }(),
+		UpdatedAt:         time.Now().UTC().Add(-24 * time.Hour),
+	})
+	childPayment, found, err := st.GetPaymentByToken(ctx, childInv)
+	if err != nil || !found {
+		t.Fatalf("child payment not found: found=%v err=%v", found, err)
+	}
+
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         childPayment.UserID,
+		ConnectorID:    childPayment.ConnectorID,
+		PaymentID:      childPayment.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       time.Now().UTC().Add(-24 * time.Hour),
+		EndsAt:         time.Now().UTC().Add(24 * time.Hour),
+		CreatedAt:      time.Now().UTC().Add(-24 * time.Hour),
+		UpdatedAt:      time.Now().UTC().Add(-24 * time.Hour),
+	}); err != nil {
+		t.Fatalf("seed subscription: %v", err)
+	}
+	subscriptions, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{
+		UserID: childPayment.UserID,
+		Limit:  20,
+	})
+	if err != nil || len(subscriptions) != 1 {
+		t.Fatalf("expected one subscription, got=%d err=%v", len(subscriptions), err)
+	}
+
+	rebillMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if got := r.FormValue("PreviousInvoiceID"); got != rootInv {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte("unexpected parent: " + got))
+			return
+		}
+		_, _ = w.Write([]byte("OK+" + r.FormValue("InvoiceID")))
+	}))
+	defer rebillMock.Close()
+
+	cfg := config.Config{
+		AppName:     "telega-bot-fedor-test",
+		Environment: config.EnvLocal,
+		HTTP: config.HTTPConfig{
+			Address:      ":0",
+			ReadTimeout:  5 * time.Second,
+			WriteTimeout: 5 * time.Second,
+		},
+		Postgres: config.PostgresConfig{Driver: "memory"},
+		Payment: config.PaymentConfig{
+			Provider: "robokassa",
+			Robokassa: config.RobokassaPaymentConfig{
+				MerchantLogin: "test-merchant",
+				Password1:     "test-pass1",
+				Password2:     pass2,
+				IsTestMode:    true,
+				RebillURL:     rebillMock.URL,
+			},
+		},
+		Security: config.SecurityConfig{AdminToken: adminToken},
+	}
+	handler := testServerHandlerWithConfig(t, st, cfg)
+
+	form := url.Values{"subscription_id": {fmt.Sprintf("%d", subscriptions[0].ID)}}
+	req := httptest.NewRequest(http.MethodPost, "/payment/rebill", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		body, _ := io.ReadAll(rr.Body)
+		t.Fatalf("rebill status=%d body=%q", rr.Code, string(body))
+	}
+}
+
 func TestPaymentRebill_ReturnsExistingPendingPayment(t *testing.T) {
 	t.Helper()
 

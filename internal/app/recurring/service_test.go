@@ -461,3 +461,169 @@ func TestBuildCancelPageData_ShowsSuccessBanner(t *testing.T) {
 		t.Fatalf("SuccessMessage=%q want=%q", data.SuccessMessage, "done Tariff")
 	}
 }
+
+func TestProcessCancelRequest_DisablesLatestActiveSubscriptionForStalePage(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Date(2026, 4, 2, 16, 48, 30, 0, time.UTC)
+
+	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, "264704572", "egor")
+	if err != nil {
+		t.Fatalf("GetOrCreateUserByMessenger err=%v", err)
+	}
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-stale-cancel",
+		Name:          "Short recurring",
+		PriceRUB:      300,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 180,
+		IsActive:      true,
+		CreatedAt:     now.Add(-10 * time.Minute),
+	}); err != nil {
+		t.Fatalf("CreateConnector err=%v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-stale-cancel")
+	if err != nil || !found {
+		t.Fatalf("GetConnectorByStartPayload found=%v err=%v", found, err)
+	}
+
+	oldPayment := domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPaid,
+		Token:          "stale-cancel-old",
+		UserID:         user.ID,
+		ConnectorID:    connector.ID,
+		AmountRUB:      connector.PriceRUB,
+		AutoPayEnabled: true,
+		CreatedAt:      now.Add(-7 * time.Minute),
+		UpdatedAt:      now.Add(-7 * time.Minute),
+	}
+	if err := st.CreatePayment(ctx, oldPayment); err != nil {
+		t.Fatalf("CreatePayment old err=%v", err)
+	}
+	oldPayment, found, err = st.GetPaymentByToken(ctx, oldPayment.Token)
+	if err != nil || !found {
+		t.Fatalf("GetPaymentByToken old found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         user.ID,
+		ConnectorID:    connector.ID,
+		PaymentID:      oldPayment.ID,
+		Status:         domain.SubscriptionStatusExpired,
+		AutoPayEnabled: true,
+		StartsAt:       now.Add(-7 * time.Minute),
+		EndsAt:         now.Add(-4 * time.Minute),
+		CreatedAt:      now.Add(-7 * time.Minute),
+		UpdatedAt:      now.Add(-4 * time.Minute),
+	}); err != nil {
+		t.Fatalf("UpsertSubscriptionByPayment old err=%v", err)
+	}
+	staleSub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, user.ID, connector.ID)
+	if err != nil || !found {
+		t.Fatalf("GetLatestSubscriptionByUserConnector stale found=%v err=%v", found, err)
+	}
+
+	newPayment := domain.Payment{
+		Provider:        "robokassa",
+		Status:          domain.PaymentStatusPaid,
+		Token:           "stale-cancel-new",
+		UserID:          user.ID,
+		ConnectorID:     connector.ID,
+		AmountRUB:       connector.PriceRUB,
+		AutoPayEnabled:  true,
+		ParentPaymentID: oldPayment.ID,
+		CreatedAt:       now.Add(-90 * time.Second),
+		UpdatedAt:       now.Add(-90 * time.Second),
+	}
+	if err := st.CreatePayment(ctx, newPayment); err != nil {
+		t.Fatalf("CreatePayment new err=%v", err)
+	}
+	newPayment, found, err = st.GetPaymentByToken(ctx, newPayment.Token)
+	if err != nil || !found {
+		t.Fatalf("GetPaymentByToken new found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         user.ID,
+		ConnectorID:    connector.ID,
+		PaymentID:      newPayment.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       now.Add(-90 * time.Second),
+		EndsAt:         now.Add(90 * time.Second),
+		CreatedAt:      now.Add(-90 * time.Second),
+		UpdatedAt:      now.Add(-90 * time.Second),
+	}); err != nil {
+		t.Fatalf("UpsertSubscriptionByPayment new err=%v", err)
+	}
+	activeSub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, user.ID, connector.ID)
+	if err != nil || !found {
+		t.Fatalf("GetLatestSubscriptionByUserConnector active found=%v err=%v", found, err)
+	}
+
+	service := &Service{
+		Store: st,
+		SendUserNotification: func(context.Context, int64, string, messenger.OutgoingMessage) error {
+			return nil
+		},
+		BuildTargetAuditEvent: func(_ context.Context, userID int64, preferredMessengerUserID string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
+			return domain.AuditEvent{TargetUserID: userID, TargetMessengerUserID: preferredMessengerUserID, ConnectorID: connectorID, Action: action, Details: details, CreatedAt: createdAt}
+		},
+		ResolveUserByMessengerUserID: func(ctx context.Context, messengerUserID int64) (domain.User, bool, error) {
+			return st.GetUserByMessenger(ctx, domain.MessengerKindTelegram, strconv.FormatInt(messengerUserID, 10))
+		},
+		ResolveTelegramMessengerUserID: func(context.Context, int64) (int64, bool, error) {
+			return 0, false, nil
+		},
+		ResolveConnectorChannel:               func(channelURL, chatID string) string { return channelURL + chatID },
+		ConnectorPeriodLabel:                  func(domain.Connector) string { return "180 сек." },
+		RecurringCancelTitle:                  "Отключение автоплатежа",
+		RecurringCancelSubsLoadFail:           "load failed",
+		RecurringCancelMissingSub:             "missing sub",
+		RecurringCancelAlreadyOff:             "already off",
+		RecurringCancelPersistFailed:          "persist failed",
+		RecurringCancelNotification:           func(string) string { return "cancel ok" },
+		RecurringCancelSuccessForSubscription: func(name string) string { return "done " + name },
+	}
+
+	connectorName, pageData, status := service.ProcessCancelRequest(ctx, "token-1", 264704572, staleSub.ID, now.Add(time.Hour), now)
+	if status != 0 {
+		t.Fatalf("status=%d pageData=%+v want success", status, pageData)
+	}
+	if connectorName != connector.Name {
+		t.Fatalf("connectorName=%q want %q", connectorName, connector.Name)
+	}
+
+	staleSubAfter, found, err := st.GetSubscriptionByID(ctx, staleSub.ID)
+	if err != nil || !found {
+		t.Fatalf("GetSubscriptionByID stale found=%v err=%v", found, err)
+	}
+	if !staleSubAfter.AutoPayEnabled {
+		t.Fatalf("stale subscription autopay unexpectedly disabled")
+	}
+
+	activeSubAfter, found, err := st.GetSubscriptionByID(ctx, activeSub.ID)
+	if err != nil || !found {
+		t.Fatalf("GetSubscriptionByID active found=%v err=%v", found, err)
+	}
+	if activeSubAfter.AutoPayEnabled {
+		t.Fatalf("active subscription autopay should be disabled")
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{
+		TargetUserID: user.ID,
+		Action:       domain.AuditActionAutopayDisabled,
+		Page:         1,
+		PageSize:     10,
+		SortBy:       "created_at",
+		SortDesc:     true,
+	})
+	if err != nil {
+		t.Fatalf("ListAuditEvents err=%v", err)
+	}
+	if len(events) == 0 {
+		t.Fatalf("autopay disable audit event not found")
+	}
+	if got := events[0].Details; got != "source=web_cancel_page;subscription_id="+strconv.FormatInt(activeSub.ID, 10)+";requested_subscription_id="+strconv.FormatInt(staleSub.ID, 10) {
+		t.Fatalf("audit details=%q", got)
+	}
+}

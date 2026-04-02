@@ -111,6 +111,13 @@ func (s *Service) TriggerRebill(ctx context.Context, subscriptionID int64, sourc
 	if !found || strings.TrimSpace(parentPayment.Token) == "" {
 		return RebillResult{}, errors.New("parent payment is missing token")
 	}
+	rootRecurringPayment, err := s.resolveRecurringRootPayment(ctx, parentPayment)
+	if err != nil {
+		return RebillResult{}, err
+	}
+	if strings.TrimSpace(rootRecurringPayment.Token) == "" {
+		return RebillResult{}, errors.New("root recurring payment is missing token")
+	}
 
 	connector, found, err := s.Store.GetConnector(ctx, subscription.ConnectorID)
 	if err != nil {
@@ -127,7 +134,7 @@ func (s *Service) TriggerRebill(ctx context.Context, subscriptionID int64, sourc
 	now := time.Now().UTC()
 	pendingPayment := domain.Payment{
 		Provider:          "robokassa",
-		ProviderPaymentID: "rebill_parent:" + parentPayment.Token,
+		ProviderPaymentID: "rebill_parent:" + rootRecurringPayment.Token,
 		Status:            domain.PaymentStatusPending,
 		Token:             invoiceID,
 		UserID:            subscription.UserID,
@@ -157,11 +164,11 @@ func (s *Service) TriggerRebill(ctx context.Context, subscriptionID int64, sourc
 
 	if err := s.RobokassaService.CreateRebill(ctx, payment.RebillRequest{
 		InvoiceID:         invoiceID,
-		PreviousInvoiceID: parentPayment.Token,
+		PreviousInvoiceID: rootRecurringPayment.Token,
 		AmountRUB:         connector.PriceRUB,
 		Description:       connector.Name,
 	}); err != nil {
-		if _, markErr := s.Store.UpdatePaymentFailed(ctx, pendingPayment.ID, "rebill_request_failed:"+parentPayment.Token, time.Now().UTC()); markErr != nil {
+		if _, markErr := s.Store.UpdatePaymentFailed(ctx, pendingPayment.ID, "rebill_request_failed:"+rootRecurringPayment.Token, time.Now().UTC()); markErr != nil {
 			return RebillResult{}, errors.Join(ErrRebillRequestFailed, markErr)
 		}
 		_ = s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(
@@ -182,11 +189,29 @@ func (s *Service) TriggerRebill(ctx context.Context, subscriptionID int64, sourc
 		"",
 		subscription.ConnectorID,
 		domain.AuditActionRebillRequested,
-		"subscription_id="+strconv.FormatInt(subscription.ID, 10)+";invoice_id="+invoiceID+";parent="+parentPayment.Token+";source="+source,
+		"subscription_id="+strconv.FormatInt(subscription.ID, 10)+";invoice_id="+invoiceID+";parent="+rootRecurringPayment.Token+";source="+source,
 		now,
 	))
 
 	return RebillResult{OK: true, InvoiceID: invoiceID}, nil
+}
+
+func (s *Service) resolveRecurringRootPayment(ctx context.Context, paymentRow domain.Payment) (domain.Payment, error) {
+	current := paymentRow
+	for hops := 0; hops < 32; hops++ {
+		if current.ParentPaymentID <= 0 {
+			return current, nil
+		}
+		parent, found, err := s.Store.GetPaymentByID(ctx, current.ParentPaymentID)
+		if err != nil {
+			return domain.Payment{}, err
+		}
+		if !found {
+			return domain.Payment{}, errors.New("root recurring payment not found")
+		}
+		current = parent
+	}
+	return domain.Payment{}, errors.New("recurring payment chain is too deep")
 }
 
 func (s *Service) ShouldTriggerScheduledRebill(ctx context.Context, sub domain.Subscription, now time.Time) (bool, error) {
@@ -392,38 +417,68 @@ func (s *Service) ProcessCancelRequest(ctx context.Context, token string, messen
 		data, status := s.BuildCancelPageData(ctx, token, messengerUserID, expiresAt, "")
 		return "", withCancelError(data, s.RecurringCancelMissingSub), status
 	}
-	if sub.Status != domain.SubscriptionStatusActive || !sub.AutoPayEnabled {
+	cancelSub, found, err := s.resolveActiveCancelableSubscription(ctx, sub, messengerUserID)
+	if err != nil {
+		slog.Error("resolve current subscription for public cancel page failed", "error", err, "messenger_user_id", messengerUserID, "requested_subscription_id", sub.ID)
+		data, status := s.BuildCancelPageData(ctx, token, messengerUserID, expiresAt, "")
+		return "", withCancelError(data, s.RecurringCancelPersistFailed), status
+	}
+	if !found {
 		data, status := s.BuildCancelPageData(ctx, token, messengerUserID, expiresAt, "")
 		return "", withCancelError(data, s.RecurringCancelAlreadyOff), status
 	}
-	if err := s.Store.SetSubscriptionAutoPayEnabled(ctx, sub.ID, false, now); err != nil {
-		slog.Error("disable subscription autopay via public page failed", "error", err, "messenger_user_id", messengerUserID, "subscription_id", sub.ID)
+	if err := s.Store.SetSubscriptionAutoPayEnabled(ctx, cancelSub.ID, false, now); err != nil {
+		slog.Error("disable subscription autopay via public page failed", "error", err, "messenger_user_id", messengerUserID, "subscription_id", cancelSub.ID)
 		data, status := s.BuildCancelPageData(ctx, token, messengerUserID, expiresAt, "")
 		return "", withCancelError(data, s.RecurringCancelPersistFailed), status
 	}
 
 	connectorName := ""
-	if connector, found, err := s.Store.GetConnector(ctx, sub.ConnectorID); err == nil && found {
+	if connector, found, err := s.Store.GetConnector(ctx, cancelSub.ConnectorID); err == nil && found {
 		connectorName = connector.Name
+	}
+	details := "source=web_cancel_page;subscription_id=" + strconv.FormatInt(cancelSub.ID, 10)
+	if cancelSub.ID != sub.ID {
+		details += ";requested_subscription_id=" + strconv.FormatInt(sub.ID, 10)
 	}
 	if err := s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(
 		ctx,
-		sub.UserID,
+		cancelSub.UserID,
 		formatPreferredMessengerUserID(messengerUserID),
-		sub.ConnectorID,
+		cancelSub.ConnectorID,
 		domain.AuditActionAutopayDisabled,
-		"source=web_cancel_page;subscription_id="+strconv.FormatInt(sub.ID, 10),
+		details,
 		now,
 	)); err != nil {
 		slog.Error("save audit event failed", "error", err, "action", domain.AuditActionAutopayDisabled)
 	}
 	if s.SendUserNotification != nil && s.RecurringCancelNotification != nil {
 		msg := messenger.OutgoingMessage{Text: s.RecurringCancelNotification(connectorName)}
-		if err := s.SendUserNotification(ctx, sub.UserID, formatPreferredMessengerUserID(messengerUserID), msg); err != nil {
-			slog.Error("send public cancel confirmation failed", "error", err, "user_id", sub.UserID, "preferred_messenger_user_id", messengerUserID)
+		if err := s.SendUserNotification(ctx, cancelSub.UserID, formatPreferredMessengerUserID(messengerUserID), msg); err != nil {
+			slog.Error("send public cancel confirmation failed", "error", err, "user_id", cancelSub.UserID, "preferred_messenger_user_id", messengerUserID)
 		}
 	}
 	return connectorName, CancelPageData{}, 0
+}
+
+// resolveActiveCancelableSubscription keeps public cancel links usable for
+// short-period recurring flows where the active subscription may rotate between
+// page render and form submit.
+func (s *Service) resolveActiveCancelableSubscription(ctx context.Context, requested domain.Subscription, messengerUserID int64) (domain.Subscription, bool, error) {
+	if requested.Status == domain.SubscriptionStatusActive && requested.AutoPayEnabled {
+		return requested, true, nil
+	}
+	latest, found, err := s.Store.GetLatestSubscriptionByUserConnector(ctx, requested.UserID, requested.ConnectorID)
+	if err != nil {
+		return domain.Subscription{}, false, err
+	}
+	if !found || !s.subscriptionMatchesMessengerUserID(ctx, latest, messengerUserID) {
+		return domain.Subscription{}, false, nil
+	}
+	if latest.Status != domain.SubscriptionStatusActive || !latest.AutoPayEnabled {
+		return domain.Subscription{}, false, nil
+	}
+	return latest, true, nil
 }
 
 func AttemptOrdinal(now, endsAt time.Time) int {

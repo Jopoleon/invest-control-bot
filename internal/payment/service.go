@@ -26,8 +26,9 @@ type RebillRequest struct {
 	// InvoiceID is the new merchant-side recurring payment identifier. For
 	// Robokassa it is sent as `InvoiceID` and persisted in payments.token.
 	InvoiceID string
-	// PreviousInvoiceID is the parent successful merchant invoice reference. For
-	// Robokassa it maps to the previous payment `InvoiceID` / `InvId`.
+	// PreviousInvoiceID is the root successful merchant invoice reference for the
+	// recurring series. For Robokassa docs this must be the `InvoiceID` / `InvId`
+	// of the first recurring-capable payment, not the last child rebill.
 	PreviousInvoiceID string
 	AmountRUB         int64
 	Description       string

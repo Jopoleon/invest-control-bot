@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"log/slog"
@@ -14,8 +15,9 @@ import (
 )
 
 const (
-	defaultRobokassaBaseURL   = "https://auth.robokassa.ru/Merchant/Index.aspx"
-	defaultRobokassaRebillURL = "https://auth.robokassa.ru/Merchant/Recurring"
+	defaultRobokassaBaseURL    = "https://auth.robokassa.ru/Merchant/Index.aspx"
+	defaultRobokassaRebillURL  = "https://auth.robokassa.ru/Merchant/Recurring"
+	defaultRobokassaOpStateURL = "https://auth.robokassa.ru/Merchant/WebService/Service.asmx/OpStateExt"
 )
 
 // RobokassaService generates payment links and verifies Robokassa signatures.
@@ -26,6 +28,7 @@ type RobokassaService struct {
 	isTest        bool
 	baseURL       string
 	rebillURL     string
+	opStateURL    string
 	httpClient    *http.Client
 }
 
@@ -52,6 +55,7 @@ func NewRobokassaService(cfg RobokassaConfig) *RobokassaService {
 		isTest:        cfg.IsTest,
 		baseURL:       baseURL,
 		rebillURL:     firstNonEmpty(strings.TrimSpace(cfg.RebillURL), defaultRobokassaRebillURL),
+		opStateURL:    defaultRobokassaOpStateURL,
 		httpClient:    &http.Client{},
 	}
 }
@@ -174,12 +178,108 @@ func (s *RobokassaService) CreateRebill(ctx context.Context, req RebillRequest) 
 		"body", body,
 	)
 	if resp.StatusCode != http.StatusOK {
+		s.logOperationStateBestEffort(ctx, invoiceID)
 		return fmt.Errorf("rebill status %d: %s", resp.StatusCode, body)
 	}
 	if !strings.HasPrefix(strings.ToUpper(body), "OK") {
+		s.logOperationStateBestEffort(ctx, invoiceID)
 		return fmt.Errorf("rebill provider response is not OK: %s", body)
 	}
 	return nil
+}
+
+type RobokassaOpState struct {
+	ResultCode   int
+	StateCode    int
+	IncCurrLabel string
+	OutSum       string
+	InvoiceID    string
+	OpKey        string
+}
+
+type robokassaOpStateResponseEnvelope struct {
+	XMLName xml.Name `xml:"OperationStateResponse"`
+	Result  struct {
+		Code  int `xml:"Result>Code"`
+		State struct {
+			Code int `xml:"Code"`
+		} `xml:"State"`
+		Info struct {
+			IncCurrLabel string `xml:"IncCurrLabel"`
+			OutSum       string `xml:"OutSum"`
+			InvoiceID    string `xml:"InvoiceID"`
+			OpKey        string `xml:"OpKey"`
+		} `xml:"Info"`
+	} `xml:"Result"`
+}
+
+// LookupOperationState loads current provider-side state for one merchant invoice.
+func (s *RobokassaService) LookupOperationState(ctx context.Context, invoiceID string) (RobokassaOpState, error) {
+	invoiceID = strings.TrimSpace(invoiceID)
+	if invoiceID == "" {
+		return RobokassaOpState{}, fmt.Errorf("invoice ID is required")
+	}
+
+	signature := md5Hex(strings.Join([]string{
+		s.merchantLogin,
+		invoiceID,
+		s.password2,
+	}, ":"))
+
+	q := url.Values{}
+	q.Set("MerchantLogin", s.merchantLogin)
+	q.Set("InvoiceID", invoiceID)
+	q.Set("Signature", signature)
+
+	target := s.opStateURL + "?" + q.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return RobokassaOpState{}, fmt.Errorf("build opstate request: %w", err)
+	}
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return RobokassaOpState{}, fmt.Errorf("perform opstate request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 8192))
+	if err != nil {
+		return RobokassaOpState{}, fmt.Errorf("read opstate response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return RobokassaOpState{}, fmt.Errorf("opstate status %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+	}
+
+	var payload robokassaOpStateResponseEnvelope
+	if err := xml.Unmarshal(bodyBytes, &payload); err != nil {
+		return RobokassaOpState{}, fmt.Errorf("decode opstate xml: %w", err)
+	}
+
+	return RobokassaOpState{
+		ResultCode:   payload.Result.Code,
+		StateCode:    payload.Result.State.Code,
+		IncCurrLabel: strings.TrimSpace(payload.Result.Info.IncCurrLabel),
+		OutSum:       strings.TrimSpace(payload.Result.Info.OutSum),
+		InvoiceID:    firstNonEmpty(strings.TrimSpace(payload.Result.Info.InvoiceID), invoiceID),
+		OpKey:        strings.TrimSpace(payload.Result.Info.OpKey),
+	}, nil
+}
+
+func (s *RobokassaService) logOperationStateBestEffort(ctx context.Context, invoiceID string) {
+	state, err := s.LookupOperationState(ctx, invoiceID)
+	if err != nil {
+		slog.Warn("robokassa opstate lookup failed", "invoice_id", invoiceID, "error", err)
+		return
+	}
+	slog.Info("robokassa rebill opstate",
+		"invoice_id", state.InvoiceID,
+		"result_code", state.ResultCode,
+		"state_code", state.StateCode,
+		"out_sum", state.OutSum,
+		"inc_curr_label", state.IncCurrLabel,
+		"op_key", state.OpKey,
+	)
 }
 
 func formatOutSum(amountRUB int64) string {

@@ -258,6 +258,7 @@ When you make meaningful product or architecture changes, update the relevant do
 - `docs/CONNECTOR_PERIOD_MODEL_PLAN.md`
 - `docs/PAYMENTS_FLOW_RU.md`
 - `docs/robokassa-recurring-checklist.md`
+- `docs/TODO.md`
 
 If a change affects recurring behavior, update recurring docs immediately.
 
@@ -308,3 +309,4 @@ GOCACHE=/tmp/go-build go mod vendor
 - `docs/PROD_BUGFIX_TRACK_2026-04-01.md`
 - `docs/CONNECTOR_PERIOD_MODEL_PLAN.md`
 - `docs/robokassa-recurring-checklist.md`
+- `docs/TODO.md`
