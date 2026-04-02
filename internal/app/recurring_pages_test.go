@@ -60,8 +60,14 @@ func TestRecurringCheckoutPage_RendersConnectorAndConsent(t *testing.T) {
 	if !strings.Contains(text, "/start in-public-recurring") {
 		t.Fatalf("response does not contain start command for MAX/manual flow: %q", text)
 	}
-	if !strings.Contains(text, "https://web.max.ru/") {
-		t.Fatalf("response does not contain MAX web link: %q", text)
+	if !strings.Contains(text, "https://max.ru/id9718272494_bot?start=in-public-recurring") {
+		t.Fatalf("response does not contain direct MAX bot deeplink: %q", text)
+	}
+	if !strings.Contains(text, "https://max.ru/id9718272494_bot") {
+		t.Fatalf("response does not contain MAX bot chat link: %q", text)
+	}
+	if !strings.Contains(text, "Открыть MAX Web") {
+		t.Fatalf("response does not contain MAX web fallback action: %q", text)
 	}
 	if strings.Contains(text, "Продолжить оформление в Telegram") {
 		t.Fatalf("response still contains telegram-only CTA wording: %q", text)
@@ -202,6 +208,65 @@ func TestRecurringCancelPage_SendsConfirmationViaMAX(t *testing.T) {
 	}
 	if got := maxSpy.sent[0].msg.Text; !strings.Contains(got, "Автоплатеж") {
 		t.Fatalf("confirmation text = %q, want autopay confirmation", got)
+	}
+}
+
+func TestRecurringCancelPage_ShowsReturnToMAXBotLink(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	connectorID := seedConnector(t, ctx, st, "in-max-cancel-return")
+	maxUser, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465780", "fedor")
+	if err != nil {
+		t.Fatalf("create max user: %v", err)
+	}
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPaid,
+		Token:          "cancel-max-return-1",
+		UserID:         maxUser.ID,
+		ConnectorID:    connectorID,
+		AmountRUB:      2322,
+		AutoPayEnabled: true,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	})
+	paymentRow, found, err := st.GetPaymentByToken(ctx, "cancel-max-return-1")
+	if err != nil || !found {
+		t.Fatalf("get payment: found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         maxUser.ID,
+		ConnectorID:    connectorID,
+		PaymentID:      paymentRow.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       time.Now().UTC().Add(-time.Hour),
+		EndsAt:         time.Now().UTC().Add(time.Hour),
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create subscription: %v", err)
+	}
+	token, err := recurringlink.BuildCancelToken("test-encryption-key-12345678901234567890", 193465780, time.Now().UTC().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("build cancel token: %v", err)
+	}
+
+	handler := testRecurringPagesHandler(t, st)
+	req := httptest.NewRequest(http.MethodGet, "/unsubscribe/"+token, nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		body, _ := io.ReadAll(rec.Body)
+		t.Fatalf("status=%d body=%q", rec.Code, string(body))
+	}
+	body, _ := io.ReadAll(rec.Body)
+	text := string(body)
+	if !strings.Contains(text, "Открыть бота в MAX") {
+		t.Fatalf("cancel page does not contain MAX return action: %q", text)
+	}
+	if !strings.Contains(text, "https://max.ru/id9718272494_bot") {
+		t.Fatalf("cancel page does not contain MAX bot chat url: %q", text)
 	}
 }
 
@@ -464,6 +529,7 @@ func testRecurringPagesHandler(t *testing.T, st store.Store) http.Handler {
 		HTTP:        config.HTTPConfig{Address: ":0", ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second},
 		Postgres:    config.PostgresConfig{Driver: "memory"},
 		Telegram:    config.TelegramConfig{BotUsername: "test_bot", Webhook: config.WebhookConfig{PublicURL: "https://example.com/telegram/webhook"}},
+		MAX:         config.MAXConfig{BotUsername: "id9718272494_bot"},
 		Payment:     config.PaymentConfig{Provider: "robokassa", Robokassa: config.RobokassaPaymentConfig{MerchantLogin: "merchant", Password1: "pass1", Password2: "pass2", IsTestMode: true, RecurringEnabled: true}},
 		Security:    config.SecurityConfig{AdminToken: "admin-token", EncryptionKey: "test-encryption-key-12345678901234567890"},
 	}
@@ -479,6 +545,7 @@ func testRecurringPagesHandlerWithSenders(t *testing.T, st store.Store, maxSende
 		HTTP:        config.HTTPConfig{Address: ":0", ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second},
 		Postgres:    config.PostgresConfig{Driver: "memory"},
 		Telegram:    config.TelegramConfig{BotUsername: "test_bot", Webhook: config.WebhookConfig{PublicURL: "https://example.com/telegram/webhook"}},
+		MAX:         config.MAXConfig{BotUsername: "id9718272494_bot"},
 		Payment:     config.PaymentConfig{Provider: "robokassa", Robokassa: config.RobokassaPaymentConfig{MerchantLogin: "merchant", Password1: "pass1", Password2: "pass2", IsTestMode: true, RecurringEnabled: true}},
 		Security:    config.SecurityConfig{AdminToken: "admin-token", EncryptionKey: "test-encryption-key-12345678901234567890"},
 	}

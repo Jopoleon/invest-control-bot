@@ -38,6 +38,8 @@ func (a *application) recurringService() *apprecurring.Service {
 		ResolveTelegramMessengerUserID:        a.resolveTelegramMessengerUserID,
 		ResolveConnectorChannel:               resolveConnectorChannelURL,
 		ConnectorPeriodLabel:                  appConnectorPeriodLabel,
+		TelegramBotChatURL:                    buildBotChatURL(a.config.Telegram.BotUsername),
+		MAXBotChatURL:                         buildMAXBotChatURL(a.config.MAX.BotUsername),
 		RecurringCancelTitle:                  appRecurringCancelTitle,
 		RecurringCancelSubsLoadFail:           appRecurringCancelSubsLoadFail,
 		RecurringCancelMissingSub:             appRecurringCancelMissingSub,
@@ -46,6 +48,8 @@ func (a *application) recurringService() *apprecurring.Service {
 		RecurringCancelPersistFailed:          appRecurringCancelPersistFailed,
 		RecurringCancelNotification:           appRecurringCancelNotification,
 		RecurringCancelSuccessForSubscription: appRecurringCancelSuccessForSubscription,
+		RecurringCancelOpenTelegramLabel:      appRecurringCancelOpenTelegramBot,
+		RecurringCancelOpenMAXLabel:           appRecurringCancelOpenMAXBot,
 	}
 }
 

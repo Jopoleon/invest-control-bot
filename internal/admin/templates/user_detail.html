@@ -179,6 +179,17 @@
       color: #5b6b7f;
       font-size: .88rem;
     }
+    .compose-tools {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .65rem;
+      margin-top: .75rem;
+      align-items: center;
+    }
+    .compose-tools [role="button"],
+    .compose-tools button {
+      margin-bottom: 0;
+    }
     .section-kicker {
       display: inline-flex;
       align-items: center;
@@ -393,9 +404,23 @@
         <form method="POST" action="{{.MessageActionURL}}">
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
           <input type="hidden" name="user_id" value="{{.User.UserID}}">
-          <textarea name="message" placeholder="{{index .I18N "users.actions.message_ph"}}" required></textarea>
+          <textarea id="directMessageText" name="message" placeholder="{{index .I18N "users.actions.message_ph"}}" required></textarea>
           <button type="submit">{{index .I18N "users.actions.message_send"}}</button>
         </form>
+        {{if and .User.CanOpenDirectChat (eq .User.DirectMessageKind "max")}}
+        <div class="compose-tools">
+          <a href="{{.User.DirectChatURL}}" target="_blank" rel="noreferrer" role="button" class="secondary">{{index .I18N "users.actions.message_open_max_chat"}}</a>
+          <button
+            type="button"
+            class="outline"
+            data-copy-open-url="{{.User.DirectChatURL}}"
+            data-copy-source="directMessageText"
+            data-copy-open-success="{{index .I18N "users.actions.message_max_compose_copied"}}"
+            data-copy-open-fallback="{{index .I18N "users.actions.message_max_compose_opened"}}"
+          >{{index .I18N "users.actions.message_copy_open_max"}}</button>
+        </div>
+        <p class="action-note" id="directMessageComposeHint">{{index .I18N "users.actions.message_max_compose_hint"}}</p>
+        {{end}}
         {{else}}
         <small>{{index .I18N "users.actions.message_unavailable"}}</small>
         {{end}}
@@ -717,6 +742,43 @@
         pagination: { limit: item[2] },
         language: labels
       }).render(grid);
+    });
+
+    document.querySelectorAll("[data-copy-open-url]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        const sourceID = button.getAttribute("data-copy-source");
+        const launchURL = button.getAttribute("data-copy-open-url");
+        const successText = button.getAttribute("data-copy-open-success") || "";
+        const fallbackText = button.getAttribute("data-copy-open-fallback") || "";
+        const hint = document.getElementById("directMessageComposeHint");
+        const source = sourceID ? document.getElementById(sourceID) : null;
+        const text = source && typeof source.value === "string" ? source.value.trim() : "";
+        const openChat = function () {
+          if (launchURL) {
+            window.open(launchURL, "_blank", "noopener");
+          }
+        };
+
+        if (!text || !navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
+          openChat();
+          if (hint && fallbackText) {
+            hint.textContent = fallbackText;
+          }
+          return;
+        }
+
+        navigator.clipboard.writeText(text).then(function () {
+          openChat();
+          if (hint && successText) {
+            hint.textContent = successText;
+          }
+        }).catch(function () {
+          openChat();
+          if (hint && fallbackText) {
+            hint.textContent = fallbackText;
+          }
+        });
+      });
     });
   });
 </script>

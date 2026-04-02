@@ -20,7 +20,7 @@
 
 - [x] Улучшить success message после оплаты: явно показывать название подписки, что именно оплачено, срок доступа и что делать дальше.
 - [x] Добавить более явную observability вокруг неудачной выдачи доступа: ошибка создания invite link, отсутствие `chat_id`, недостаточные права бота.
-- [ ] Проверить, нужен ли дополнительный audit/event для invite-link delivery failures по recurring/success flow, а не только runtime log.
+- [x] Проверить, нужен ли дополнительный audit/event для invite-link delivery failures по recurring/success flow, а не только runtime log.
 - [x] Продумать fallback-поведение, если revoke из канала не удался: добавить retry/backoff, финальный `needs manual check` и явный audit trail.
 - [x] Показывать revoke/access-delivery failures в admin UI явно, а не только через audit/events.
 - [x] Ослабить startup fail-fast для временных Telegram API timeout'ов: одиночный `getMe`/setup timeout не должен валить весь boot без retry/backoff.
@@ -52,14 +52,15 @@
 - [ ] Если provider-side сбои повторятся, вынести `OpStateExt` lookup из shell-only debug команды в более удобный admin/debug flow.
 - [ ] Проверить, какие admin screens все еще используют исторические/transport-specific assumptions и требуют cleanup после последних messenger-neutral изменений.
 - [ ] Продолжить identity cleanup: держать linked account resolution в одном месте и сокращать mixed-mode compatibility paths там, где это еще не доведено до `user_id`-first модели.
+- [ ] Усилить recurring cancel token: кодировать не только `messenger_user_id`, но и `messenger_kind`, чтобы public `/unsubscribe/{token}` не зависел от telegram-first fallback при mixed-mode одинаковых numeric IDs.
 - [ ] Решить, нужен ли отдельный persistent учет выдачи/отзыва доступа (`chat_memberships` из старого roadmap) или этот legacy-пункт надо официально убрать из docs.
 
 ## MAX Track
 
-- [ ] Довести MAX до минимального parity с Telegram по пользовательским сценариям: старт, регистрация, меню, мои подписки, платежи.
-- [ ] Добавить для MAX окно/экран отправки сообщений, близкий по UX к Telegram compose flow, если такого parity-path еще нет.
-- [ ] Отдельно проверить recurring checkout/cancel UX для MAX и решить, где нужен web fallback вместо нативных UI-компонентов.
-- [ ] Подтвердить, как именно должен выглядеть возврат пользователя из web checkout обратно в MAX в production-потоке.
+- [x] Довести MAX до минимального parity с Telegram по пользовательским сценариям: старт, регистрация, меню, мои подписки, платежи.
+- [x] Добавить для MAX окно/экран отправки сообщений, близкий по UX к Telegram compose flow, если такого parity-path еще нет.
+- [x] Отдельно проверить recurring checkout/cancel UX для MAX и решить, где нужен web fallback вместо нативных UI-компонентов.
+- [x] Подтвердить, как именно должен выглядеть возврат пользователя из web checkout обратно в MAX в production-потоке.
 
 ## Large Refactor / Cleanup
 

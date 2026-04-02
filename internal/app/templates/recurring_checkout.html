@@ -282,6 +282,31 @@
       color: var(--ink);
       word-break: break-word;
     }
+    .command-actions {
+      display: grid;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .command-actions a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 0 14px;
+      border-radius: 14px;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 700;
+      text-align: center;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+    }
+    .command-actions a.primary {
+      border: 0;
+      background: var(--accent);
+      color: #fff;
+    }
     .warnings {
       display: grid;
       gap: 10px;
@@ -382,7 +407,11 @@
               <strong>{{.MAXTitle}}</strong>
               <p>{{.MAXHint}}</p>
               <code>{{.StartCommand}}</code>
-              {{if .MAXWebURL}}<div style="margin-top:10px;"><a href="{{.MAXWebURL}}" target="_blank" rel="noreferrer">{{.MAXCTA}}</a></div>{{end}}
+              <div class="command-actions">
+                {{if .MAXBotURL}}<a class="primary" href="{{.MAXBotURL}}" target="_blank" rel="noreferrer">{{.MAXCTA}}</a>{{end}}
+                {{if .MAXBotChatURL}}<a href="{{.MAXBotChatURL}}" target="_blank" rel="noreferrer">Открыть чат бота в MAX</a>{{end}}
+                {{if .MAXWebURL}}<a href="{{.MAXWebURL}}" target="_blank" rel="noreferrer">{{.MAXFallbackCTA}}</a>{{end}}
+              </div>
             </div>
             {{end}}
           </div>

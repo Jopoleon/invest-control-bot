@@ -231,9 +231,10 @@ GOCACHE=/tmp/go-build go test ./...
 - `POST /payment/result`
 - `POST /payment/success`
 - `POST /payment/fail`
+- `GET /payment/success`, `GET /payment/fail` - status pages после checkout; для MAX возвращают пользователя обратно в конкретного бота через direct deeplink, а `MAX Web` оставляют fallback-кнопкой
 - `POST /payment/rebill` - internal/admin trigger повторного списания
-- `GET /subscribe/{start_payload}` - публичная страница оформления recurring-подписки
-- `GET /unsubscribe/{token}` - публичная страница отключения автоплатежа
+- `GET /subscribe/{start_payload}` - публичная recurring checkout page; для MAX используется как web fallback с direct deeplink обратно в MAX-бота
+- `GET /unsubscribe/{token}` - публичная cancel page автоплатежа; для MAX после действия показывает return path обратно в бот
 - `GET /oferta/{id}`
 - `GET /policy/{id}`
 - `GET /agreement/{id}`

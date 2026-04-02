@@ -10,47 +10,52 @@ import (
 )
 
 const (
-	appLegalTitleOffer                = "Публичная оферта"
-	appLegalTitlePrivacy              = "Политика обработки персональных данных"
-	appLegalTitleAgreement            = "Пользовательское соглашение"
-	appPaymentPageTitleSuccess        = "Оплата успешно завершена"
-	appPaymentPageMessageSuccess      = "Платеж подтвержден. Подписка активируется автоматически, а в боте придет сообщение с деталями."
-	appPaymentPageTitleFail           = "Оплата не завершена"
-	appPaymentPageMessageFail         = "Платеж был отменен или не прошел. Вернитесь в бота и попробуйте снова."
-	appPaymentActionOpenBot           = "Открыть бота"
-	appPaymentActionReturnToBot       = "Вернуться в бота"
-	appPaymentActionOpenChannel       = "Открыть канал"
-	appPaymentActionOpenTelegram      = "Открыть Telegram"
-	appPaymentActionOpenMAX           = "Открыть MAX Web"
-	appPaymentActionOpenMAXChannel    = "Открыть канал MAX"
-	appPaymentActionReturnMAXChannel  = "Вернуться в канал MAX"
-	appPaymentSuccessChannelHint      = "\n\nНажмите кнопку ниже, чтобы перейти в канал и открыть кабинет."
-	appPaymentActionMySubscription    = "Моя подписка"
-	appPaymentFailedRecurringText     = "⚠️ Автоматическое списание не прошло. Чтобы не потерять доступ, оплатите подписку вручную по кнопке ниже."
-	appPaymentFailedRecurringButton   = "Оплатить вручную"
-	appSubscriptionRenewButton        = "Продлить подписку"
-	appSubscriptionReminderCommandFmt = "\n\nДля продления отправьте команду:\n/start %s"
-	appSubscriptionExpiredText        = "⏰ Срок подписки истек. Чтобы восстановить доступ, оформите продление."
-	appRecurringCheckoutTitle         = "Оформление подписки"
-	appRecurringCheckoutHelperNote    = "Автоплатеж подключается во время новой оплаты этого тарифа. Уже действующая подписка не переводится на автосписания задним числом."
-	appRecurringCheckoutTelegramCTA   = "Открыть Telegram-бот"
-	appRecurringCheckoutMAXCTA        = "Открыть MAX Web"
-	appRecurringCheckoutBotCTA        = "Продолжить оформление в боте"
-	appRecurringCheckoutMAXTitle      = "Оформление в MAX"
-	appRecurringCheckoutMAXHint       = "Если оформляете подписку в MAX, откройте MAX и отправьте боту команду:"
-	appRecurringCheckoutConsentNote   = "Чекбокс не проставлен по умолчанию. Финальное согласие фиксируется на следующем шаге оформления в боте и сохраняется в истории согласий пользователя."
-	appRecurringCancelTitle           = "Отключение автоплатежа"
-	appRecurringCancelInvalidLink     = "Некорректная ссылка отключения автоплатежа."
-	appRecurringCancelExpiredLink     = "Ссылка отключения автоплатежа истекла. Откройте новую ссылку из бота."
-	appRecurringCancelInvalidRequest  = "Некорректный запрос отключения автоплатежа."
-	appRecurringCancelNoSubscription  = "Не выбрана подписка для отключения автоплатежа."
-	appRecurringCancelMissingSub      = "Подписка для отключения автоплатежа не найдена."
-	appRecurringCancelAlreadyOff      = "Для этой подписки автоплатеж уже выключен."
-	appRecurringCancelStaleSubmit     = "Эта страница была открыта на уже неактуальном состоянии подписки. Обновите страницу из бота, чтобы увидеть текущий статус автоплатежа."
-	appRecurringCancelPersistFailed   = "Не удалось отключить автоплатеж для выбранной подписки. Попробуйте еще раз позже."
-	appRecurringCancelSuccess         = "Автоплатеж отключен. Уже оплаченный период сохранится до конца срока подписки."
-	appRecurringCancelStatusLoadFail  = "Не удалось загрузить статус автоплатежа."
-	appRecurringCancelSubsLoadFail    = "Не удалось загрузить подписки."
+	appLegalTitleOffer                 = "Публичная оферта"
+	appLegalTitlePrivacy               = "Политика обработки персональных данных"
+	appLegalTitleAgreement             = "Пользовательское соглашение"
+	appPaymentPageTitleSuccess         = "Оплата успешно завершена"
+	appPaymentPageMessageSuccess       = "Платеж подтвержден. Подписка активируется автоматически, а в боте придет сообщение с деталями."
+	appPaymentPageTitleFail            = "Оплата не завершена"
+	appPaymentPageMessageFail          = "Платеж был отменен или не прошел. Вернитесь в бота и попробуйте снова."
+	appPaymentActionOpenBot            = "Открыть бота"
+	appPaymentActionReturnToBot        = "Вернуться в бота"
+	appPaymentActionOpenChannel        = "Открыть канал"
+	appPaymentActionOpenTelegram       = "Открыть Telegram"
+	appPaymentActionOpenMAXBot         = "Открыть MAX-бота"
+	appPaymentActionReturnToMAXBot     = "Вернуться в MAX-бот"
+	appPaymentActionOpenMAX            = "Открыть MAX Web"
+	appPaymentActionOpenMAXChannel     = "Открыть канал MAX"
+	appPaymentActionReturnMAXChannel   = "Вернуться в канал MAX"
+	appPaymentSuccessChannelHint       = "\n\nНажмите кнопку ниже, чтобы перейти в канал и открыть кабинет."
+	appPaymentActionMySubscription     = "Моя подписка"
+	appPaymentFailedRecurringText      = "⚠️ Автоматическое списание не прошло. Чтобы не потерять доступ, оплатите подписку вручную по кнопке ниже."
+	appPaymentFailedRecurringButton    = "Оплатить вручную"
+	appSubscriptionRenewButton         = "Продлить подписку"
+	appSubscriptionReminderCommandFmt  = "\n\nДля продления отправьте команду:\n/start %s"
+	appSubscriptionExpiredText         = "⏰ Срок подписки истек. Чтобы восстановить доступ, оформите продление."
+	appRecurringCheckoutTitle          = "Оформление подписки"
+	appRecurringCheckoutHelperNote     = "Автоплатеж подключается во время новой оплаты этого тарифа. Уже действующая подписка не переводится на автосписания задним числом."
+	appRecurringCheckoutTelegramCTA    = "Открыть Telegram-бот"
+	appRecurringCheckoutMAXCTA         = "Открыть MAX-бота"
+	appRecurringCheckoutMAXFallbackCTA = "Открыть MAX Web"
+	appRecurringCheckoutBotCTA         = "Продолжить оформление в боте"
+	appRecurringCheckoutMAXTitle       = "Оформление в MAX"
+	appRecurringCheckoutMAXHint        = "Если оформляете подписку в MAX, лучше открыть конкретного бота сразу по кнопке ниже. Если диплинк не сработает, откройте чат бота и отправьте команду:"
+	appRecurringCheckoutConsentNote    = "Чекбокс не проставлен по умолчанию. Финальное согласие фиксируется на следующем шаге оформления в боте и сохраняется в истории согласий пользователя."
+	appRecurringCancelTitle            = "Отключение автоплатежа"
+	appRecurringCancelInvalidLink      = "Некорректная ссылка отключения автоплатежа."
+	appRecurringCancelExpiredLink      = "Ссылка отключения автоплатежа истекла. Откройте новую ссылку из бота."
+	appRecurringCancelInvalidRequest   = "Некорректный запрос отключения автоплатежа."
+	appRecurringCancelNoSubscription   = "Не выбрана подписка для отключения автоплатежа."
+	appRecurringCancelMissingSub       = "Подписка для отключения автоплатежа не найдена."
+	appRecurringCancelAlreadyOff       = "Для этой подписки автоплатеж уже выключен."
+	appRecurringCancelStaleSubmit      = "Эта страница была открыта на уже неактуальном состоянии подписки. Обновите страницу из бота, чтобы увидеть текущий статус автоплатежа."
+	appRecurringCancelPersistFailed    = "Не удалось отключить автоплатеж для выбранной подписки. Попробуйте еще раз позже."
+	appRecurringCancelSuccess          = "Автоплатеж отключен. Уже оплаченный период сохранится до конца срока подписки."
+	appRecurringCancelStatusLoadFail   = "Не удалось загрузить статус автоплатежа."
+	appRecurringCancelSubsLoadFail     = "Не удалось загрузить подписки."
+	appRecurringCancelOpenTelegramBot  = "Открыть бота в Telegram"
+	appRecurringCancelOpenMAXBot       = "Открыть бота в MAX"
 )
 
 func appPaymentSuccessMessage(paymentRow domain.Payment, connector domain.Connector, endsAt time.Time) string {
@@ -102,15 +107,24 @@ func appRecurringCancelSuccessForSubscription(connectorName string) string {
 func appPaymentPageActions(kind messenger.Kind, success bool, channelURL, botURL string) []paymentPageAction {
 	switch kind {
 	case messenger.KindMAX:
-		actions := make([]paymentPageAction, 0, 2)
-		if strings.TrimSpace(channelURL) != "" {
+		actions := make([]paymentPageAction, 0, 3)
+		if success && strings.TrimSpace(channelURL) != "" {
 			label := appPaymentActionOpenMAXChannel
 			if !success {
 				label = appPaymentActionReturnMAXChannel
 			}
 			actions = append(actions, paymentPageAction{Label: label, URL: channelURL})
 		}
-		actions = append(actions, paymentPageAction{Label: appPaymentActionOpenMAX, URL: "https://web.max.ru/", Secondary: len(actions) > 0})
+		if strings.TrimSpace(botURL) != "" {
+			label := appPaymentActionOpenMAXBot
+			if !success {
+				label = appPaymentActionReturnToMAXBot
+			}
+			actions = append(actions, paymentPageAction{Label: label, URL: botURL, Secondary: len(actions) > 0})
+		}
+		if strings.TrimSpace(botURL) != "https://web.max.ru/" {
+			actions = append(actions, paymentPageAction{Label: appPaymentActionOpenMAX, URL: "https://web.max.ru/", Secondary: len(actions) > 0})
+		}
 		return actions
 	default:
 		primaryLabel := appPaymentActionOpenBot

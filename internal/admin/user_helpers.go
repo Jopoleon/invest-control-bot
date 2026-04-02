@@ -84,6 +84,14 @@ func buildAdminMAXStartURL(botName, startPayload string) string {
 	return "https://max.ru/" + name + "?start=" + payload
 }
 
+func buildAdminMAXChatURL(botName string) string {
+	name := strings.TrimSpace(strings.TrimPrefix(botName, "@"))
+	if name == "" {
+		return ""
+	}
+	return "https://max.ru/" + name
+}
+
 func buildAdminStartCommand(startPayload string) string {
 	payload := strings.TrimSpace(startPayload)
 	if payload == "" {

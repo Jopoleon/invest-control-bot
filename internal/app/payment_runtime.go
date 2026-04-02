@@ -31,6 +31,7 @@ type paymentRuntime struct {
 	robokassaService         *payment.RobokassaService
 	adminToken               string
 	telegramBotUsername      string
+	maxBotUsername           string
 	sendUserNotificationFn   func(context.Context, int64, string, messenger.OutgoingMessage) error
 	buildAppTargetAuditEvent func(context.Context, int64, string, int64, string, string, time.Time) domain.AuditEvent
 	buildTelegramAccessLink  func(context.Context, int64, domain.Connector) (string, error)
@@ -44,6 +45,7 @@ func (a *application) payments() *paymentRuntime {
 		robokassaService:         a.robokassaService,
 		adminToken:               a.config.Security.AdminToken,
 		telegramBotUsername:      a.config.Telegram.BotUsername,
+		maxBotUsername:           a.config.MAX.BotUsername,
 		sendUserNotificationFn:   a.sendUserNotification,
 		buildAppTargetAuditEvent: a.buildAppTargetAuditEvent,
 		buildTelegramAccessLink:  a.buildTelegramPaymentAccessLink,
@@ -349,12 +351,18 @@ func (p *paymentRuntime) handleMockPaySuccess(w http.ResponseWriter, r *http.Req
 }
 
 func (p *paymentRuntime) buildPaymentPageActions(ctx context.Context, paymentRow domain.Payment, channelURL string, success bool) []paymentPageAction {
-	return appPaymentPageActions(
-		p.resolvePreferredKindFn(ctx, paymentRow.UserID, ""),
-		success,
-		channelURL,
-		firstNonEmpty(buildBotChatURL(p.telegramBotUsername), "https://t.me"),
-	)
+	kind := p.resolvePreferredKindFn(ctx, paymentRow.UserID, "")
+	botURL := firstNonEmpty(buildBotChatURL(p.telegramBotUsername), "https://t.me")
+	if kind == messenger.KindMAX {
+		botURL = firstNonEmpty(buildMAXBotChatURL(p.maxBotUsername), "https://web.max.ru/")
+		if connector, found, err := p.store.GetConnector(ctx, paymentRow.ConnectorID); err == nil && found {
+			botURL = firstNonEmpty(
+				buildMAXBotStartURL(p.maxBotUsername, connector.StartPayload),
+				botURL,
+			)
+		}
+	}
+	return appPaymentPageActions(kind, success, channelURL, botURL)
 }
 
 func (p *paymentRuntime) notifyFailedRecurringPayment(ctx context.Context, paymentRow domain.Payment) {

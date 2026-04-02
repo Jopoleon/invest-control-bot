@@ -1,6 +1,6 @@
 # MAX IMPLEMENTATION PLAN
 
-Последнее обновление: 2026-03-27
+Последнее обновление: 2026-04-03
 
 ## Текущий статус
 
@@ -47,6 +47,13 @@
   - fresh bootstrap подтвержден отдельным прогоном `migrations.ApplyUp`.
 - Это важно для MAX-track, потому что дальнейшие multi-messenger изменения теперь опираются на clean bootstrap schema, а не на историческую цепочку совместимых миграций.
 
+### 2026-04-03
+- Для MAX зафиксирован production-shaped return path после web checkout:
+  - на `/payment/success` страница возвращает пользователя не в абстрактный `web.max.ru`, а в конкретного бота через direct deeplink `https://max.ru/<bot>?start=<connector_start_payload>`;
+  - на `/payment/fail` страница так же ведет обратно в конкретного MAX-бота, но без лишнего return-to-channel action;
+  - `MAX Web` остается только явным fallback action, если пользователь открыл flow вне нативного клиента или диплинк не сработал.
+- Это доводит MAX до минимального parity по пользовательскому payment loop: старт, регистрация, меню, мои подписки, платежи и возврат из web checkout обратно в бот.
+
 ## Дорожная карта
 
 ### Инициация MAX-канала
@@ -78,13 +85,20 @@
 Статус: pending
 - Продублировать базовые входные сценарии: старт, регистрация, меню, мои подписки, платежи.
 - Определить, какие inline/callback сценарии можно перенести без потерь.
-- Определить, какие сценарии потребуют web fallback вместо нативных UI-компонентов MAX.
+- Для recurring checkout/cancel зафиксирован messenger-neutral web fallback:
+  - `/subscribe/{start_payload}` остается web entry page;
+  - для MAX страница должна вести обратно в конкретного бота через direct deeplink `max.ru/<bot>?start=<payload>`;
+  - `/unsubscribe/{token}` остается публичной web page отключения автоплатежа и должна давать явный return path обратно в MAX-бота.
 
 ### Платежи и recurring
 Статус: pending
 - Переиспользовать существующую payment/core-логику.
 - Подготовить messenger-neutral точки входа в recurring checkout/cancel flow.
-- Проверить, какие deep links и возвраты из web в MAX реально поддерживаются.
+- Уже зафиксировано целевое поведение для MAX:
+  - `/payment/success` и `/payment/fail` должны возвращать пользователя в конкретного бота через direct deeplink `max.ru/<bot>?start=<connector_start_payload>`;
+  - `MAX Web` остается fallback-кнопкой, а не основным return path;
+  - recurring checkout/cancel сохраняют тот же принцип: web page как compliance layer, бот как основной маршрут продолжения сценария.
+- Остается подтвердить это поведение на production MAX-клиенте после живого прогона.
 
 ### Тестирование и rollout
 Статус: pending
@@ -96,4 +110,4 @@
 - Можно ли в MAX воспроизвести весь текущий callback-heavy UX без заметной деградации.
 - Как именно удобнее связывать пользователя MAX и существующего пользователя системы.
 - Нужен ли отдельный бот MAX на каждый бренд/коннектор или достаточно одного.
-- Как вести legal/payment flow и возврат пользователя из web checkout обратно в MAX.
+- Насколько стабильно MAX-клиент обрабатывает `start` deeplink после возврата из внешнего web checkout на реальных устройствах.

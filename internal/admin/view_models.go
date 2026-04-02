@@ -201,6 +201,9 @@ type userView struct {
 	DisplayName         string
 	CanDirectMessage    bool
 	DirectMessageTarget string
+	DirectMessageKind   string
+	CanOpenDirectChat   bool
+	DirectChatURL       string
 	PrimaryAccount      string
 	LinkedAccounts      []messengerAccountView
 	HasTelegramIdentity bool

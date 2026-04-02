@@ -20,7 +20,7 @@ const (
 	botPromptFullName                             = "ФИО"
 	botPromptPhone                                = "Телефон"
 	botPromptEmail                                = "E-mail"
-	botPromptTelegramUsername                     = "Ник телеграм"
+	botPromptTelegramUsername                     = "Ник в мессенджере"
 	botMsgPaymentProviderNotConfigured            = "Платежный провайдер пока не настроен."
 	botMsgPaymentProfilePrepareFailed             = "Не удалось подготовить профиль пользователя для оплаты. Попробуйте позже."
 	botMsgPaymentLinkFailed                       = "Не удалось сформировать ссылку оплаты. Попробуйте позже."

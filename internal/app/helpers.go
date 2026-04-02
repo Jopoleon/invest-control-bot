@@ -32,6 +32,23 @@ func buildBotChatURL(botUsername string) string {
 	return "https://t.me/" + raw
 }
 
+func buildMAXBotChatURL(botUsername string) string {
+	raw := strings.TrimSpace(strings.TrimPrefix(botUsername, "@"))
+	if raw == "" {
+		return ""
+	}
+	return "https://max.ru/" + raw
+}
+
+func buildMAXBotStartURL(botUsername, startPayload string) string {
+	raw := strings.TrimSpace(strings.TrimPrefix(botUsername, "@"))
+	payload := strings.TrimSpace(startPayload)
+	if raw == "" || payload == "" {
+		return ""
+	}
+	return "https://max.ru/" + raw + "?start=" + payload
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, v := range values {
 		if trimmed := strings.TrimSpace(v); trimmed != "" {

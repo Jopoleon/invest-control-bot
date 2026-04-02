@@ -26,12 +26,15 @@ type recurringCheckoutPageData struct {
 	PrivacyURL        string
 	AgreementURL      string
 	TelegramBotURL    string
+	MAXBotURL         string
+	MAXBotChatURL     string
 	MAXWebURL         string
 	StartCommand      string
 	PrimaryCTA        string
 	MAXTitle          string
 	MAXHint           string
 	MAXCTA            string
+	MAXFallbackCTA    string
 	HasRecurringDocs  bool
 	RecurringDisabled bool
 	HelperNote        string
@@ -42,6 +45,7 @@ type recurringRuntime struct {
 	store                    store.Store
 	encryptionKey            string
 	telegramBotUsername      string
+	maxBotUsername           string
 	telegramWebhookPublicURL string
 	recurringEnabled         bool
 	recurringServiceFn       func() *apprecurring.Service
@@ -52,6 +56,7 @@ func (a *application) recurring() *recurringRuntime {
 		store:                    a.store,
 		encryptionKey:            a.config.Security.EncryptionKey,
 		telegramBotUsername:      a.config.Telegram.BotUsername,
+		maxBotUsername:           a.config.MAX.BotUsername,
 		telegramWebhookPublicURL: a.config.Telegram.Webhook.PublicURL,
 		recurringEnabled:         a.config.Payment.Robokassa.RecurringEnabled,
 		recurringServiceFn:       a.recurringService,
@@ -99,12 +104,15 @@ func (rr *recurringRuntime) handleRecurringCheckout(w http.ResponseWriter, r *ht
 		PrivacyURL:        privacyURL,
 		AgreementURL:      agreementURL,
 		TelegramBotURL:    buildBotStartURL(rr.telegramBotUsername, connector.StartPayload),
+		MAXBotURL:         buildMAXBotStartURL(rr.maxBotUsername, connector.StartPayload),
+		MAXBotChatURL:     buildMAXBotChatURL(rr.maxBotUsername),
 		MAXWebURL:         "https://web.max.ru/",
 		StartCommand:      buildBotStartCommand(connector.StartPayload),
 		PrimaryCTA:        recurringCheckoutPrimaryCTA(rr.telegramBotUsername),
 		MAXTitle:          appRecurringCheckoutMAXTitle,
 		MAXHint:           appRecurringCheckoutMAXHint,
 		MAXCTA:            appRecurringCheckoutMAXCTA,
+		MAXFallbackCTA:    appRecurringCheckoutMAXFallbackCTA,
 		HasRecurringDocs:  offerURL != "" && agreementURL != "",
 		RecurringDisabled: !rr.recurringEnabled,
 		HelperNote:        appRecurringCheckoutHelperNote,

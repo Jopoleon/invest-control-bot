@@ -390,18 +390,26 @@ func TestBuildPaymentPageActions_SelectsMessengerSpecificActions(t *testing.T) {
 	}
 
 	appCtx := &application{store: st}
+	appCtx.config.MAX.BotUsername = "id9718272494_bot"
 
 	maxActions := appCtx.buildPaymentPageActions(ctx, domain.Payment{
-		UserID: maxUser.ID,
+		UserID:      maxUser.ID,
+		ConnectorID: seedConnector(t, ctx, st, "in-max-payment-actions"),
 	}, "https://web.max.ru/-72598909498032", true)
-	if len(maxActions) != 2 {
-		t.Fatalf("max actions len=%d want=2", len(maxActions))
+	if len(maxActions) != 3 {
+		t.Fatalf("max actions len=%d want=3", len(maxActions))
 	}
 	if maxActions[0].Label != appPaymentActionOpenMAXChannel {
 		t.Fatalf("max first label=%q want=%q", maxActions[0].Label, appPaymentActionOpenMAXChannel)
 	}
-	if maxActions[1].Label != appPaymentActionOpenMAX {
-		t.Fatalf("max second label=%q want=%q", maxActions[1].Label, appPaymentActionOpenMAX)
+	if maxActions[1].Label != appPaymentActionOpenMAXBot {
+		t.Fatalf("max second label=%q want=%q", maxActions[1].Label, appPaymentActionOpenMAXBot)
+	}
+	if maxActions[2].Label != appPaymentActionOpenMAX {
+		t.Fatalf("max third label=%q want=%q", maxActions[2].Label, appPaymentActionOpenMAX)
+	}
+	if got := maxActions[1].URL; got != "https://max.ru/id9718272494_bot?start=in-max-payment-actions" {
+		t.Fatalf("max bot url=%q want direct MAX bot start deeplink", got)
 	}
 
 	tgActions := appCtx.buildPaymentPageActions(ctx, domain.Payment{
@@ -519,6 +527,15 @@ func TestPaymentSuccessPage_MAXActionsUseMAXLinks(t *testing.T) {
 	text := string(body)
 	if !strings.Contains(text, "https://web.max.ru/-72598909498032") {
 		t.Fatalf("response does not contain MAX channel URL: %q", text)
+	}
+	if !strings.Contains(text, appPaymentActionOpenMAXChannel) {
+		t.Fatalf("response does not contain MAX channel action label: %q", text)
+	}
+	if !strings.Contains(text, "https://max.ru/id9718272494_bot?start=in-max-page-success") {
+		t.Fatalf("response does not contain direct MAX bot return URL: %q", text)
+	}
+	if !strings.Contains(text, appPaymentActionOpenMAXBot) {
+		t.Fatalf("response does not contain MAX bot action label: %q", text)
 	}
 	if !strings.Contains(text, "https://web.max.ru/") {
 		t.Fatalf("response does not contain MAX web URL: %q", text)
@@ -694,11 +711,20 @@ func TestPaymentFailPage_MAXActionsUseMAXLinks(t *testing.T) {
 	}
 	body, _ := io.ReadAll(rr.Body)
 	text := string(body)
-	if !strings.Contains(text, "https://web.max.ru/-72598909498032") {
-		t.Fatalf("response does not contain MAX channel URL: %q", text)
+	if !strings.Contains(text, "https://max.ru/id9718272494_bot?start=in-max-page-fail") {
+		t.Fatalf("response does not contain direct MAX bot return URL: %q", text)
+	}
+	if !strings.Contains(text, appPaymentActionReturnToMAXBot) {
+		t.Fatalf("response does not contain MAX bot return action label: %q", text)
 	}
 	if !strings.Contains(text, "https://web.max.ru/") {
 		t.Fatalf("response does not contain MAX web URL: %q", text)
+	}
+	if strings.Contains(text, "https://web.max.ru/-72598909498032") {
+		t.Fatalf("response should not offer channel action on MAX fail page: %q", text)
+	}
+	if strings.Contains(text, appPaymentActionReturnMAXChannel) {
+		t.Fatalf("response should not offer return-to-channel on MAX fail page: %q", text)
 	}
 	if strings.Contains(text, "https://t.me") {
 		t.Fatalf("response should not contain Telegram URLs for MAX fail page: %q", text)
@@ -1193,6 +1219,12 @@ func testServerHandler(t *testing.T, st store.Store, pass2 string) http.Handler 
 				Password2:     pass2,
 				IsTestMode:    true,
 			},
+		},
+		Telegram: config.TelegramConfig{
+			BotUsername: "friendly_111_neighbour_bot",
+		},
+		MAX: config.MAXConfig{
+			BotUsername: "id9718272494_bot",
 		},
 	}
 

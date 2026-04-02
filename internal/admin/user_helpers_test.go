@@ -17,3 +17,19 @@ func TestBuildAdminMAXStartURLTrimsLeadingAt(t *testing.T) {
 		t.Fatalf("buildAdminMAXStartURL() = %q, want %q", got, want)
 	}
 }
+
+func TestBuildAdminMAXChatURLUsesUsername(t *testing.T) {
+	got := buildAdminMAXChatURL("id9718272494_bot")
+	want := "https://max.ru/id9718272494_bot"
+	if got != want {
+		t.Fatalf("buildAdminMAXChatURL() = %q, want %q", got, want)
+	}
+}
+
+func TestBuildAdminMAXChatURLTrimsLeadingAt(t *testing.T) {
+	got := buildAdminMAXChatURL("@id9718272494_bot")
+	want := "https://max.ru/id9718272494_bot"
+	if got != want {
+		t.Fatalf("buildAdminMAXChatURL() = %q, want %q", got, want)
+	}
+}

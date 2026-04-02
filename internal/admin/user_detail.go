@@ -69,6 +69,14 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 	accountPresentation := buildMessengerAccountPresentation(lang, accounts)
 	preferredAccount, hasDirectMessageAccount := pickPreferredMessengerAccount(accounts)
 	telegramID, _ := resolveTelegramIdentityFromAccounts(accounts)
+	directMessageKind := ""
+	directChatURL := ""
+	if hasDirectMessageAccount {
+		directMessageKind = string(preferredAccount.MessengerKind)
+		if preferredAccount.MessengerKind == domain.MessengerKindMAX {
+			directChatURL = buildAdminMAXChatURL(h.maxBotUsername)
+		}
+	}
 	payments, err := h.store.ListPayments(ctx, domain.PaymentListQuery{UserID: item.ID, Limit: 200})
 	if err != nil {
 		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
@@ -120,6 +128,9 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 			DisplayName:         coalesceUserDisplayName(item.FullName, accountPresentation.DisplayName, item.ID),
 			CanDirectMessage:    hasDirectMessageAccount,
 			DirectMessageTarget: accountPresentation.DirectMessageTarget,
+			DirectMessageKind:   directMessageKind,
+			CanOpenDirectChat:   directChatURL != "",
+			DirectChatURL:       directChatURL,
 			PrimaryAccount:      accountPresentation.PrimaryAccount,
 			LinkedAccounts:      accountPresentation.Accounts,
 			HasTelegramIdentity: accountPresentation.HasTelegramIdentity,

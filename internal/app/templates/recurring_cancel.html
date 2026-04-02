@@ -232,6 +232,24 @@
       gap: 12px;
       align-content: start;
     }
+    .action-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 46px;
+      padding: 0 18px;
+      border-radius: 15px;
+      text-decoration: none;
+      font-weight: 800;
+      font-size: 15px;
+      background: #fff;
+      color: var(--ink);
+      border: 1px solid var(--line);
+      transition: 140ms ease;
+    }
+    .action-link:hover {
+      transform: translateY(-1px);
+    }
     button {
       min-height: 50px;
       padding: 0 20px;
@@ -368,6 +386,7 @@
 
           {{if not .ErrorMessage}}
             <div class="actions">
+              {{if .ReturnURL}}<a class="action-link" href="{{.ReturnURL}}" target="_blank" rel="noreferrer">{{.ReturnLabel}}</a>{{end}}
               {{if .AutoPayEnabled}}
                 <div class="panel">
                   <h3>Что делать дальше</h3>

@@ -13,94 +13,10 @@ import (
 	"github.com/Jopoleon/invest-control-bot/internal/store/memory"
 )
 
-func TestBuildRecurringSummary_EnabledWithoutConsent(t *testing.T) {
-	got := buildRecurringSummary("ru", true, true, nil, map[int64]string{}, nil, nil)
-	if got.HealthClass != "is-danger" {
-		t.Fatalf("HealthClass = %q, want %q", got.HealthClass, "is-danger")
-	}
-}
-
-func TestBuildRecurringSummary_UsesLatestConsent(t *testing.T) {
-	now := time.Now().UTC()
-	got := buildRecurringSummary("ru", true, true, []domain.RecurringConsent{
-		{ConnectorID: 2, AcceptedAt: now},
-	}, map[int64]string{2: "connector-2"}, nil, nil)
-	if got.LastConsentConnector != "connector-2" {
-		t.Fatalf("LastConsentConnector = %q, want %q", got.LastConsentConnector, "connector-2")
-	}
-	if got.HealthClass != "is-success" {
-		t.Fatalf("HealthClass = %q, want %q", got.HealthClass, "is-success")
-	}
-}
-
-func TestBuildRecurringSummary_UsesRebillState(t *testing.T) {
-	now := time.Now().UTC()
-	got := buildRecurringSummary("ru", true, true, nil, map[int64]string{}, []domain.Payment{
-		{
-			SubscriptionID:  11,
-			ParentPaymentID: 1,
-			Status:          domain.PaymentStatusFailed,
-			CreatedAt:       now,
-		},
-	}, []domain.Subscription{
-		{ID: 11, AutoPayEnabled: true},
-	})
-	if got.LastRebillLabel != "последний rebill с ошибкой" {
-		t.Fatalf("LastRebillLabel = %q", got.LastRebillLabel)
-	}
-	if got.FailedAttempts != 1 {
-		t.Fatalf("FailedAttempts = %d", got.FailedAttempts)
-	}
-}
-
-func TestBuildUserDetailURL_UsesUserIDOnly(t *testing.T) {
-	got := buildUserDetailURL("ru", 17)
-	if !strings.Contains(got, "user_id=17") {
-		t.Fatalf("user_id missing from url: %q", got)
-	}
-	if strings.Contains(got, "telegram_id=") {
-		t.Fatalf("telegram_id unexpectedly present in url: %q", got)
-	}
-}
-
-func TestUserDetailPage_AllowsUserIDLookup(t *testing.T) {
+func TestUserDetailPage_ShowsMAXComposeHelperForMAXUser(t *testing.T) {
 	ctx := context.Background()
 	st := memory.New()
-	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil, nil)
-
-	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, "264704572", "emiloserdov")
-	if err != nil {
-		t.Fatalf("GetOrCreateUserByMessenger: %v", err)
-	}
-	user.FullName = "Egor Miloserdov"
-	user.UpdatedAt = time.Now().UTC()
-	if err := st.SaveUser(ctx, user); err != nil {
-		t.Fatalf("SaveUser: %v", err)
-	}
-	user, found, err := st.GetUser(ctx, 264704572)
-	if err != nil {
-		t.Fatalf("GetUser: %v", err)
-	}
-	if !found {
-		t.Fatal("expected saved user")
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/admin/users/view?lang=ru&user_id="+strconv.FormatInt(user.ID, 10), nil)
-	rec := httptest.NewRecorder()
-	h.userDetailPage(rec, withAdminAuthorized(req, &authorizedSession{session: domain.AdminSession{ID: 1}}))
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-	if !strings.Contains(rec.Body.String(), user.FullName) {
-		t.Fatalf("response does not contain user full name: %q", rec.Body.String())
-	}
-}
-
-func TestUserDetailPage_ShowsPrimaryMessengerForMAXUser(t *testing.T) {
-	ctx := context.Background()
-	st := memory.New()
-	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil, nil)
+	h := NewHandler(st, "test-admin-token", "test_bot", "id9718272494_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil, nil)
 
 	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465776", "fedor")
 	if err != nil {
@@ -120,10 +36,41 @@ func TestUserDetailPage_ShowsPrimaryMessengerForMAXUser(t *testing.T) {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "Основной мессенджер") {
-		t.Fatalf("response does not contain primary messenger label: %q", body)
+	if !strings.Contains(body, "Открыть чат в MAX") {
+		t.Fatalf("response does not contain MAX compose action: %q", body)
 	}
-	if !strings.Contains(body, "MAX · 193465776 · @fedor") {
-		t.Fatalf("response does not contain MAX identity: %q", body)
+	if !strings.Contains(body, "https://max.ru/id9718272494_bot") {
+		t.Fatalf("response does not contain MAX bot chat url: %q", body)
+	}
+	if !strings.Contains(body, "Скопировать текст и открыть") {
+		t.Fatalf("response does not contain copy+open helper: %q", body)
+	}
+}
+
+func TestUserDetailPage_DoesNotShowMAXComposeHelperForTelegramUser(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	h := NewHandler(st, "test-admin-token", "test_bot", "id9718272494_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil, nil)
+
+	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, "264704572", "emiloserdov")
+	if err != nil {
+		t.Fatalf("GetOrCreateUserByMessenger: %v", err)
+	}
+	user.FullName = "Egor"
+	user.UpdatedAt = time.Now().UTC()
+	if err := st.SaveUser(ctx, user); err != nil {
+		t.Fatalf("SaveUser: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/users/view?lang=ru&user_id="+strconv.FormatInt(user.ID, 10), nil)
+	rec := httptest.NewRecorder()
+	h.userDetailPage(rec, withAdminAuthorized(req, &authorizedSession{session: domain.AdminSession{ID: 1}}))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if strings.Contains(body, "Открыть чат в MAX") {
+		t.Fatalf("response unexpectedly contains MAX compose action: %q", body)
 	}
 }

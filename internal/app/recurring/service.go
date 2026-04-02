@@ -49,6 +49,8 @@ type Service struct {
 	ResolveTelegramMessengerUserID        func(context.Context, int64) (int64, bool, error)
 	ResolveConnectorChannel               func(string, string) string
 	ConnectorPeriodLabel                  func(domain.Connector) string
+	TelegramBotChatURL                    string
+	MAXBotChatURL                         string
 	RecurringCancelTitle                  string
 	RecurringCancelSubsLoadFail           string
 	RecurringCancelMissingSub             string
@@ -57,6 +59,8 @@ type Service struct {
 	RecurringCancelPersistFailed          string
 	RecurringCancelNotification           func(string) string
 	RecurringCancelSuccessForSubscription func(string) string
+	RecurringCancelOpenTelegramLabel      string
+	RecurringCancelOpenMAXLabel           string
 }
 
 type CancelPageData struct {
@@ -69,6 +73,8 @@ type CancelPageData struct {
 	AutoPayEnabled      bool
 	SuccessMessage      string
 	ErrorMessage        string
+	ReturnURL           string
+	ReturnLabel         string
 	ExpiresAt           string
 	AutoPayCount        int
 	ActiveAccessCount   int
@@ -406,9 +412,10 @@ func (s *Service) BuildCancelPageData(ctx context.Context, token string, messeng
 	}
 
 	data.ActiveAccessCount = len(subs)
-	if userName, accountLabel := s.resolveRecurringCancelUserIdentity(ctx, subs, messengerUserID); userName != "" || accountLabel != "" {
+	if userName, accountLabel, account := s.resolveRecurringCancelUserIdentity(ctx, subs, messengerUserID); userName != "" || accountLabel != "" {
 		data.UserName = userName
 		data.UserAccountLabel = accountLabel
+		data.ReturnURL, data.ReturnLabel = s.resolveRecurringCancelReturn(account)
 	}
 
 	data.ActiveSubscriptions = make([]CancelSubscriptionView, 0, len(subs))
@@ -573,7 +580,7 @@ func (s *Service) subscriptionMatchesMessengerUserID(ctx context.Context, sub do
 	return telegramID == messengerUserID
 }
 
-func (s *Service) resolveRecurringCancelUserIdentity(ctx context.Context, subs []domain.Subscription, messengerUserID int64) (string, string) {
+func (s *Service) resolveRecurringCancelUserIdentity(ctx context.Context, subs []domain.Subscription, messengerUserID int64) (string, string, domain.UserMessengerAccount) {
 	for _, sub := range subs {
 		if sub.UserID <= 0 {
 			continue
@@ -587,32 +594,46 @@ func (s *Service) resolveRecurringCancelUserIdentity(ctx context.Context, subs [
 			if accounts, err := s.Store.ListUserMessengerAccounts(ctx, user.ID); err == nil {
 				for _, account := range accounts {
 					if account.MessengerUserID == strconv.FormatInt(messengerUserID, 10) {
-						return firstNonEmpty(strings.TrimSpace(user.FullName), formatRecurringCancelAccountLabel(account)), formatRecurringCancelAccountLabel(account)
+						return firstNonEmpty(strings.TrimSpace(user.FullName), formatRecurringCancelAccountLabel(account)), formatRecurringCancelAccountLabel(account), account
 					}
 				}
 				for _, account := range accounts {
 					if account.MessengerKind == domain.MessengerKindTelegram {
-						return firstNonEmpty(strings.TrimSpace(user.FullName), formatRecurringCancelAccountLabel(account)), formatRecurringCancelAccountLabel(account)
+						return firstNonEmpty(strings.TrimSpace(user.FullName), formatRecurringCancelAccountLabel(account)), formatRecurringCancelAccountLabel(account), account
 					}
 				}
 			}
-			return strings.TrimSpace(user.FullName), ""
+			return strings.TrimSpace(user.FullName), "", domain.UserMessengerAccount{}
 		}
 	}
 	user, found, err := s.ResolveUserByMessengerUserID(ctx, messengerUserID)
 	if err != nil {
 		slog.Error("load messenger user bridge for public cancel page failed", "error", err, "messenger_user_id", messengerUserID)
-		return "", ""
+		return "", "", domain.UserMessengerAccount{}
 	}
 	if found {
 		if accounts, err := s.Store.ListUserMessengerAccounts(ctx, user.ID); err == nil {
 			for _, account := range accounts {
 				if account.MessengerUserID == strconv.FormatInt(messengerUserID, 10) {
-					return firstNonEmpty(strings.TrimSpace(user.FullName), formatRecurringCancelAccountLabel(account)), formatRecurringCancelAccountLabel(account)
+					return firstNonEmpty(strings.TrimSpace(user.FullName), formatRecurringCancelAccountLabel(account)), formatRecurringCancelAccountLabel(account), account
 				}
 			}
 		}
-		return strings.TrimSpace(user.FullName), ""
+		return strings.TrimSpace(user.FullName), "", domain.UserMessengerAccount{}
+	}
+	return "", "", domain.UserMessengerAccount{}
+}
+
+func (s *Service) resolveRecurringCancelReturn(account domain.UserMessengerAccount) (string, string) {
+	switch account.MessengerKind {
+	case domain.MessengerKindMAX:
+		if strings.TrimSpace(s.MAXBotChatURL) != "" {
+			return s.MAXBotChatURL, s.RecurringCancelOpenMAXLabel
+		}
+	case domain.MessengerKindTelegram:
+		if strings.TrimSpace(s.TelegramBotChatURL) != "" {
+			return s.TelegramBotChatURL, s.RecurringCancelOpenTelegramLabel
+		}
 	}
 	return "", ""
 }
