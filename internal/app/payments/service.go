@@ -27,7 +27,7 @@ type Service struct {
 	MySubscriptionAction    string
 	FailedRecurringText     string
 	FailedRecurringButton   string
-	PaymentSuccessMessage   func(time.Time) string
+	PaymentSuccessMessage   func(domain.Payment, domain.Connector, time.Time) string
 	BuildTelegramAccessLink func(context.Context, int64, domain.Connector) (string, error)
 	ResolveConnectorChannel func(string, string) string
 	SendUserNotification    func(context.Context, int64, string, messenger.OutgoingMessage) error
@@ -110,20 +110,53 @@ func (s *Service) ActivateSuccessfulPayment(ctx context.Context, paymentRow doma
 		return
 	}
 	channelURL := ""
+	accessSource := ""
 	if connectorExists {
 		if s.BuildTelegramAccessLink != nil {
 			accessLink, err := s.BuildTelegramAccessLink(ctx, paymentRow.UserID, connector)
 			if err != nil {
 				slog.Error("build telegram access link failed", "error", err, "user_id", paymentRow.UserID, "connector_id", connector.ID, "payment_id", paymentRow.ID)
+				if saveErr := s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(
+					ctx,
+					paymentRow.UserID,
+					"",
+					paymentRow.ConnectorID,
+					domain.AuditActionInviteLinkDeliveryFailed,
+					"payment_id="+strconv.FormatInt(paymentRow.ID, 10)+";reason=invite_link_build_failed",
+					now,
+				)); saveErr != nil {
+					slog.Error("save audit event failed", "error", saveErr, "action", domain.AuditActionInviteLinkDeliveryFailed)
+				}
 			} else if strings.TrimSpace(accessLink) != "" {
 				channelURL = accessLink
+				accessSource = "telegram_invite_link"
 			}
 		}
 		if channelURL == "" {
-			channelURL = s.ResolveConnectorChannel(connector.ChannelURL, connector.ChatID)
+			fallbackURL := s.ResolveConnectorChannel(connector.ChannelURL, connector.ChatID)
+			if strings.TrimSpace(fallbackURL) != "" {
+				channelURL = fallbackURL
+				accessSource = "connector_channel_url"
+			}
+		}
+		if channelURL != "" {
+			slog.Info("payment access destination resolved",
+				"user_id", paymentRow.UserID,
+				"payment_id", paymentRow.ID,
+				"connector_id", connector.ID,
+				"source", accessSource,
+			)
+		} else {
+			slog.Warn("payment access destination missing",
+				"user_id", paymentRow.UserID,
+				"payment_id", paymentRow.ID,
+				"connector_id", connector.ID,
+				"chat_id_configured", strings.TrimSpace(connector.ChatID) != "",
+				"channel_url_configured", strings.TrimSpace(connector.ChannelURL) != "",
+			)
 		}
 	}
-	successText := s.PaymentSuccessMessage(endsAt)
+	successText := s.PaymentSuccessMessage(paymentRow, connector, endsAt)
 	message := messenger.OutgoingMessage{Text: successText}
 	if channelURL != "" {
 		message.Text += s.SuccessChannelHint
@@ -138,7 +171,47 @@ func (s *Service) ActivateSuccessfulPayment(ctx context.Context, paymentRow doma
 	}
 	if err := s.SendUserNotification(ctx, paymentRow.UserID, "", message); err != nil {
 		slog.Error("send payment success message failed", "error", err, "user_id", paymentRow.UserID, "payment_id", paymentRow.ID)
+		details := "payment_id=" + strconv.FormatInt(paymentRow.ID, 10) + ";reason=notification_send_failed"
+		if channelURL != "" {
+			details += ";source=" + accessSource
+		}
+		if saveErr := s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(
+			ctx,
+			paymentRow.UserID,
+			"",
+			paymentRow.ConnectorID,
+			domain.AuditActionAccessDeliveryFailed,
+			details,
+			now,
+		)); saveErr != nil {
+			slog.Error("save audit event failed", "error", saveErr, "action", domain.AuditActionAccessDeliveryFailed)
+		}
 		return
+	}
+	if channelURL != "" {
+		if err := s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(
+			ctx,
+			paymentRow.UserID,
+			"",
+			paymentRow.ConnectorID,
+			domain.AuditActionPaymentAccessReady,
+			"payment_id="+strconv.FormatInt(paymentRow.ID, 10)+";source="+accessSource,
+			now,
+		)); err != nil {
+			slog.Error("save audit event failed", "error", err, "action", domain.AuditActionPaymentAccessReady)
+		}
+	} else {
+		if err := s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(
+			ctx,
+			paymentRow.UserID,
+			"",
+			paymentRow.ConnectorID,
+			domain.AuditActionAccessDeliveryFailed,
+			"payment_id="+strconv.FormatInt(paymentRow.ID, 10)+";reason=missing_access_destination",
+			now,
+		)); err != nil {
+			slog.Error("save audit event failed", "error", err, "action", domain.AuditActionAccessDeliveryFailed)
+		}
 	}
 	if err := s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(
 		ctx,

@@ -117,6 +117,8 @@ type paymentView struct {
 	ConnectorID       int64
 	Connector         string
 	AmountRUB         int64
+	AccessLabel       string
+	AccessClass       string
 	CreatedAt         string
 	PaidAt            string
 }
@@ -134,6 +136,8 @@ type subscriptionView struct {
 	ConnectorID      int64
 	Connector        string
 	PaymentID        int64
+	AccessLabel      string
+	AccessClass      string
 	StartsAt         string
 	EndsAt           string
 	CreatedAt        string

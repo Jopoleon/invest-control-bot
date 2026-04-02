@@ -131,6 +131,12 @@ func (rr *recurringRuntime) handleRecurringCancel(w http.ResponseWriter, r *http
 		}
 		w.WriteHeader(status)
 		renderAppTemplate(w, "recurring_cancel.html", apprecurring.CancelPageData{
+			PageState: func() string {
+				if status == http.StatusGone {
+					return "expired_link"
+				}
+				return "invalid_link"
+			}(),
 			Title:        appRecurringCancelTitle,
 			ErrorMessage: message,
 		})
@@ -146,7 +152,7 @@ func (rr *recurringRuntime) handleRecurringCancel(w http.ResponseWriter, r *http
 		return
 	}
 
-	pageData, statusCode := rr.recurringServiceFn().BuildCancelPageData(r.Context(), token, messengerUserID, expiresAt, strings.TrimSpace(r.URL.Query().Get("done")))
+	pageData, statusCode := rr.recurringServiceFn().BuildCancelPageData(r.Context(), token, messengerUserID, expiresAt, strings.TrimSpace(r.URL.Query().Get("done")), strings.TrimSpace(r.URL.Query().Get("state")))
 	w.WriteHeader(statusCode)
 	renderAppTemplate(w, "recurring_cancel.html", pageData)
 }
@@ -154,19 +160,19 @@ func (rr *recurringRuntime) handleRecurringCancel(w http.ResponseWriter, r *http
 func (rr *recurringRuntime) processRecurringCancelPost(w http.ResponseWriter, r *http.Request, token string, messengerUserID int64, expiresAt time.Time) {
 	now := time.Now().UTC()
 	if err := r.ParseForm(); err != nil {
-		pageData, _ := rr.recurringServiceFn().BuildCancelPageData(r.Context(), token, messengerUserID, expiresAt, "")
+		pageData, _ := rr.recurringServiceFn().BuildCancelPageData(r.Context(), token, messengerUserID, expiresAt, "", "error")
 		pageData.ErrorMessage = appRecurringCancelInvalidRequest
 		renderAppTemplate(w, "recurring_cancel.html", pageData)
 		return
 	}
 	subscriptionID, err := strconv.ParseInt(strings.TrimSpace(r.FormValue("subscription_id")), 10, 64)
 	if err != nil || subscriptionID <= 0 {
-		pageData, _ := rr.recurringServiceFn().BuildCancelPageData(r.Context(), token, messengerUserID, expiresAt, "")
+		pageData, _ := rr.recurringServiceFn().BuildCancelPageData(r.Context(), token, messengerUserID, expiresAt, "", "error")
 		pageData.ErrorMessage = appRecurringCancelNoSubscription
 		renderAppTemplate(w, "recurring_cancel.html", pageData)
 		return
 	}
-	connectorName, pageData, statusCode := rr.recurringServiceFn().ProcessCancelRequest(r.Context(), token, messengerUserID, subscriptionID, expiresAt, now)
+	connectorName, resultState, pageData, statusCode := rr.recurringServiceFn().ProcessCancelRequest(r.Context(), token, messengerUserID, subscriptionID, expiresAt, now)
 	if statusCode != 0 {
 		renderAppTemplate(w, "recurring_cancel.html", pageData)
 		return
@@ -175,7 +181,11 @@ func (rr *recurringRuntime) processRecurringCancelPost(w http.ResponseWriter, r 
 	if connectorName != "" {
 		done = url.QueryEscape(connectorName)
 	}
-	http.Redirect(w, r, "/unsubscribe/"+url.PathEscape(token)+"?done="+done, http.StatusSeeOther)
+	target := "/unsubscribe/" + url.PathEscape(token) + "?done=" + done
+	if strings.TrimSpace(resultState) != "" {
+		target += "&state=" + url.QueryEscape(resultState)
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
 func (rr *recurringRuntime) lookupConnectorByPayload(ctx context.Context, payload string) (domain.Connector, bool, error) {

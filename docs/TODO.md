@@ -1,50 +1,73 @@
 # TODO
 
-Рабочий список для текущего цикла. Это не исторический план и не changelog.
-Закрытые пункты лучше удалять или переносить в профильные документы.
+Рабочий backlog по текущему состоянию кода и docs.
+Сверху быстрые и короткие задачи с высоким прикладным эффектом.
+Ниже более тяжелые, длинные и архитектурно дорогие задачи.
 
-## Current Focus
+## Quick Wins
 
-- [ ] Прогнать новый live-money short-period recurring smoke test после правки `PreviousInvoiceID -> root recurring payment`.
-- [ ] Проверить в прод-логах:
-  - `short-period rebill scheduler decision`
-  - `robokassa rebill request`
-  - `robokassa rebill response`
-  - `robokassa rebill opstate`
-  - `stale pending rebill without callback`
-- [ ] Сверить по prod БД:
-  - parent payment
-  - child rebill payment
-  - `rebill_requested`
-  - `rebill_request_failed`
-  - `robokassa_result_received`
+- [ ] Задеплоить текущий набор recurring-фиксов и повторно проверить short-period recurring на live money.
+- [ ] На проде проверить `/unsubscribe/{token}` после stale-page фикса: отключение должно применяться к текущей active subscription того же коннектора, даже если страница была открыта на старой подписке.
+- [ ] На проде подтвердить audit для web cancel path: должен писаться `autopay_disabled` с `source=web_cancel_page`, а при stale submit еще и `requested_subscription_id`.
+- [ ] На проде подтвердить, что после отключения автоплатежа новые rebill payments больше не создаются.
+- [ ] На проде подтвердить, что после успешной оплаты Telegram-пользователь получает одноразовую invite link именно в канал коннектора, а не только fallback на публичный `channel_url`.
+- [ ] На проде проверить, что у бота есть нужные права в каждом платном Telegram-канале: создание invite links и удаление участников.
+- [ ] На проде подтвердить end-to-end сценарий: истечение подписки без replacement period приводит к удалению пользователя из канала и audit `subscription_revoked_from_chat`.
+- [ ] Обновить recurring docs после следующего production подтверждения, чтобы убрать уже устаревшие формулировки про callback visibility как главный неподтвержденный риск.
+- [ ] Синхронизировать roadmap/docs, где еще остались historical формулировки про старую схему, старые recurring-гипотезы или старые Telegram-only ограничения.
 
-## Recurring / Robokassa
+## Small Product / Ops Tasks
 
-- [ ] Подтвердить повторным прод-тестом, что Robokassa принимает rebill от root invoice серии, а не только первый child rebill.
-- [ ] Если provider-side ошибка повторится, снять `OpStateExt` через `go run ./cmd/robokassa-opstate --invoice-id <InvId>`.
-- [ ] При необходимости вынести provider-state lookup в отдельный admin/debug flow без ручного запуска из shell.
-- [ ] Держать short-period recurring `TODO:`-маркеры в коде до повторного live-money подтверждения.
+- [x] Улучшить success message после оплаты: явно показывать название подписки, что именно оплачено, срок доступа и что делать дальше.
+- [x] Добавить более явную observability вокруг неудачной выдачи доступа: ошибка создания invite link, отсутствие `chat_id`, недостаточные права бота.
+- [ ] Проверить, нужен ли дополнительный audit/event для invite-link delivery failures по recurring/success flow, а не только runtime log.
+- [x] Продумать fallback-поведение, если revoke из канала не удался: добавить retry/backoff, финальный `needs manual check` и явный audit trail.
+- [x] Показывать revoke/access-delivery failures в admin UI явно, а не только через audit/events.
+- [x] Ослабить startup fail-fast для временных Telegram API timeout'ов: одиночный `getMe`/setup timeout не должен валить весь boot без retry/backoff.
+- [x] Проверить, нужен ли такой же retry/backoff слой для MAX startup health checks и webhook setup.
+- [x] Решить, нужно ли для unsupported payment providers продолжать fallback-to-mock, или лучше fail-fast вместо предупреждения `payment provider is not implemented yet`.
+- [x] Удалить отдельный MAX polling runner и зачистить docs, чтобы MAX оставался только в webhook/server runtime.
 
-## Access Delivery
+## UI / UX Improvements
 
-- [ ] Задеплоить правку с одноразовой Telegram invite link после успешной оплаты.
-- [ ] Проверить на проде, что success message действительно содержит private single-use invite link, а не только публичный `channel_url`.
-- [ ] Если Telegram invite link не создается, снять точную ошибку прав бота в канале (`CanInviteUsers` / channel admin rights).
-- [ ] Лучше оформить success message после оплаты подписки:
-  - показывать название подписки / тарифа
-  - явно писать, что именно было оплачено
-  - сохранять дату окончания доступа
-  - не ограничиваться общим текстом `Оплата прошла успешно`
-- [ ] Актуализировать UI экрана отмены автоплатежа `/unsubscribe/{token}`:
-  - текущий экран выглядит бедно и даёт мало уверенности пользователю
-  - показывать больше данных о пользователе и выбранной подписке
-  - яснее объяснять, что отключается именно автоплатёж, а не уже оплаченный доступ
-  - улучшить карточку тарифа / подписки и общий визуальный ритм страницы
-  - отдельно продумать post-submit состояние и подтверждение успешного отключения
+- [x] Актуализировать UI экрана отмены автоплатежа `/unsubscribe/{token}`: больше данных о пользователе, тарифе и текущем состоянии подписки.
+- [x] Яснее объяснить на `/unsubscribe/{token}`, что отключается именно автоплатеж, а уже оплаченный доступ сохраняется до `ends_at`.
+- [x] Улучшить post-submit состояние `/unsubscribe/{token}`: сделать подтверждение отключения заметнее и понятнее.
+- [x] Проверить, нужны ли отдельные UI-состояния для stale submit, already-off и expired link, чтобы пользователь не видел их как одинаковую ошибку.
 
-## Operational Notes
+## Validation / Follow-up
 
-- [ ] Не делать выводы по recurring без проверки текущей прод-ревизии в `current/REVISION`.
-- [ ] Пока `LOG_FILE_PATH` в проде не используется, считать `journald` основным источником runtime-логов.
-- [ ] Для prod DB investigation использовать repo-local MCP `investcontrol_prod_postgres` через SSH tunnel.
+- [ ] На проде подтвердить, что `PreviousInvoiceID` стабильно идет от root recurring payment и не ломает второй/третий rebill.
+- [ ] Продолжать снимать recurring-диагностику через `journald` и prod DB, пока short-period сценарий не будет подтвержден несколькими повторами подряд.
+- [ ] Пересмотреть short-period windows в `internal/app/periodpolicy/policy.go` после повторных live-money smoke tests и реальных замеров provider latency.
+- [ ] Не убирать `TODO:` из `internal/app/periodpolicy/policy.go`, пока не будет повторного production подтверждения, что текущие окна действительно корректны.
+- [ ] Убедиться, что для short-period сценариев revoke не срабатывает ложно при `pending` rebill в grace window.
+
+## Medium Engineering Work
+
+- [ ] Убрать bounded N+1 lookup в `internal/admin/users_page.go` и заменить его bulk projection для messenger accounts.
+- [ ] Добавить тесты на edge cases payment success/fail pages для messenger-aware actions и fallback path без `channel_url`.
+- [ ] Добавить тесты на recurring cancel page для expired token, чужой subscription, already-disabled subscription и mixed-mode user resolution, если какие-то ветки все еще не покрыты после последних правок.
+- [ ] Усилить тесты `internal/bot` для recurring on/off, missing-docs scenarios, subscription overview и payment history.
+- [ ] Если provider-side сбои повторятся, вынести `OpStateExt` lookup из shell-only debug команды в более удобный admin/debug flow.
+- [ ] Проверить, какие admin screens все еще используют исторические/transport-specific assumptions и требуют cleanup после последних messenger-neutral изменений.
+- [ ] Продолжить identity cleanup: держать linked account resolution в одном месте и сокращать mixed-mode compatibility paths там, где это еще не доведено до `user_id`-first модели.
+- [ ] Решить, нужен ли отдельный persistent учет выдачи/отзыва доступа (`chat_memberships` из старого roadmap) или этот legacy-пункт надо официально убрать из docs.
+
+## MAX Track
+
+- [ ] Довести MAX до минимального parity с Telegram по пользовательским сценариям: старт, регистрация, меню, мои подписки, платежи.
+- [ ] Добавить для MAX окно/экран отправки сообщений, близкий по UX к Telegram compose flow, если такого parity-path еще нет.
+- [ ] Отдельно проверить recurring checkout/cancel UX для MAX и решить, где нужен web fallback вместо нативных UI-компонентов.
+- [ ] Подтвердить, как именно должен выглядеть возврат пользователя из web checkout обратно в MAX в production-потоке.
+
+## Large Refactor / Cleanup
+
+- [ ] Закрыть оставшиеся test gaps из `docs/REFACTORING_AND_TEST_PLAN.md` для payment pages, recurring pages и bot callback/payment branches.
+- [ ] Довести cleanup `internal/app`: убрать оставшиеся compatibility wrappers, где они больше не нужны после выноса business logic в `internal/app/payments`, `internal/app/recurring`, `internal/app/subscriptions`.
+- [ ] Вынести payment status pages и `buildPaymentPageActions` из корневого `internal/app`, как это уже намечено в `docs/APP_REFACTOR_PLAN.md`.
+- [ ] Дорезать recurring/public-page assembly на smaller helpers, чтобы `buildRecurringCancelPageData` не продолжал расти как многозадачный mapper.
+- [ ] Вынести повторяющуюся connector/legal context logic из `bot/start`, recurring pages и payment flow в один helper/service слой.
+- [ ] Вынести user-facing notification builders в более явный слой, вместо дальнейшего размазывания payment/lifecycle/public-page текстов.
+- [ ] Решить, нужен ли отдельный unified messenger delivery service после стабилизации текущего recurring/lifecycle/payment набора.
+- [ ] После следующего recurring milestone перепроверить, какие тестовые TODO из `docs/REFACTORING_AND_TEST_PLAN.md` уже можно вычеркнуть, а какие еще реально открыты.

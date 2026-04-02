@@ -405,17 +405,21 @@ func TestProcessCancelRequest_DisablesAutopayAndNotifiesUser(t *testing.T) {
 		RecurringCancelSubsLoadFail:           "load failed",
 		RecurringCancelMissingSub:             "missing sub",
 		RecurringCancelAlreadyOff:             "already off",
+		RecurringCancelStaleSubmit:            "stale submit",
 		RecurringCancelPersistFailed:          "persist failed",
 		RecurringCancelNotification:           func(string) string { return "cancel ok" },
 		RecurringCancelSuccessForSubscription: func(name string) string { return "done " + name },
 	}
 
-	connectorName, pageData, status := service.ProcessCancelRequest(ctx, "token-1", 193465776, sub.ID, now.Add(time.Hour), now)
+	connectorName, resultState, pageData, status := service.ProcessCancelRequest(ctx, "token-1", 193465776, sub.ID, now.Add(time.Hour), now)
 	if status != 0 {
 		t.Fatalf("status=%d pageData=%+v want success", status, pageData)
 	}
 	if connectorName != "Tariff" {
 		t.Fatalf("connectorName=%q want Tariff", connectorName)
+	}
+	if resultState != cancelPageStateSuccess {
+		t.Fatalf("resultState=%q want %q", resultState, cancelPageStateSuccess)
 	}
 	if sent != 1 {
 		t.Fatalf("sent=%d want=1", sent)
@@ -448,17 +452,21 @@ func TestBuildCancelPageData_ShowsSuccessBanner(t *testing.T) {
 		RecurringCancelSubsLoadFail:           "load failed",
 		RecurringCancelMissingSub:             "missing sub",
 		RecurringCancelAlreadyOff:             "already off",
+		RecurringCancelStaleSubmit:            "stale submit",
 		RecurringCancelPersistFailed:          "persist failed",
 		RecurringCancelNotification:           func(string) string { return "cancel ok" },
 		RecurringCancelSuccessForSubscription: func(name string) string { return "done " + name },
 	}
 
-	data, status := service.BuildCancelPageData(ctx, "token-1", 193465776, now.Add(time.Hour), "Tariff")
+	data, status := service.BuildCancelPageData(ctx, "token-1", 193465776, now.Add(time.Hour), "Tariff", cancelPageStateSuccess)
 	if status != 200 {
 		t.Fatalf("status=%d want=200", status)
 	}
 	if data.SuccessMessage != "done Tariff" {
 		t.Fatalf("SuccessMessage=%q want=%q", data.SuccessMessage, "done Tariff")
+	}
+	if data.PageState != cancelPageStateSuccess {
+		t.Fatalf("PageState=%q want=%q", data.PageState, cancelPageStateSuccess)
 	}
 }
 
@@ -580,17 +588,21 @@ func TestProcessCancelRequest_DisablesLatestActiveSubscriptionForStalePage(t *te
 		RecurringCancelSubsLoadFail:           "load failed",
 		RecurringCancelMissingSub:             "missing sub",
 		RecurringCancelAlreadyOff:             "already off",
+		RecurringCancelStaleSubmit:            "stale submit",
 		RecurringCancelPersistFailed:          "persist failed",
 		RecurringCancelNotification:           func(string) string { return "cancel ok" },
 		RecurringCancelSuccessForSubscription: func(name string) string { return "done " + name },
 	}
 
-	connectorName, pageData, status := service.ProcessCancelRequest(ctx, "token-1", 264704572, staleSub.ID, now.Add(time.Hour), now)
+	connectorName, resultState, pageData, status := service.ProcessCancelRequest(ctx, "token-1", 264704572, staleSub.ID, now.Add(time.Hour), now)
 	if status != 0 {
 		t.Fatalf("status=%d pageData=%+v want success", status, pageData)
 	}
 	if connectorName != connector.Name {
 		t.Fatalf("connectorName=%q want %q", connectorName, connector.Name)
+	}
+	if resultState != cancelPageStateStaleSuccess {
+		t.Fatalf("resultState=%q want %q", resultState, cancelPageStateStaleSuccess)
 	}
 
 	staleSubAfter, found, err := st.GetSubscriptionByID(ctx, staleSub.ID)

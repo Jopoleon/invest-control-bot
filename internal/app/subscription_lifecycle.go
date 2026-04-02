@@ -59,6 +59,7 @@ func newSubscriptionLifecycleScheduler(appCtx *application) (gocron.Scheduler, e
 		gocron.DurationJob(subscriptionJobEvery),
 		gocron.NewTask(func() {
 			processExpiredSubscriptions(context.Background(), appCtx)
+			processSubscriptionRevokeRetries(context.Background(), appCtx)
 		}),
 		jobOptions...,
 	); err != nil {
@@ -89,6 +90,7 @@ func runSubscriptionLifecyclePass(ctx context.Context, appCtx *application) {
 		processRecurringRebills(ctx, appCtx)
 	}
 	processExpiredSubscriptions(ctx, appCtx)
+	processSubscriptionRevokeRetries(ctx, appCtx)
 }
 
 func processRecurringRebills(ctx context.Context, appCtx *application) {
@@ -147,6 +149,10 @@ func processExpiredSubscriptions(ctx context.Context, appCtx *application) {
 	appCtx.subscriptionLifecycleService().ProcessExpiredSubscriptions(ctx)
 }
 
+func processSubscriptionRevokeRetries(ctx context.Context, appCtx *application) {
+	appCtx.subscriptionLifecycleService().ProcessFailedSubscriptionRevokes(ctx)
+}
+
 func buildBotStartURL(botUsername, startPayload string) string {
 	username := strings.TrimSpace(strings.TrimPrefix(botUsername, "@"))
 	payload := strings.TrimSpace(startPayload)
@@ -187,12 +193,18 @@ func normalizeTelegramChatID(chatIDRaw string) (int64, bool) {
 
 func (a *application) subscriptionLifecycleService() *appsubscriptions.Service {
 	return &appsubscriptions.Service{
-		Store:                       a.store,
-		TelegramClient:              a.telegramClient,
-		TelegramBotUsername:         a.config.Telegram.BotUsername,
-		ReminderDaysBeforeEnd:       reminderDaysBeforeEnd,
-		ExpiryNoticeWindow:          expiryNoticeWindow,
-		SubscriptionJobLimit:        subscriptionJobLimit,
+		Store:                 a.store,
+		TelegramClient:        a.telegramClient,
+		TelegramBotUsername:   a.config.Telegram.BotUsername,
+		ReminderDaysBeforeEnd: reminderDaysBeforeEnd,
+		ExpiryNoticeWindow:    expiryNoticeWindow,
+		SubscriptionJobLimit:  subscriptionJobLimit,
+		RemoveTelegramChatMember: func(ctx context.Context, chatID, userID int64) error {
+			if a.telegramClient == nil {
+				return nil
+			}
+			return a.telegramClient.RemoveChatMember(ctx, chatID, userID)
+		},
 		SubscriptionReminderMessage: appSubscriptionReminderMessage,
 		SubscriptionExpiryMessage:   appSubscriptionExpiryNoticeMessage,
 		SubscriptionExpiredText:     appSubscriptionExpiredText,

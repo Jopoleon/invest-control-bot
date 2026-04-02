@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Jopoleon/invest-control-bot/internal/domain"
 	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 )
 
@@ -45,14 +46,35 @@ const (
 	appRecurringCancelNoSubscription  = "Не выбрана подписка для отключения автоплатежа."
 	appRecurringCancelMissingSub      = "Подписка для отключения автоплатежа не найдена."
 	appRecurringCancelAlreadyOff      = "Для этой подписки автоплатеж уже выключен."
+	appRecurringCancelStaleSubmit     = "Эта страница была открыта на уже неактуальном состоянии подписки. Обновите страницу из бота, чтобы увидеть текущий статус автоплатежа."
 	appRecurringCancelPersistFailed   = "Не удалось отключить автоплатеж для выбранной подписки. Попробуйте еще раз позже."
 	appRecurringCancelSuccess         = "Автоплатеж отключен. Уже оплаченный период сохранится до конца срока подписки."
 	appRecurringCancelStatusLoadFail  = "Не удалось загрузить статус автоплатежа."
 	appRecurringCancelSubsLoadFail    = "Не удалось загрузить подписки."
 )
 
-func appPaymentSuccessMessage(endsAt time.Time) string {
-	return fmt.Sprintf("✅ Оплата прошла успешно. Подписка активирована до %s.", endsAt.In(time.Local).Format("02.01.2006 15:04"))
+func appPaymentSuccessMessage(paymentRow domain.Payment, connector domain.Connector, endsAt time.Time) string {
+	lines := []string{"✅ Оплата прошла успешно."}
+
+	if name := strings.TrimSpace(connector.Name); name != "" {
+		lines = append(lines, "Подписка: "+name)
+	}
+	if paymentRow.AmountRUB > 0 {
+		lines = append(lines, fmt.Sprintf("Сумма: %d ₽", paymentRow.AmountRUB))
+	} else if connector.PriceRUB > 0 {
+		lines = append(lines, fmt.Sprintf("Сумма: %d ₽", connector.PriceRUB))
+	}
+	if connector.PeriodMode != "" || connector.PeriodSeconds > 0 || connector.PeriodMonths > 0 || connector.FixedEndsAt != nil {
+		periodLabel := strings.TrimSpace(appConnectorPeriodLabel(connector))
+		if periodLabel != "" {
+			lines = append(lines, "Период: "+periodLabel)
+		}
+	}
+	lines = append(lines, "Доступ активирован до "+endsAt.In(time.Local).Format("02.01.2006 15:04")+".")
+	if paymentRow.AutoPayEnabled {
+		lines = append(lines, "Автоплатеж для следующих списаний включен.")
+	}
+	return strings.Join(lines, "\n")
 }
 
 func appSubscriptionReminderMessage(endsAt time.Time) string {

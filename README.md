@@ -26,7 +26,6 @@
 
 ## Структура
 - `cmd/server` - точка входа backend сервиса.
-- `cmd/max-poller` - локальный MAX long-polling worker для dev/test.
 - `internal/config` - загрузка и валидация конфигурации.
 - `internal/app` - HTTP-сервер, маршрутизация, lifecycle jobs, payment callbacks.
 - `internal/admin` - server-rendered админка, auth/session middleware, экраны операторов.
@@ -158,7 +157,7 @@ PAYMENT_MOCK_BASE_URL=https://xn--b1aghkfidhbthmd7l.xn--p1ai
 по вашему production окружению.
 
 ### Локальный MAX development
-Для MAX локальный dev-flow рекомендуем запускать через long polling, а не через webhook tunnel.
+Для MAX локальный dev-flow теперь такой же, как production-shaped runtime: один `cmd/server` + webhook delivery.
 
 Минимальные env:
 ```env
@@ -169,9 +168,8 @@ LOG_LEVEL=debug
 MAX_BOT_TOKEN=...
 MAX_BOT_NAME=...
 MAX_BOT_USERNAME=id9718272494_bot
-MAX_POLLING_TYPES=bot_started,message_created,message_callback
-MAX_POLLING_TIMEOUT_SEC=30
-MAX_POLLING_LIMIT=100
+MAX_WEBHOOK_PUBLIC_URL=https://your-ngrok-domain.ngrok-free.app/max/webhook
+MAX_WEBHOOK_SECRET=replace-with-strong-max-webhook-secret
 
 PAYMENT_PROVIDER=mock
 PAYMENT_MOCK_BASE_URL=https://your-ngrok-domain.ngrok-free.app
@@ -183,13 +181,11 @@ ADMIN_AUTH_TOKEN=replace-with-strong-admin-token
 Запуск:
 ```bash
 go run ./cmd/server
-go run ./cmd/max-poller
 ```
 
 Важно:
-- для long polling у MAX не нужен `ngrok`;
-- `ngrok` нужен только для web/payment ссылок, если ты открываешь их с телефона;
-- перед polling у MAX-бота не должно быть активной webhook subscription.
+- для локального MAX webhook режима нужен публичный HTTPS URL, например через `ngrok`;
+- тот же публичный base URL обычно нужен и для web/payment ссылок, если ты открываешь их с телефона;
 - для deep link в админке нужен `MAX_BOT_USERNAME`, например `id9718272494_bot`;
 - `MAX_BOT_NAME` можно использовать как display name, но launch URL строится именно по username.
 
@@ -202,7 +198,6 @@ MAX_BOT_TOKEN=...
 MAX_BOT_USERNAME=id9718272494_bot
 MAX_WEBHOOK_PUBLIC_URL=https://your-domain.example/max/webhook
 MAX_WEBHOOK_SECRET=your-max-webhook-secret
-MAX_POLLING_TYPES=bot_started,message_created,message_callback
 ```
 
 При старте `cmd/server` backend:

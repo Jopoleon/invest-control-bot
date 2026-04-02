@@ -91,9 +91,14 @@
     }
     .notice.success { background: var(--ok); border: 1px solid var(--ok-line); color: #235235; }
     .notice.error { background: var(--err); border: 1px solid var(--err-line); color: #7c2c2c; }
+    .notice strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 15px;
+    }
     .meta-grid {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 10px;
     }
     .meta {
@@ -180,6 +185,48 @@
       line-height: 1.6;
       font-size: 15px;
     }
+    .checklist {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .checklist li {
+      padding: 12px 14px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.5);
+      line-height: 1.5;
+      color: var(--ink);
+      font-size: 14px;
+    }
+    .sub-meta {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .sub-meta div {
+      padding: 10px 11px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.56);
+      border: 1px solid var(--line);
+    }
+    .sub-meta small {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    .sub-meta strong {
+      display: block;
+      font-size: 13px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
     .actions {
       display: grid;
       gap: 12px;
@@ -223,33 +270,52 @@
     <section class="stage">
       <div class="layout">
         <section class="left">
-          <span class="eyebrow">Управление автосписанием</span>
+          <span class="eyebrow">
+            {{if eq .PageState "expired_link"}}Ссылка истекла{{else if eq .PageState "already_off"}}Уже отключено{{else if eq .PageState "stale_submit"}}Страница устарела{{else if eq .PageState "stale_success"}}Подписка обновилась{{else}}Управление автосписанием{{end}}
+          </span>
           <div>
             <h1>{{.Title}}</h1>
-            {{if .UserName}}<p class="lead">Страница отключения автоплатежа для {{.UserName}}. Уже оплаченный период сохранится до конца срока подписки.</p>{{else}}<p class="lead">На этой странице можно отключить автоматические списания без авторизации в админке и без обращения в поддержку.</p>{{end}}
+            {{if .UserName}}<p class="lead">Страница управления автоплатежом для {{.UserName}}{{if .UserAccountLabel}} ({{.UserAccountLabel}}){{end}}. Здесь отключаются только будущие автоматические списания, а уже оплаченный доступ остается активным до конца текущего периода.</p>{{else}}<p class="lead">На этой странице можно отключить автоматические списания без авторизации в админке и без обращения в поддержку. Уже оплаченный доступ при этом не пропадает.</p>{{end}}
           </div>
 
-          {{if .SuccessMessage}}<div class="notice success">{{.SuccessMessage}}</div>{{end}}
+          {{if .SuccessMessage}}<div class="notice success"><strong>{{if eq .PageState "stale_success"}}Автосписания остановлены для текущей подписки{{else}}Автосписания остановлены{{end}}</strong>{{.SuccessMessage}}</div>{{end}}
           {{if .ErrorMessage}}<div class="notice error">{{.ErrorMessage}}</div>{{end}}
 
           {{if not .ErrorMessage}}
             <div class="meta-grid">
               <div class="meta">
-                <small>ID пользователя</small>
-                <strong>{{.MessengerUserID}}</strong>
+                <small>Пользователь</small>
+                <strong>{{if .UserName}}{{.UserName}}{{else}}{{.MessengerUserID}}{{end}}</strong>
+              </div>
+              <div class="meta">
+                <small>Аккаунт</small>
+                <strong>{{if .UserAccountLabel}}{{.UserAccountLabel}}{{else}}{{.MessengerUserID}}{{end}}</strong>
+              </div>
+              <div class="meta">
+                <small>Автоплатеж</small>
+                <strong><span class="status {{if .AutoPayEnabled}}on{{else}}off{{end}}">{{if .AutoPayEnabled}}включен{{else}}выключен{{end}}</span></strong>
+              </div>
+              <div class="meta">
+                <small>Подписок с автоплатежом</small>
+                <strong>{{.AutoPayCount}}</strong>
+              </div>
+              <div class="meta">
+                <small>Активных доступов</small>
+                <strong>{{.ActiveAccessCount}}</strong>
               </div>
               <div class="meta">
                 <small>Ссылка действует до</small>
                 <strong>{{.ExpiresAt}}</strong>
               </div>
-              <div class="meta">
-                <small>Статус</small>
-                <strong><span class="status {{if .AutoPayEnabled}}on{{else}}off{{end}}">{{if .AutoPayEnabled}}включен{{else}}выключен{{end}}</span></strong>
-              </div>
-              <div class="meta">
-                <small>После действия</small>
-                <strong>{{if .AutoPayEnabled}}Новые списания прекратятся{{else}}Автосписания уже остановлены{{end}}</strong>
-              </div>
+            </div>
+
+            <div class="panel">
+              <h3>Что изменится после отключения</h3>
+              <ul class="checklist">
+                <li>Отключатся только будущие автоматические списания по выбранной подписке.</li>
+                <li>Уже оплаченный доступ сохранится до даты окончания текущего периода.</li>
+                <li>Если у вас несколько подписок, автоплатеж отключается отдельно для каждой из них.</li>
+              </ul>
             </div>
 
             <div class="subs">
@@ -257,20 +323,36 @@
                 {{range .ActiveSubscriptions}}
                   <article class="sub">
                     <h2>{{.Name}}</h2>
-                    <p>Сумма: {{.PriceRUB}} ₽</p>
-                    <p>Период: {{.PeriodLabel}}</p>
-                    <p>Действует до: {{.EndsAtLabel}}</p>
+                    <p>Для этой подписки можно остановить только новые автосписания. Доступ по уже оплаченному периоду сохранится до даты окончания ниже.</p>
+                    <div class="sub-meta">
+                      <div>
+                        <small>Стоимость</small>
+                        <strong>{{.PriceRUB}} ₽</strong>
+                      </div>
+                      <div>
+                        <small>Период</small>
+                        <strong>{{.PeriodLabel}}</strong>
+                      </div>
+                      <div>
+                        <small>Активна с</small>
+                        <strong>{{.StartsAtLabel}}</strong>
+                      </div>
+                      <div>
+                        <small>Доступ до</small>
+                        <strong>{{.EndsAtLabel}}</strong>
+                      </div>
+                    </div>
                     {{if .ChannelURL}}<p>Канал: <a href="{{.ChannelURL}}" target="_blank" rel="noreferrer">{{.ChannelURL}}</a></p>{{end}}
                     <form method="post" style="margin-top:10px;">
                       <input type="hidden" name="subscription_id" value="{{.SubscriptionID}}">
-                      <button type="submit">Отключить автоплатеж</button>
+                      <button type="submit">Остановить автосписания по этой подписке</button>
                     </form>
                   </article>
                 {{end}}
               {{else}}
                 <article class="sub">
                   <h2>Подписок с автоплатежом не найдено</h2>
-                  <p>Сейчас у вас нет активных подписок, для которых требуется отключение автоплатежа.</p>
+                  <p>Сейчас у вас нет активных подписок, для которых требуется отключение автоплатежа. Если доступ еще действует, значит автосписания по нему уже остановлены.</p>
                 </article>
               {{end}}
             </div>
@@ -280,18 +362,21 @@
 
         <aside class="right">
           <div class="panel">
-            <h3>Отключение без потери доступа</h3>
-            <p>После подтверждения новые автоматические списания выполняться не будут. Уже оплаченный период останется активным до даты окончания подписки.</p>
+            <h3>{{if eq .PageState "expired_link"}}Нужна новая ссылка{{else if eq .PageState "already_off"}}Повторное отключение не требуется{{else if eq .PageState "stale_submit"}}Нужно открыть страницу заново{{else if eq .PageState "stale_success"}}Отключение применено к актуальной подписке{{else}}Отключение без потери доступа{{end}}</h3>
+            <p>{{if eq .PageState "expired_link"}}Ссылка больше не действует. Откройте новую ссылку отключения автоплатежа из бота, чтобы работать с актуальным состоянием подписки.{{else if eq .PageState "already_off"}}По выбранной подписке автоплатеж уже выключен. Если доступ еще активен, он сохранится до конца оплаченного периода без новых списаний.{{else if eq .PageState "stale_submit"}}За время между открытием страницы и нажатием кнопки состояние подписки изменилось. Лучше открыть свежую ссылку из бота и проверить текущее состояние автоплатежа.{{else if eq .PageState "stale_success"}}Страница была открыта на старой подписке, поэтому отключение автоматически применилось к текущей активной подписке этого же тарифа.{{else}}Эта страница не отменяет уже оплаченный период и не удаляет доступ немедленно. Она только выключает следующее автоматическое списание по выбранному тарифу.{{end}}</p>
           </div>
 
           {{if not .ErrorMessage}}
             <div class="actions">
               {{if .AutoPayEnabled}}
-                <p class="footnote">Для каждой подписки автоплатеж отключается отдельно. Уже оплаченный период по выбранному тарифу сохранится до даты окончания.</p>
+                <div class="panel">
+                  <h3>Что делать дальше</h3>
+                  <p>Если потом захочется снова включить автоплатеж, это можно будет сделать на следующем шаге новой оплаты через бота.</p>
+                </div>
               {{else}}
                 <div class="panel">
                   <h3>Автоплатеж уже выключен</h3>
-                  <p>Повторное подключение возможно на следующем шаге новой оплаты через Telegram-бот.</p>
+                  <p>Новые автоматические списания по этим подпискам не выполняются. Повторное подключение возможно на следующем шаге новой оплаты через бота.</p>
                 </div>
               {{end}}
             </div>

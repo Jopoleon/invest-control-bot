@@ -42,6 +42,7 @@ func (a *application) recurringService() *apprecurring.Service {
 		RecurringCancelSubsLoadFail:           appRecurringCancelSubsLoadFail,
 		RecurringCancelMissingSub:             appRecurringCancelMissingSub,
 		RecurringCancelAlreadyOff:             appRecurringCancelAlreadyOff,
+		RecurringCancelStaleSubmit:            appRecurringCancelStaleSubmit,
 		RecurringCancelPersistFailed:          appRecurringCancelPersistFailed,
 		RecurringCancelNotification:           appRecurringCancelNotification,
 		RecurringCancelSuccessForSubscription: appRecurringCancelSuccessForSubscription,

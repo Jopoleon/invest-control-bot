@@ -103,8 +103,14 @@ func TestRecurringCancelPage_DisablesAutopay(t *testing.T) {
 		t.Fatalf("get status=%d body=%q", getRR.Code, string(body))
 	}
 	getBody, _ := io.ReadAll(getRR.Body)
-	if !strings.Contains(string(getBody), "Отключить автоплатеж") {
-		t.Fatalf("cancel page does not contain disable action: %q", string(getBody))
+	if !strings.Contains(string(getBody), "Остановить автосписания по этой подписке") {
+		t.Fatalf("cancel page does not contain per-subscription disable action: %q", string(getBody))
+	}
+	if !strings.Contains(string(getBody), "Уже оплаченный доступ") {
+		t.Fatalf("cancel page does not explain paid access retention: %q", string(getBody))
+	}
+	if !strings.Contains(string(getBody), "Пользователь") {
+		t.Fatalf("cancel page does not contain enriched user meta: %q", string(getBody))
 	}
 
 	postReq := httptest.NewRequest(http.MethodPost, "/unsubscribe/"+token, strings.NewReader(url.Values{
@@ -196,6 +202,256 @@ func TestRecurringCancelPage_SendsConfirmationViaMAX(t *testing.T) {
 	}
 	if got := maxSpy.sent[0].msg.Text; !strings.Contains(got, "Автоплатеж") {
 		t.Fatalf("confirmation text = %q, want autopay confirmation", got)
+	}
+}
+
+func TestRecurringCancelPage_ShowsDetailedSuccessState(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	connectorID := seedConnector(t, ctx, st, "in-cancel-success-state")
+	userID := seedTelegramUser(t, ctx, st, 91002)
+	user, found, err := st.GetUserByID(ctx, userID)
+	if err != nil || !found {
+		t.Fatalf("GetUserByID found=%v err=%v", found, err)
+	}
+	user.FullName = "Егор Тест"
+	user.UpdatedAt = time.Now().UTC()
+	if err := st.SaveUser(ctx, user); err != nil {
+		t.Fatalf("SaveUser err=%v", err)
+	}
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPaid,
+		Token:          "cancel-success-state-1",
+		UserID:         userID,
+		ConnectorID:    connectorID,
+		AmountRUB:      2322,
+		AutoPayEnabled: false,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	})
+	paymentRow, found, err := st.GetPaymentByToken(ctx, "cancel-success-state-1")
+	if err != nil || !found {
+		t.Fatalf("GetPaymentByToken found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         userID,
+		ConnectorID:    connectorID,
+		PaymentID:      paymentRow.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: false,
+		StartsAt:       time.Now().UTC().Add(-24 * time.Hour),
+		EndsAt:         time.Now().UTC().Add(24 * time.Hour),
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("UpsertSubscriptionByPayment err=%v", err)
+	}
+	token, err := recurringlink.BuildCancelToken("test-encryption-key-12345678901234567890", 91002, time.Now().UTC().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("build cancel token: %v", err)
+	}
+
+	handler := testRecurringPagesHandler(t, st)
+	req := httptest.NewRequest(http.MethodGet, "/unsubscribe/"+token+"?done=%D1%82%D0%B5%D1%81%D1%82-%D0%BA%D0%BE%D0%BD%D0%BD%D0%B5%D0%BA%D1%82%D0%BE%D1%80&state=stale_success", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		body, _ := io.ReadAll(rec.Body)
+		t.Fatalf("status=%d body=%q", rec.Code, string(body))
+	}
+	body, _ := io.ReadAll(rec.Body)
+	text := string(body)
+	if !strings.Contains(text, "Автосписания остановлены") {
+		t.Fatalf("success page does not contain strong success heading: %q", text)
+	}
+	if !strings.Contains(text, "Подписка обновилась") {
+		t.Fatalf("success page does not contain stale-success state label: %q", text)
+	}
+	if !strings.Contains(text, "Автоплатеж для подписки") {
+		t.Fatalf("success page does not contain named subscription confirmation: %q", text)
+	}
+}
+
+func TestRecurringCancelPage_ShowsExpiredLinkState(t *testing.T) {
+	handler := testRecurringPagesHandler(t, memory.New())
+	token, err := recurringlink.BuildCancelToken("test-encryption-key-12345678901234567890", 91003, time.Now().UTC().Add(-time.Minute))
+	if err != nil {
+		t.Fatalf("build cancel token: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/unsubscribe/"+token, nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusGone {
+		body, _ := io.ReadAll(rec.Body)
+		t.Fatalf("status=%d body=%q", rec.Code, string(body))
+	}
+	body, _ := io.ReadAll(rec.Body)
+	text := string(body)
+	if !strings.Contains(text, "Ссылка истекла") {
+		t.Fatalf("expired-link page does not contain dedicated state label: %q", text)
+	}
+	if !strings.Contains(text, "Нужна новая ссылка") {
+		t.Fatalf("expired-link page does not contain renewal guidance: %q", text)
+	}
+}
+
+func TestRecurringCancelPage_ShowsAlreadyOffState(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	connectorID := seedConnector(t, ctx, st, "in-cancel-already-off")
+	userID := seedTelegramUser(t, ctx, st, 91004)
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPaid,
+		Token:          "cancel-already-off-1",
+		UserID:         userID,
+		ConnectorID:    connectorID,
+		AmountRUB:      2322,
+		AutoPayEnabled: false,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	})
+	paymentRow, found, err := st.GetPaymentByToken(ctx, "cancel-already-off-1")
+	if err != nil || !found {
+		t.Fatalf("GetPaymentByToken found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         userID,
+		ConnectorID:    connectorID,
+		PaymentID:      paymentRow.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: false,
+		StartsAt:       time.Now().UTC().Add(-time.Hour),
+		EndsAt:         time.Now().UTC().Add(time.Hour),
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("UpsertSubscriptionByPayment err=%v", err)
+	}
+	sub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, userID, connectorID)
+	if err != nil || !found {
+		t.Fatalf("GetLatestSubscriptionByUserConnector found=%v err=%v", found, err)
+	}
+	token, err := recurringlink.BuildCancelToken("test-encryption-key-12345678901234567890", 91004, time.Now().UTC().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("build cancel token: %v", err)
+	}
+
+	handler := testRecurringPagesHandler(t, st)
+	postReq := httptest.NewRequest(http.MethodPost, "/unsubscribe/"+token, strings.NewReader(url.Values{
+		"subscription_id": []string{strconv.FormatInt(sub.ID, 10)},
+	}.Encode()))
+	postReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	postRR := httptest.NewRecorder()
+	handler.ServeHTTP(postRR, postReq)
+	if postRR.Code != http.StatusOK {
+		body, _ := io.ReadAll(postRR.Body)
+		t.Fatalf("status=%d body=%q", postRR.Code, string(body))
+	}
+	body, _ := io.ReadAll(postRR.Body)
+	text := string(body)
+	if !strings.Contains(text, "Уже отключено") {
+		t.Fatalf("already-off page does not contain dedicated state label: %q", text)
+	}
+	if !strings.Contains(text, "автоплатеж уже выключен") {
+		t.Fatalf("already-off page does not contain explicit already-off message: %q", text)
+	}
+}
+
+func TestRecurringCancelPage_ShowsStaleSubmitState(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	connectorID := seedConnector(t, ctx, st, "in-cancel-stale-submit")
+	userID := seedTelegramUser(t, ctx, st, 91005)
+	now := time.Now().UTC()
+
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPaid,
+		Token:          "cancel-stale-submit-old",
+		UserID:         userID,
+		ConnectorID:    connectorID,
+		AmountRUB:      2322,
+		AutoPayEnabled: true,
+		CreatedAt:      now.Add(-2 * time.Hour),
+		UpdatedAt:      now.Add(-2 * time.Hour),
+	})
+	oldPayment, found, err := st.GetPaymentByToken(ctx, "cancel-stale-submit-old")
+	if err != nil || !found {
+		t.Fatalf("GetPaymentByToken old found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         userID,
+		ConnectorID:    connectorID,
+		PaymentID:      oldPayment.ID,
+		Status:         domain.SubscriptionStatusExpired,
+		AutoPayEnabled: true,
+		StartsAt:       now.Add(-3 * time.Hour),
+		EndsAt:         now.Add(-90 * time.Minute),
+		CreatedAt:      now.Add(-3 * time.Hour),
+		UpdatedAt:      now.Add(-90 * time.Minute),
+	}); err != nil {
+		t.Fatalf("UpsertSubscriptionByPayment old err=%v", err)
+	}
+	oldSub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, userID, connectorID)
+	if err != nil || !found {
+		t.Fatalf("GetLatestSubscriptionByUserConnector old found=%v err=%v", found, err)
+	}
+
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPaid,
+		Token:          "cancel-stale-submit-new",
+		UserID:         userID,
+		ConnectorID:    connectorID,
+		AmountRUB:      2322,
+		AutoPayEnabled: false,
+		CreatedAt:      now.Add(-30 * time.Minute),
+		UpdatedAt:      now.Add(-30 * time.Minute),
+	})
+	newPayment, found, err := st.GetPaymentByToken(ctx, "cancel-stale-submit-new")
+	if err != nil || !found {
+		t.Fatalf("GetPaymentByToken new found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         userID,
+		ConnectorID:    connectorID,
+		PaymentID:      newPayment.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: false,
+		StartsAt:       now.Add(-30 * time.Minute),
+		EndsAt:         now.Add(90 * time.Minute),
+		CreatedAt:      now.Add(-30 * time.Minute),
+		UpdatedAt:      now.Add(-30 * time.Minute),
+	}); err != nil {
+		t.Fatalf("UpsertSubscriptionByPayment new err=%v", err)
+	}
+
+	token, err := recurringlink.BuildCancelToken("test-encryption-key-12345678901234567890", 91005, now.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("build cancel token: %v", err)
+	}
+
+	handler := testRecurringPagesHandler(t, st)
+	postReq := httptest.NewRequest(http.MethodPost, "/unsubscribe/"+token, strings.NewReader(url.Values{
+		"subscription_id": []string{strconv.FormatInt(oldSub.ID, 10)},
+	}.Encode()))
+	postReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	postRR := httptest.NewRecorder()
+	handler.ServeHTTP(postRR, postReq)
+	if postRR.Code != http.StatusOK {
+		body, _ := io.ReadAll(postRR.Body)
+		t.Fatalf("status=%d body=%q", postRR.Code, string(body))
+	}
+	body, _ := io.ReadAll(postRR.Body)
+	text := string(body)
+	if !strings.Contains(text, "Страница устарела") {
+		t.Fatalf("stale-submit page does not contain dedicated state label: %q", text)
+	}
+	if !strings.Contains(text, "Обновите страницу из бота") {
+		t.Fatalf("stale-submit page does not contain refresh guidance: %q", text)
 	}
 }
 

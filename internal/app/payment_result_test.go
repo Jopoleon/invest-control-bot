@@ -177,6 +177,15 @@ func TestActivateSuccessfulPayment_SendsSuccessMessageViaMAXAccount(t *testing.T
 	if got := maxSpy.sent[0].msg.Text; !strings.Contains(got, "Оплата прошла успешно") {
 		t.Fatalf("success text = %q, want payment success notification", got)
 	}
+	if got := maxSpy.sent[0].msg.Text; !strings.Contains(got, "test-connector") {
+		t.Fatalf("success text = %q, want connector name", got)
+	}
+	if got := maxSpy.sent[0].msg.Text; !strings.Contains(got, "2322 ₽") {
+		t.Fatalf("success text = %q, want amount", got)
+	}
+	if got := maxSpy.sent[0].msg.Text; !strings.Contains(got, "Автоплатеж") {
+		t.Fatalf("success text = %q, want autopay hint", got)
+	}
 	if got := len(maxSpy.sent[0].msg.Buttons); got != 2 {
 		t.Fatalf("button rows = %d, want 2", got)
 	}

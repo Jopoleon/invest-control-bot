@@ -23,12 +23,12 @@
 - Admin operational flows больше не опираются только на legacy detail route: user-facing admin actions и user-oriented CSV exports начали передавать и сохранять `user_id`, что уменьшает сцепление с Telegram-only identity.
 - Admin read paths тоже начали жить в mixed mode: filters и exports для `users`, `billing` и `churn` уже принимают `user_id`, но пока резолвят его в legacy `telegram_id` до полного перехода payment/subscription слоя на internal user model.
 - Payment/subscription persistence переведены на следующий additive шаг: `payments` и `subscriptions` уже умеют хранить `user_id` параллельно с legacy `telegram_id`, а write paths платежей и подписок начали реально его заполнять.
-- Для локального MAX development зафиксирован preferred-flow: long polling через `GET /updates` как первый transport adapter, без обязательного `ngrok` и webhook subscriptions.
+- Для раннего local MAX development был зафиксирован промежуточный long-polling flow через `GET /updates` как первый transport adapter; после стабилизации webhook path этот режим оставлен только как исторический этап, а не как текущий runtime.
 - Добавлен начальный пакет `internal/max`:
   - HTTP client для `GET /updates`, `POST /subscriptions`, `POST /messages`;
   - polling-loop для local dev;
   - unit-тесты на transport boundary.
-- Первый живой local polling прогон подтвержден на реальном MAX-боте: токен валиден, webhook subscriptions отсутствуют, updates приходят в `cmd/max-poller`.
+- Первый живой local polling прогон на реальном MAX-боте исторически подтвердил transport adapter: токен валиден, webhook subscriptions отсутствуют, updates приходили через временный debug runner.
 - Mapper `message_created` выровнен под documented payload MAX:
   - пользователь читается из `message.sender`;
   - чат/диалог резолвится через `message.recipient.chat_id` или `message.recipient.user_id`;
@@ -38,7 +38,7 @@
 - MAX private-dialog transport исправлен: outbound сообщения для текущего bot-DM flow теперь отправляются через `user_id`, а пустые callback-ack больше не отправляются в `/answers`, чтобы не получать `proto.payload` на harmless callbacks.
 - На живом local E2E прогоне подтверждены `/menu`, `/start <payload>`, регистрация, `accept_terms`, `payconsent` и генерация checkout-ссылки через Robokassa.
 - App-level post-payment notification path больше не Telegram-only: success/failure уведомления по платежам переведены на messenger-aware notifier с выбором linked messenger account и fallback-роутингом для mixed-mode записей.
-- Основной backend теперь поддерживает MAX webhook mode: `cmd/server` синхронизирует webhook subscription, удаляет stale subscriptions и принимает update delivery на `POST /max/webhook`. Long polling остается инструментом локальной отладки, а не production transport.
+- Основной backend теперь поддерживает MAX webhook mode: `cmd/server` синхронизирует webhook subscription, удаляет stale subscriptions и принимает update delivery на `POST /max/webhook`. Это и есть текущий поддерживаемый runtime path.
 
 ### 2026-03-27
 - Выполнен clean-schema pass для всего репозитория:

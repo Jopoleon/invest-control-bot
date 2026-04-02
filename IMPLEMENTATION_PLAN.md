@@ -45,7 +45,7 @@
   - это снимает зависимость от постоянного доступа к LK Robokassa для smoke/E2E проверки checkout flow.
 - `internal/bootstrap` удален:
   - открытие store и применение миграций теперь инкапсулированы в `internal/app/store_open.go`;
-  - `cmd/server`, `cmd/max-poller` и `pkg/vercelapp` больше не зависят от отдельного bootstrap-пакета.
+  - `cmd/server` и `pkg/vercelapp` больше не зависят от отдельного bootstrap-пакета.
 - `domain.Payment` и `domain.Subscription` больше не содержат `TelegramID`:
   - runtime-модели этих бизнес-сущностей теперь `user_id`-first;
   - PostgreSQL store читает/пишет их по clean baseline без несуществующих `payments.telegram_id` / `subscriptions.telegram_id`.
@@ -66,7 +66,6 @@
   - Telegram остается только в тех админских действиях, где он реально нужен как transport-specific projection (direct send, revoke from chat, paylink to Telegram user).
 - Startup transport health checks добавлены в long-lived runtime:
   - `cmd/server` теперь явно пингует Telegram `getMe` и MAX `GET /me` до webhook/setup шага;
-  - `cmd/max-poller` тоже валидирует MAX token через `GET /me` перед запуском polling loop;
   - это дает ранний fail-fast на битых токенах и более ясные startup logs с identity бота.
 - Полный regression pass после этих правок:
   - `GOCACHE=/tmp/go-build go test ./...` проходит.
@@ -580,10 +579,10 @@
 - `2026-03-29` `UserListQuery` и admin screens `users/churn` начали принимать `user_id` как основной filter key, а recurring cancel token model получил messenger-neutral naming (`messenger_user_id` вместо Telegram-specific payload field), чтобы убрать еще один misleading identity слой из runtime.
 - `2026-03-29` Дочищены Telegram-biased runtime хвосты вокруг checkout/cancel: `internal/payment.Request` больше не тащит лишний `UserTelegramID`, mock checkout flow опирается на payment token вместо декоративного user query param, а recurring cancel page внутри app-layer переименована в messenger-neutral термины без misleading `legacyExternalID`/`subscriptionMatchesLegacyTelegramID`.
 - `2026-03-31` В connectors добавлен короткий test-only override периода подписки через duration field (`90s`, `15m`), который хранится как `test_period_seconds` и используется в payment activation для быстрых smoke-тестов recurring/autopay без подмены обычного `period_days`.
-- `2026-03-26` Для MAX добавлен первый рабочий local-dev transport: `cmd/max-poller` поднимает long polling через `GET /updates`, пакет `internal/max` покрыт client/poller/adapter unit-тестами, а mapper `message_created` выровнен под documented payload (`message.sender`, `message.recipient`, `message.body.mid`) и теперь логирует raw update при очередном несовпадении формы события.
+- `2026-03-26` Для MAX был добавлен первый рабочий local-dev transport через long polling `GET /updates`; этот этап использовался как промежуточная диагностика adapter-level интеграции, а затем был сведен обратно к webhook-first runtime. Пакет `internal/max` остался покрыт client/poller/adapter unit-тестами, а mapper `message_created` выровнен под documented payload (`message.sender`, `message.recipient`, `message.body.mid`) и логирует raw update при очередном несовпадении формы события.
 - `2026-03-27` На живом MAX E2E подтверждены `/menu`, `/start <payload>`, регистрация, `accept_terms`, `payconsent` и генерация Robokassa checkout link. App-level post-payment notification path переведен с Telegram-only отправки на messenger-aware notifier, чтобы успешная оплата и ошибки recurring могли уведомлять пользователя в MAX-чате.
 - `2026-03-27` Отдельно зафиксирован следующий инфраструктурный этап по БД: после стабилизации multi-messenger behavior нужен clean-schema pass с полной пересборкой миграций под чистую накатку, удобным финальным порядком полей и удалением временных compatibility-слоев там, где они больше не нужны.
-- `2026-03-27` MAX переведен на production-shaped webhook contour: основной HTTP-сервер теперь поднимает `POST /max/webhook`, при старте синхронизирует webhook subscription через MAX API и держит polling как dev-only fallback.
+- `2026-03-27` MAX переведен на production-shaped webhook contour: основной HTTP-сервер теперь поднимает `POST /max/webhook` и при старте синхронизирует webhook subscription через MAX API.
 
 ## 13) Референсный flow текущего бота (для воспроизведения)
 Источник: `telegram-bot-flow.md`.

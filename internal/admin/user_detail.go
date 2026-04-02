@@ -165,6 +165,7 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 		}
 		statusLabel, statusClass := paymentStatusBadge(lang, p.Status)
 		autoPayLabel, autoPayClass := autoPayBadge(lang, p.AutoPayEnabled, true)
+		accessLabel, accessClass := buildPaymentAccessStatus(lang, p, events)
 		data.Payments = append(data.Payments, paymentView{
 			ID:                p.ID,
 			UserID:            p.UserID,
@@ -179,6 +180,8 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 			ConnectorID:       p.ConnectorID,
 			Connector:         connectorDisplayName(connectorNames, p.ConnectorID),
 			AmountRUB:         p.AmountRUB,
+			AccessLabel:       accessLabel,
+			AccessClass:       accessClass,
 			CreatedAt:         p.CreatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
 			PaidAt:            paidAt,
 		})
@@ -188,6 +191,7 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 	for _, s := range subs {
 		statusLabel, statusClass := subscriptionStatusBadge(lang, s.Status)
 		autoPayLabel, autoPayClass := autoPayBadge(lang, s.AutoPayEnabled, true)
+		accessLabel, accessClass := buildSubscriptionAccessStatus(lang, s, events)
 		canSendPayLink := false
 		if hasDirectMessageAccount {
 			if connector, found, err := h.store.GetConnector(ctx, s.ConnectorID); err == nil && found {
@@ -207,6 +211,8 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 			ConnectorID:      s.ConnectorID,
 			Connector:        connectorDisplayName(connectorNames, s.ConnectorID),
 			PaymentID:        s.PaymentID,
+			AccessLabel:      accessLabel,
+			AccessClass:      accessClass,
 			StartsAt:         s.StartsAt.In(time.Local).Format("2006-01-02 15:04:05"),
 			EndsAt:           s.EndsAt.In(time.Local).Format("2006-01-02 15:04:05"),
 			CreatedAt:        s.CreatedAt.In(time.Local).Format("2006-01-02 15:04:05"),

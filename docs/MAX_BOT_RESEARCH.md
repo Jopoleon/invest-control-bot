@@ -155,12 +155,12 @@ Messenger adapters должны только:
 3. sender для текстовых сообщений и простых кнопок;
 4. локальный runner, который запускает polling-loop с access token.
 
-После этого уже можно:
+После этого на промежуточном этапе уже можно было:
 - поднять сервер локально;
-- запустить MAX poller рядом с ним;
+- запустить отдельный polling runner рядом с ним;
 - писать в реального MAX-бота без webhook и без `ngrok`.
 
-Минимальный набор env для такого сценария:
+Исторический набор env для такого сценария:
 ```env
 APP_RUNTIME=server
 APP_ENV=local
@@ -169,9 +169,6 @@ LOG_LEVEL=debug
 MAX_BOT_TOKEN=...
 MAX_BOT_NAME=...
 MAX_BOT_USERNAME=id9718272494_bot
-MAX_POLLING_TYPES=bot_started,message_created,message_callback
-MAX_POLLING_TIMEOUT_SEC=30
-MAX_POLLING_LIMIT=100
 
 PAYMENT_PROVIDER=mock
 PAYMENT_MOCK_BASE_URL=https://your-ngrok-domain.ngrok-free.app
@@ -180,11 +177,7 @@ APP_ENCRYPTION_KEY=replace-with-32-or-more-char-secret
 ADMIN_AUTH_TOKEN=replace-with-strong-admin-token
 ```
 
-Запуск локально:
-```bash
-go run ./cmd/server
-go run ./cmd/max-poller
-```
+Сейчас этот runner удален из репозитория; актуальный путь для MAX идет через webhook внутри `cmd/server`.
 
 ### Шаг 5. Перенести сценарии по приоритету
 Приоритет переноса:

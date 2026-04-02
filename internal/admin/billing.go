@@ -88,10 +88,34 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 	}
 	connectorNames := h.loadConnectorNames(r.Context())
 	resolveAccountPresentation := h.buildMessengerAccountPresentationLookup(r.Context(), lang)
+	auditEventsByUser := make(map[int64][]domain.AuditEvent)
+	loadAuditEvents := func(userID int64) ([]domain.AuditEvent, error) {
+		if cached, ok := auditEventsByUser[userID]; ok {
+			return cached, nil
+		}
+		events, _, err := h.store.ListAuditEvents(r.Context(), domain.AuditEventListQuery{
+			TargetUserID: userID,
+			SortBy:       "created_at",
+			SortDesc:     true,
+			Page:         1,
+			PageSize:     200,
+		})
+		if err != nil {
+			return nil, err
+		}
+		auditEventsByUser[userID] = events
+		return events, nil
+	}
 
 	data.Payments = make([]paymentView, 0, len(payments))
 	for _, p := range payments {
 		accountPresentation, err := resolveAccountPresentation(p.UserID)
+		if err != nil {
+			data.Notice = t(lang, "billing.load_error")
+			h.renderer.render(w, "billing.html", data)
+			return
+		}
+		events, err := loadAuditEvents(p.UserID)
 		if err != nil {
 			data.Notice = t(lang, "billing.load_error")
 			h.renderer.render(w, "billing.html", data)
@@ -103,6 +127,7 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 		}
 		statusLabel, statusClass := paymentStatusBadge(lang, p.Status)
 		autoPayLabel, autoPayClass := autoPayBadge(lang, p.AutoPayEnabled, true)
+		accessLabel, accessClass := buildPaymentAccessStatus(lang, p, events)
 		data.Payments = append(data.Payments, paymentView{
 			ID:                p.ID,
 			UserID:            p.UserID,
@@ -118,6 +143,8 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 			ConnectorID:       p.ConnectorID,
 			Connector:         connectorDisplayName(connectorNames, p.ConnectorID),
 			AmountRUB:         p.AmountRUB,
+			AccessLabel:       accessLabel,
+			AccessClass:       accessClass,
 			CreatedAt:         p.CreatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
 			PaidAt:            paidAt,
 		})
@@ -131,8 +158,15 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 			h.renderer.render(w, "billing.html", data)
 			return
 		}
+		events, err := loadAuditEvents(s.UserID)
+		if err != nil {
+			data.Notice = t(lang, "billing.load_error")
+			h.renderer.render(w, "billing.html", data)
+			return
+		}
 		statusLabel, statusClass := subscriptionStatusBadge(lang, s.Status)
 		autoPayLabel, autoPayClass := autoPayBadge(lang, s.AutoPayEnabled, true)
+		accessLabel, accessClass := buildSubscriptionAccessStatus(lang, s, events)
 		data.Subscriptions = append(data.Subscriptions, subscriptionView{
 			ID:             s.ID,
 			UserID:         s.UserID,
@@ -146,6 +180,8 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 			ConnectorID:    s.ConnectorID,
 			Connector:      connectorDisplayName(connectorNames, s.ConnectorID),
 			PaymentID:      s.PaymentID,
+			AccessLabel:    accessLabel,
+			AccessClass:    accessClass,
 			StartsAt:       s.StartsAt.In(time.Local).Format("2006-01-02 15:04:05"),
 			EndsAt:         s.EndsAt.In(time.Local).Format("2006-01-02 15:04:05"),
 			CreatedAt:      s.CreatedAt.In(time.Local).Format("2006-01-02 15:04:05"),

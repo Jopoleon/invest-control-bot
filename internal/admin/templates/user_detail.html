@@ -547,6 +547,7 @@
             <th>{{index .I18N "billing.table.subscription.autopay"}}</th>
             <th>{{index .I18N "billing.table.subscription.connector"}}</th>
             <th>{{index .I18N "billing.table.subscription.payment"}}</th>
+            <th>{{index .I18N "billing.table.subscription.access"}}</th>
             <th>{{index .I18N "billing.table.subscription.starts"}}</th>
             <th>{{index .I18N "billing.table.subscription.ends"}}</th>
             <th>{{index .I18N "billing.table.subscription.created"}}</th>
@@ -561,6 +562,7 @@
             <td><span class="badge {{.AutoPayClass}}">{{.AutoPayLabel}}</span></td>
             <td>{{.Connector}}</td>
             <td class="mono">{{.PaymentID}}</td>
+            <td><span class="badge {{.AccessClass}}">{{.AccessLabel}}</span></td>
             <td class="mono">{{.StartsAt}}</td>
             <td class="mono">{{.EndsAt}}</td>
             <td class="mono">{{.CreatedAt}}</td>
@@ -614,6 +616,7 @@
             <th>{{index .I18N "billing.table.payment.autopay"}}</th>
             <th>{{index .I18N "billing.table.payment.connector"}}</th>
             <th>{{index .I18N "billing.table.payment.amount"}}</th>
+            <th>{{index .I18N "billing.table.payment.access"}}</th>
             <th>{{index .I18N "billing.table.payment.created"}}</th>
             <th>{{index .I18N "billing.table.payment.paid_at"}}</th>
           </tr>
@@ -627,6 +630,7 @@
             <td><span class="badge {{.AutoPayClass}}">{{.AutoPayLabel}}</span></td>
             <td>{{.Connector}}</td>
             <td>{{.AmountRUB}}</td>
+            <td><span class="badge {{.AccessClass}}">{{.AccessLabel}}</span></td>
             <td class="mono">{{.CreatedAt}}</td>
             <td class="mono">{{.PaidAt}}</td>
           </tr>

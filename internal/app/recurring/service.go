@@ -53,20 +53,25 @@ type Service struct {
 	RecurringCancelSubsLoadFail           string
 	RecurringCancelMissingSub             string
 	RecurringCancelAlreadyOff             string
+	RecurringCancelStaleSubmit            string
 	RecurringCancelPersistFailed          string
 	RecurringCancelNotification           func(string) string
 	RecurringCancelSuccessForSubscription func(string) string
 }
 
 type CancelPageData struct {
+	PageState           string
 	Title               string
 	Token               string
 	MessengerUserID     int64
 	UserName            string
+	UserAccountLabel    string
 	AutoPayEnabled      bool
 	SuccessMessage      string
 	ErrorMessage        string
 	ExpiresAt           string
+	AutoPayCount        int
+	ActiveAccessCount   int
 	ActiveSubscriptions []CancelSubscriptionView
 	OtherSubscriptions  int
 }
@@ -76,9 +81,21 @@ type CancelSubscriptionView struct {
 	Name           string
 	PriceRUB       int64
 	PeriodLabel    string
+	StartsAtLabel  string
 	EndsAtLabel    string
 	ChannelURL     string
 }
+
+const (
+	cancelPageStateDefault      = "default"
+	cancelPageStateSuccess      = "success"
+	cancelPageStateStaleSuccess = "stale_success"
+	cancelPageStateAlreadyOff   = "already_off"
+	cancelPageStateStaleSubmit  = "stale_submit"
+	cancelPageStateExpiredLink  = "expired_link"
+	cancelPageStateInvalidLink  = "invalid_link"
+	cancelPageStateError        = "error"
+)
 
 func (s *Service) TriggerRebill(ctx context.Context, subscriptionID int64, source string) (RebillResult, error) {
 	if s.RobokassaService == nil {
@@ -351,15 +368,22 @@ func (s *Service) hasStalePendingAudit(ctx context.Context, sub domain.Subscript
 
 // BuildCancelPageData materializes the current cancel-page state for the
 // validated messenger identity behind the signed public token.
-func (s *Service) BuildCancelPageData(ctx context.Context, token string, messengerUserID int64, expiresAt time.Time, done string) (CancelPageData, int) {
+func (s *Service) BuildCancelPageData(ctx context.Context, token string, messengerUserID int64, expiresAt time.Time, done, pageState string) (CancelPageData, int) {
 	data := CancelPageData{
+		PageState:       cancelPageStateDefault,
 		Title:           s.RecurringCancelTitle,
 		Token:           token,
 		MessengerUserID: messengerUserID,
 		ExpiresAt:       expiresAt.In(time.Local).Format("02.01.2006 15:04"),
 	}
+	if strings.TrimSpace(pageState) != "" {
+		data.PageState = pageState
+	}
 	if strings.TrimSpace(done) != "" && s.RecurringCancelSuccessForSubscription != nil {
 		data.SuccessMessage = s.RecurringCancelSuccessForSubscription(done)
+		if data.PageState == cancelPageStateDefault {
+			data.PageState = cancelPageStateSuccess
+		}
 	}
 
 	query := domain.SubscriptionListQuery{
@@ -381,8 +405,10 @@ func (s *Service) BuildCancelPageData(ctx context.Context, token string, messeng
 		return data, 500
 	}
 
-	if userName := s.resolveRecurringCancelUserName(ctx, subs, messengerUserID); userName != "" {
+	data.ActiveAccessCount = len(subs)
+	if userName, accountLabel := s.resolveRecurringCancelUserIdentity(ctx, subs, messengerUserID); userName != "" || accountLabel != "" {
 		data.UserName = userName
+		data.UserAccountLabel = accountLabel
 	}
 
 	data.ActiveSubscriptions = make([]CancelSubscriptionView, 0, len(subs))
@@ -400,10 +426,12 @@ func (s *Service) BuildCancelPageData(ctx context.Context, token string, messeng
 			Name:           connector.Name,
 			PriceRUB:       connector.PriceRUB,
 			PeriodLabel:    s.ConnectorPeriodLabel(connector),
+			StartsAtLabel:  sub.StartsAt.In(time.Local).Format("02.01.2006 15:04"),
 			EndsAtLabel:    sub.EndsAt.In(time.Local).Format("02.01.2006 15:04"),
 			ChannelURL:     s.ResolveConnectorChannel(connector.ChannelURL, connector.ChatID),
 		})
 	}
+	data.AutoPayCount = len(data.ActiveSubscriptions)
 	data.AutoPayEnabled = len(data.ActiveSubscriptions) > 0
 	return data, 200
 }
@@ -411,26 +439,32 @@ func (s *Service) BuildCancelPageData(ctx context.Context, token string, messeng
 // ProcessCancelRequest applies the actual subscription mutation behind the
 // public recurring-cancel page after the HTTP layer has already validated the
 // signed token and selected subscription id.
-func (s *Service) ProcessCancelRequest(ctx context.Context, token string, messengerUserID, subscriptionID int64, expiresAt, now time.Time) (string, CancelPageData, int) {
+func (s *Service) ProcessCancelRequest(ctx context.Context, token string, messengerUserID, subscriptionID int64, expiresAt, now time.Time) (string, string, CancelPageData, int) {
 	sub, found, err := s.Store.GetSubscriptionByID(ctx, subscriptionID)
 	if err != nil || !found || !s.subscriptionMatchesMessengerUserID(ctx, sub, messengerUserID) {
-		data, status := s.BuildCancelPageData(ctx, token, messengerUserID, expiresAt, "")
-		return "", withCancelError(data, s.RecurringCancelMissingSub), status
+		data, status := s.BuildCancelPageData(ctx, token, messengerUserID, expiresAt, "", cancelPageStateError)
+		return "", "", withCancelError(data, s.RecurringCancelMissingSub), status
 	}
-	cancelSub, found, err := s.resolveActiveCancelableSubscription(ctx, sub, messengerUserID)
+	cancelSub, resolution, found, err := s.resolveActiveCancelableSubscription(ctx, sub, messengerUserID)
 	if err != nil {
 		slog.Error("resolve current subscription for public cancel page failed", "error", err, "messenger_user_id", messengerUserID, "requested_subscription_id", sub.ID)
-		data, status := s.BuildCancelPageData(ctx, token, messengerUserID, expiresAt, "")
-		return "", withCancelError(data, s.RecurringCancelPersistFailed), status
+		data, status := s.BuildCancelPageData(ctx, token, messengerUserID, expiresAt, "", cancelPageStateError)
+		return "", "", withCancelError(data, s.RecurringCancelPersistFailed), status
 	}
 	if !found {
-		data, status := s.BuildCancelPageData(ctx, token, messengerUserID, expiresAt, "")
-		return "", withCancelError(data, s.RecurringCancelAlreadyOff), status
+		state := cancelPageStateAlreadyOff
+		msg := s.RecurringCancelAlreadyOff
+		if resolution == cancelResolutionStaleSubmit {
+			state = cancelPageStateStaleSubmit
+			msg = s.RecurringCancelStaleSubmit
+		}
+		data, status := s.BuildCancelPageData(ctx, token, messengerUserID, expiresAt, "", state)
+		return "", "", withCancelError(data, msg), status
 	}
 	if err := s.Store.SetSubscriptionAutoPayEnabled(ctx, cancelSub.ID, false, now); err != nil {
 		slog.Error("disable subscription autopay via public page failed", "error", err, "messenger_user_id", messengerUserID, "subscription_id", cancelSub.ID)
-		data, status := s.BuildCancelPageData(ctx, token, messengerUserID, expiresAt, "")
-		return "", withCancelError(data, s.RecurringCancelPersistFailed), status
+		data, status := s.BuildCancelPageData(ctx, token, messengerUserID, expiresAt, "", cancelPageStateError)
+		return "", "", withCancelError(data, s.RecurringCancelPersistFailed), status
 	}
 
 	connectorName := ""
@@ -458,28 +492,44 @@ func (s *Service) ProcessCancelRequest(ctx context.Context, token string, messen
 			slog.Error("send public cancel confirmation failed", "error", err, "user_id", cancelSub.UserID, "preferred_messenger_user_id", messengerUserID)
 		}
 	}
-	return connectorName, CancelPageData{}, 0
+	resultState := cancelPageStateSuccess
+	if cancelSub.ID != sub.ID {
+		resultState = cancelPageStateStaleSuccess
+	}
+	return connectorName, resultState, CancelPageData{}, 0
 }
 
 // resolveActiveCancelableSubscription keeps public cancel links usable for
 // short-period recurring flows where the active subscription may rotate between
 // page render and form submit.
-func (s *Service) resolveActiveCancelableSubscription(ctx context.Context, requested domain.Subscription, messengerUserID int64) (domain.Subscription, bool, error) {
+func (s *Service) resolveActiveCancelableSubscription(ctx context.Context, requested domain.Subscription, messengerUserID int64) (domain.Subscription, string, bool, error) {
 	if requested.Status == domain.SubscriptionStatusActive && requested.AutoPayEnabled {
-		return requested, true, nil
+		return requested, cancelResolutionExact, true, nil
 	}
 	latest, found, err := s.Store.GetLatestSubscriptionByUserConnector(ctx, requested.UserID, requested.ConnectorID)
 	if err != nil {
-		return domain.Subscription{}, false, err
+		return domain.Subscription{}, "", false, err
 	}
 	if !found || !s.subscriptionMatchesMessengerUserID(ctx, latest, messengerUserID) {
-		return domain.Subscription{}, false, nil
+		if requested.Status != domain.SubscriptionStatusActive {
+			return domain.Subscription{}, cancelResolutionStaleSubmit, false, nil
+		}
+		return domain.Subscription{}, cancelResolutionAlreadyOff, false, nil
 	}
 	if latest.Status != domain.SubscriptionStatusActive || !latest.AutoPayEnabled {
-		return domain.Subscription{}, false, nil
+		if requested.Status != domain.SubscriptionStatusActive || latest.ID != requested.ID {
+			return domain.Subscription{}, cancelResolutionStaleSubmit, false, nil
+		}
+		return domain.Subscription{}, cancelResolutionAlreadyOff, false, nil
 	}
-	return latest, true, nil
+	return latest, cancelResolutionStaleSubmit, true, nil
 }
+
+const (
+	cancelResolutionExact       = "exact"
+	cancelResolutionAlreadyOff  = "already_off"
+	cancelResolutionStaleSubmit = "stale_submit"
+)
 
 func AttemptOrdinal(now, endsAt time.Time) int {
 	return attemptOrdinalForPeriod(now, endsAt)
@@ -523,7 +573,7 @@ func (s *Service) subscriptionMatchesMessengerUserID(ctx context.Context, sub do
 	return telegramID == messengerUserID
 }
 
-func (s *Service) resolveRecurringCancelUserName(ctx context.Context, subs []domain.Subscription, messengerUserID int64) string {
+func (s *Service) resolveRecurringCancelUserIdentity(ctx context.Context, subs []domain.Subscription, messengerUserID int64) (string, string) {
 	for _, sub := range subs {
 		if sub.UserID <= 0 {
 			continue
@@ -536,30 +586,35 @@ func (s *Service) resolveRecurringCancelUserName(ctx context.Context, subs []dom
 		if found {
 			if accounts, err := s.Store.ListUserMessengerAccounts(ctx, user.ID); err == nil {
 				for _, account := range accounts {
+					if account.MessengerUserID == strconv.FormatInt(messengerUserID, 10) {
+						return firstNonEmpty(strings.TrimSpace(user.FullName), formatRecurringCancelAccountLabel(account)), formatRecurringCancelAccountLabel(account)
+					}
+				}
+				for _, account := range accounts {
 					if account.MessengerKind == domain.MessengerKindTelegram {
-						return firstNonEmpty(strings.TrimSpace(user.FullName), strings.TrimSpace(account.Username))
+						return firstNonEmpty(strings.TrimSpace(user.FullName), formatRecurringCancelAccountLabel(account)), formatRecurringCancelAccountLabel(account)
 					}
 				}
 			}
-			return strings.TrimSpace(user.FullName)
+			return strings.TrimSpace(user.FullName), ""
 		}
 	}
 	user, found, err := s.ResolveUserByMessengerUserID(ctx, messengerUserID)
 	if err != nil {
 		slog.Error("load messenger user bridge for public cancel page failed", "error", err, "messenger_user_id", messengerUserID)
-		return ""
+		return "", ""
 	}
 	if found {
 		if accounts, err := s.Store.ListUserMessengerAccounts(ctx, user.ID); err == nil {
 			for _, account := range accounts {
 				if account.MessengerUserID == strconv.FormatInt(messengerUserID, 10) {
-					return firstNonEmpty(strings.TrimSpace(user.FullName), strings.TrimSpace(account.Username))
+					return firstNonEmpty(strings.TrimSpace(user.FullName), formatRecurringCancelAccountLabel(account)), formatRecurringCancelAccountLabel(account)
 				}
 			}
 		}
-		return strings.TrimSpace(user.FullName)
+		return strings.TrimSpace(user.FullName), ""
 	}
-	return ""
+	return "", ""
 }
 
 func withCancelError(data CancelPageData, msg string) CancelPageData {
@@ -581,4 +636,16 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func formatRecurringCancelAccountLabel(account domain.UserMessengerAccount) string {
+	username := strings.TrimSpace(strings.TrimPrefix(account.Username, "@"))
+	switch {
+	case username != "":
+		return "@" + username
+	case strings.TrimSpace(account.MessengerUserID) != "":
+		return strings.TrimSpace(account.MessengerUserID)
+	default:
+		return ""
+	}
 }

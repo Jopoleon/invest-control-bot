@@ -15,6 +15,12 @@ import (
 	"github.com/Jopoleon/invest-control-bot/internal/telegram"
 )
 
+const (
+	subscriptionRevokeRetryMaxFailures      = 3
+	subscriptionRevokeRetryBackoffFirst     = 5 * time.Minute
+	subscriptionRevokeRetryBackoffFollowing = 30 * time.Minute
+)
+
 // Service owns subscription lifecycle use cases at the app layer.
 //
 // The root app package injects the few dependencies that still cross package
@@ -28,6 +34,7 @@ type Service struct {
 	ReminderDaysBeforeEnd       int
 	ExpiryNoticeWindow          time.Duration
 	SubscriptionJobLimit        int
+	RemoveTelegramChatMember    func(context.Context, int64, int64) error
 	SubscriptionReminderMessage func(time.Time) string
 	SubscriptionExpiryMessage   func(time.Time) string
 	SubscriptionExpiredText     string
@@ -147,20 +154,7 @@ func (s *Service) ProcessExpiredSubscriptions(ctx context.Context) {
 		preferredMessengerUserID := ""
 		if connectorFound && s.ResolvePreferredKind(ctx, sub.UserID, preferredMessengerUserID) == messenger.KindTelegram {
 			if chatID, ok := normalizeTelegramChatID(connector.ChatID); ok {
-				account, found, err := s.ResolveTelegramAccount(ctx, sub.UserID)
-				if err != nil {
-					slog.Error("resolve telegram account for revoke failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID)
-				} else if found {
-					telegramID, parseErr := strconv.ParseInt(account.MessengerUserID, 10, 64)
-					if parseErr != nil || telegramID <= 0 {
-						slog.Error("invalid telegram account id for revoke", "error", parseErr, "subscription_id", sub.ID, "user_id", sub.UserID, "messenger_user_id", account.MessengerUserID)
-					} else if err := s.TelegramClient.RemoveChatMember(ctx, chatID, telegramID); err != nil {
-						slog.Error("remove chat member failed", "error", err, "subscription_id", sub.ID, "messenger_user_id", telegramID, "chat_id", chatID)
-						_ = s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionRevokeFailed, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
-					} else {
-						_ = s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionRevokedFromChat, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
-					}
-				}
+				s.attemptTelegramRevoke(ctx, sub, preferredMessengerUserID, chatID, now, "expiry_job")
 			}
 		}
 
@@ -173,6 +167,90 @@ func (s *Service) ProcessExpiredSubscriptions(ctx context.Context) {
 			slog.Error("send subscription expired message failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "preferred_messenger_user_id", preferredMessengerUserID)
 		}
 		_ = s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionExpired, expiredAuditDetails, now))
+	}
+}
+
+func (s *Service) ProcessFailedSubscriptionRevokes(ctx context.Context) {
+	now := time.Now().UTC()
+	subs, err := s.Store.ListSubscriptions(ctx, domain.SubscriptionListQuery{
+		Status: domain.SubscriptionStatusExpired,
+		Limit:  s.SubscriptionJobLimit,
+	})
+	if err != nil {
+		slog.Error("list expired subscriptions for revoke retry failed", "error", err)
+		return
+	}
+
+	type auditCacheKey struct {
+		userID      int64
+		connectorID int64
+	}
+	eventsCache := make(map[auditCacheKey][]domain.AuditEvent)
+	for _, sub := range subs {
+		if s.ResolvePreferredKind(ctx, sub.UserID, "") != messenger.KindTelegram {
+			continue
+		}
+		if s.hasActiveReplacementSubscription(ctx, sub, now) {
+			continue
+		}
+
+		connector, found, err := s.Store.GetConnector(ctx, sub.ConnectorID)
+		if err != nil {
+			slog.Error("load connector for revoke retry failed", "error", err, "subscription_id", sub.ID, "connector_id", sub.ConnectorID)
+			continue
+		}
+		if !found {
+			continue
+		}
+		chatID, ok := normalizeTelegramChatID(connector.ChatID)
+		if !ok {
+			continue
+		}
+
+		key := auditCacheKey{userID: sub.UserID, connectorID: sub.ConnectorID}
+		events, cached := eventsCache[key]
+		if !cached {
+			var loadErr error
+			events, _, loadErr = s.Store.ListAuditEvents(ctx, domain.AuditEventListQuery{
+				TargetUserID: sub.UserID,
+				ConnectorID:  sub.ConnectorID,
+				SortBy:       "created_at",
+				SortDesc:     true,
+				Page:         1,
+				PageSize:     200,
+			})
+			if loadErr != nil {
+				slog.Error("list revoke retry audit events failed", "error", loadErr, "subscription_id", sub.ID, "user_id", sub.UserID, "connector_id", sub.ConnectorID)
+				continue
+			}
+			eventsCache[key] = events
+		}
+
+		state := buildSubscriptionRevokeState(sub.ID, events)
+		if state.revoked || state.manualCheckRequired || state.failureCount == 0 {
+			continue
+		}
+		if state.failureCount >= subscriptionRevokeRetryMaxFailures {
+			if s.markSubscriptionRevokeManualCheck(ctx, sub, "", now, state.failureCount, state.lastFailureReason) {
+				eventsCache[key] = prependAuditEvent(eventsCache[key], s.BuildTargetAuditEvent(ctx, sub.UserID, "", sub.ConnectorID, domain.AuditActionSubscriptionRevokeManualCheck, buildSubscriptionRevokeManualCheckDetails(sub.ID, state.failureCount, state.lastFailureReason), now))
+			}
+			continue
+		}
+		if now.Sub(state.lastFailureAt) < subscriptionRevokeRetryDelay(state.failureCount) {
+			continue
+		}
+
+		event, attempted := s.attemptTelegramRevoke(ctx, sub, "", chatID, now, "retry_job")
+		if !attempted {
+			continue
+		}
+		eventsCache[key] = prependAuditEvent(eventsCache[key], event)
+		if event.Action == domain.AuditActionSubscriptionRevokeFailed && state.failureCount+1 >= subscriptionRevokeRetryMaxFailures {
+			manualDetails := buildSubscriptionRevokeManualCheckDetails(sub.ID, state.failureCount+1, auditDetailValue(event.Details, "reason"))
+			if s.markSubscriptionRevokeManualCheck(ctx, sub, "", now, state.failureCount+1, auditDetailValue(event.Details, "reason")) {
+				eventsCache[key] = prependAuditEvent(eventsCache[key], s.BuildTargetAuditEvent(ctx, sub.UserID, "", sub.ConnectorID, domain.AuditActionSubscriptionRevokeManualCheck, manualDetails, now))
+			}
+		}
 	}
 }
 
@@ -228,6 +306,165 @@ func shouldSendReminder(connector domain.Connector) bool {
 
 func shouldSendExpiryNotice(connector domain.Connector) bool {
 	return !periodpolicy.Resolve(connector).SuppressPreExpiryNotifications()
+}
+
+type subscriptionRevokeState struct {
+	failureCount        int
+	lastFailureAt       time.Time
+	lastFailureReason   string
+	revoked             bool
+	manualCheckRequired bool
+}
+
+func buildSubscriptionRevokeState(subscriptionID int64, events []domain.AuditEvent) subscriptionRevokeState {
+	state := subscriptionRevokeState{}
+	for _, event := range events {
+		if auditDetailInt64(event.Details, "subscription_id") != subscriptionID {
+			continue
+		}
+		switch event.Action {
+		case domain.AuditActionSubscriptionRevokedFromChat:
+			state.revoked = true
+			return state
+		case domain.AuditActionSubscriptionRevokeManualCheck:
+			state.manualCheckRequired = true
+			return state
+		case domain.AuditActionSubscriptionRevokeFailed:
+			state.failureCount++
+			if state.lastFailureAt.IsZero() || event.CreatedAt.After(state.lastFailureAt) {
+				state.lastFailureAt = event.CreatedAt
+				state.lastFailureReason = auditDetailValue(event.Details, "reason")
+			}
+		}
+	}
+	return state
+}
+
+func subscriptionRevokeRetryDelay(failureCount int) time.Duration {
+	if failureCount <= 1 {
+		return subscriptionRevokeRetryBackoffFirst
+	}
+	return subscriptionRevokeRetryBackoffFollowing
+}
+
+func (s *Service) attemptTelegramRevoke(ctx context.Context, sub domain.Subscription, preferredMessengerUserID string, chatID int64, now time.Time, source string) (domain.AuditEvent, bool) {
+	attempt := s.nextSubscriptionRevokeAttempt(ctx, sub)
+	account, found, err := s.ResolveTelegramAccount(ctx, sub.UserID)
+	if err != nil {
+		slog.Error("resolve telegram account for revoke failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID)
+		return s.saveSubscriptionRevokeEvent(ctx, sub, preferredMessengerUserID, domain.AuditActionSubscriptionRevokeFailed, buildSubscriptionRevokeFailureDetails(sub.ID, attempt, source, "resolve_telegram_account_error"), now), true
+	}
+	if !found {
+		slog.Warn("telegram account missing for revoke", "subscription_id", sub.ID, "user_id", sub.UserID)
+		return s.saveSubscriptionRevokeEvent(ctx, sub, preferredMessengerUserID, domain.AuditActionSubscriptionRevokeFailed, buildSubscriptionRevokeFailureDetails(sub.ID, attempt, source, "telegram_account_not_found"), now), true
+	}
+
+	telegramID, parseErr := strconv.ParseInt(account.MessengerUserID, 10, 64)
+	if parseErr != nil || telegramID <= 0 {
+		slog.Error("invalid telegram account id for revoke", "error", parseErr, "subscription_id", sub.ID, "user_id", sub.UserID, "messenger_user_id", account.MessengerUserID)
+		return s.saveSubscriptionRevokeEvent(ctx, sub, preferredMessengerUserID, domain.AuditActionSubscriptionRevokeFailed, buildSubscriptionRevokeFailureDetails(sub.ID, attempt, source, "invalid_telegram_account_id"), now), true
+	}
+
+	if err := s.removeTelegramChatMember(ctx, chatID, telegramID); err != nil {
+		slog.Error("remove chat member failed", "error", err, "subscription_id", sub.ID, "messenger_user_id", telegramID, "chat_id", chatID)
+		return s.saveSubscriptionRevokeEvent(ctx, sub, preferredMessengerUserID, domain.AuditActionSubscriptionRevokeFailed, buildSubscriptionRevokeFailureDetails(sub.ID, attempt, source, "remove_chat_member_failed"), now), true
+	}
+	return s.saveSubscriptionRevokeEvent(ctx, sub, preferredMessengerUserID, domain.AuditActionSubscriptionRevokedFromChat, buildSubscriptionRevokeSuccessDetails(sub.ID, attempt, source), now), true
+}
+
+func (s *Service) nextSubscriptionRevokeAttempt(ctx context.Context, sub domain.Subscription) int {
+	events, _, err := s.Store.ListAuditEvents(ctx, domain.AuditEventListQuery{
+		TargetUserID: sub.UserID,
+		ConnectorID:  sub.ConnectorID,
+		SortBy:       "created_at",
+		SortDesc:     true,
+		Page:         1,
+		PageSize:     100,
+	})
+	if err != nil {
+		slog.Error("load revoke attempts failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "connector_id", sub.ConnectorID)
+		return 1
+	}
+	attempt := 0
+	for _, event := range events {
+		if auditDetailInt64(event.Details, "subscription_id") != sub.ID {
+			continue
+		}
+		if event.Action == domain.AuditActionSubscriptionRevokeFailed || event.Action == domain.AuditActionSubscriptionRevokedFromChat {
+			attempt++
+		}
+	}
+	return attempt + 1
+}
+
+func (s *Service) removeTelegramChatMember(ctx context.Context, chatID, userID int64) error {
+	if s.RemoveTelegramChatMember != nil {
+		return s.RemoveTelegramChatMember(ctx, chatID, userID)
+	}
+	if s.TelegramClient == nil {
+		return nil
+	}
+	return s.TelegramClient.RemoveChatMember(ctx, chatID, userID)
+}
+
+func (s *Service) saveSubscriptionRevokeEvent(ctx context.Context, sub domain.Subscription, preferredMessengerUserID, action, details string, createdAt time.Time) domain.AuditEvent {
+	event := s.BuildTargetAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, action, details, createdAt)
+	if err := s.Store.SaveAuditEvent(ctx, event); err != nil {
+		slog.Error("save subscription revoke audit failed", "error", err, "subscription_id", sub.ID, "action", action)
+	}
+	return event
+}
+
+func (s *Service) markSubscriptionRevokeManualCheck(ctx context.Context, sub domain.Subscription, preferredMessengerUserID string, now time.Time, failureCount int, reason string) bool {
+	event := s.BuildTargetAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionRevokeManualCheck, buildSubscriptionRevokeManualCheckDetails(sub.ID, failureCount, reason), now)
+	if err := s.Store.SaveAuditEvent(ctx, event); err != nil {
+		slog.Error("save revoke manual-check audit failed", "error", err, "subscription_id", sub.ID)
+		return false
+	}
+	slog.Warn("subscription revoke requires manual check", "subscription_id", sub.ID, "user_id", sub.UserID, "connector_id", sub.ConnectorID, "failed_attempts", failureCount, "reason", reason)
+	return true
+}
+
+func buildSubscriptionRevokeFailureDetails(subscriptionID int64, attempt int, source, reason string) string {
+	return "subscription_id=" + strconv.FormatInt(subscriptionID, 10) +
+		";attempt=" + strconv.Itoa(attempt) +
+		";source=" + strings.TrimSpace(source) +
+		";reason=" + strings.TrimSpace(reason)
+}
+
+func buildSubscriptionRevokeSuccessDetails(subscriptionID int64, attempt int, source string) string {
+	return "subscription_id=" + strconv.FormatInt(subscriptionID, 10) +
+		";attempt=" + strconv.Itoa(attempt) +
+		";source=" + strings.TrimSpace(source)
+}
+
+func buildSubscriptionRevokeManualCheckDetails(subscriptionID int64, failureCount int, reason string) string {
+	details := "subscription_id=" + strconv.FormatInt(subscriptionID, 10) +
+		";failed_attempts=" + strconv.Itoa(failureCount)
+	if strings.TrimSpace(reason) != "" {
+		details += ";reason=" + strings.TrimSpace(reason)
+	}
+	return details
+}
+
+func auditDetailInt64(details, key string) int64 {
+	value, _ := strconv.ParseInt(auditDetailValue(details, key), 10, 64)
+	return value
+}
+
+func auditDetailValue(details, key string) string {
+	prefix := strings.TrimSpace(key) + "="
+	for _, part := range strings.Split(details, ";") {
+		part = strings.TrimSpace(part)
+		if strings.HasPrefix(part, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(part, prefix))
+		}
+	}
+	return ""
+}
+
+func prependAuditEvent(events []domain.AuditEvent, event domain.AuditEvent) []domain.AuditEvent {
+	return append([]domain.AuditEvent{event}, events...)
 }
 
 func (s *Service) shouldDeferExpirationForPendingRebill(ctx context.Context, sub domain.Subscription, connector domain.Connector, now time.Time) bool {

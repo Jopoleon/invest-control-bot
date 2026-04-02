@@ -93,10 +93,9 @@
 
 ### Low
 
-1. `cmd/max-poller`
-- решить, остается ли как dev-only fallback;
-- если остается, явно пометить как local debug tool;
-- если нет, перенести в `internal/devtools` или удалить после webhook stabilization.
+1. MAX runtime/docs cleanup
+- после удаления отдельного polling runner следить, чтобы новые docs и startup paths не возвращали polling как второй живой runtime;
+- если снова понадобится transport-level debug runner, заводить его уже как явный `internal/devtools` артефакт, а не как отдельный `cmd/*`.
 
 2. `internal/bot/menu.go`
 - можно разрезать на smaller files:
@@ -226,5 +225,5 @@
 - решить, нужен ли deeper split `internal/bot/menu.go`.
 
 5. После ближайшего milestone:
-- перепроверить судьбу `cmd/max-poller`;
-- оценить, что осталось до clean-schema этапа.
+- оценить, что осталось до clean-schema этапа;
+- проверить, не осталось ли в docs/runtime скрытых допущений про MAX polling.
