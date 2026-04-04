@@ -80,15 +80,39 @@ const (
 )
 
 func botStartCardText(connector domain.Connector, offerURL, privacyURL string) string {
-	return fmt.Sprintf(
-		"%s\n%s\n⚡️ Подписка: %d ₽\nПериод оплаты: %s\nЧтобы продолжить, вам необходимо принять условия публичной оферты (%s) и политики обработки персональных данных (%s).",
+	lines := []string{
 		connector.Name,
 		connector.Description,
-		connector.PriceRUB,
-		botConnectorPeriodLabel(connector),
-		offerURL,
-		privacyURL,
-	)
+		fmt.Sprintf("⚡️ Подписка: %d ₽", connector.PriceRUB),
+		fmt.Sprintf("Период оплаты: %s", botConnectorPeriodLabel(connector)),
+		"Чтобы продолжить, вам необходимо принять условия публичной оферты и политики обработки персональных данных.",
+	}
+	if strings.TrimSpace(offerURL) != "" {
+		lines = append(lines, "Оферта: "+strings.TrimSpace(offerURL))
+	}
+	if strings.TrimSpace(privacyURL) != "" {
+		lines = append(lines, "Политика ПДн: "+strings.TrimSpace(privacyURL))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func botConnectorAccessMismatchWarning(connector domain.Connector, kind messenger.Kind) string {
+	currentKind := messengerKindFromIdentity(kind)
+	if connector.HasAccessFor(currentKind) || !connector.HasAnyAccessDestination() {
+		return ""
+	}
+
+	switch currentKind {
+	case domain.MessengerKindMAX:
+		if connector.HasAccessFor(domain.MessengerKindTelegram) {
+			return "⚠️ Этот тариф выдает доступ только в Telegram.\nОформление в MAX для него недоступно. Откройте тот же тариф в Telegram или попросите администратора прислать Telegram-ссылку."
+		}
+	default:
+		if connector.HasAccessFor(domain.MessengerKindMAX) {
+			return "⚠️ Этот тариф выдает доступ только в MAX.\nОформление в Telegram для него недоступно. Откройте тот же тариф в MAX или попросите администратора прислать MAX-ссылку."
+		}
+	}
+	return "⚠️ Для этого тарифа не настроен доступ в текущем мессенджере. Попросите администратора прислать правильную ссылку."
 }
 
 func botPaymentLinkCreated(provider string, testMode bool) string {
@@ -113,7 +137,32 @@ func botSubscriptionOverviewLines(sub domain.Subscription, connector domain.Conn
 	if channel != "" {
 		lines = append(lines, fmt.Sprintf("  Канал: %s", channel))
 	}
-	return append(lines, "")
+	return lines
+}
+
+func botSubscriptionAccessLines(connector domain.Connector, kind messenger.Kind) []string {
+	currentKind := messengerKindFromIdentity(kind)
+	if channel := connector.AccessURL(currentKind); channel != "" {
+		return []string{fmt.Sprintf("  Канал: %s", channel)}
+	}
+
+	switch currentKind {
+	case domain.MessengerKindMAX:
+		if telegramURL := connector.TelegramAccessURL(); telegramURL != "" {
+			return []string{
+				"  Доступ: этот тариф выдается в Telegram",
+				fmt.Sprintf("  Telegram: %s", telegramURL),
+			}
+		}
+	default:
+		if maxURL := connector.MAXAccessURL(); maxURL != "" {
+			return []string{
+				"  Доступ: этот тариф выдается в MAX",
+				fmt.Sprintf("  MAX: %s", maxURL),
+			}
+		}
+	}
+	return nil
 }
 
 func botConnectorPeriodLabel(connector domain.Connector) string {
@@ -204,7 +253,18 @@ func botExistingSubscriptionText(connectorName string, endsAt time.Time) string 
 }
 
 func botCheckoutAutopayEnabled(offerURL, agreementURL string) string {
-	return "\n\n☑️ Автоплатеж будет включен для следующих списаний.\nСогласие действует по оферте (" + offerURL + ") и пользовательскому соглашению (" + agreementURL + ")."
+	lines := []string{
+		"",
+		"☑️ Автоплатеж будет включен для следующих списаний.",
+		"Согласие действует по оферте и пользовательскому соглашению.",
+	}
+	if strings.TrimSpace(offerURL) != "" {
+		lines = append(lines, "Оферта: "+strings.TrimSpace(offerURL))
+	}
+	if strings.TrimSpace(agreementURL) != "" {
+		lines = append(lines, "Пользовательское соглашение: "+strings.TrimSpace(agreementURL))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func registrationPrompt(step domain.RegistrationStep) string {

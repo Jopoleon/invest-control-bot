@@ -258,6 +258,10 @@ func (s *Service) EvaluateScheduledRebill(ctx context.Context, sub domain.Subscr
 		ShortDuration: periodpolicy.Resolve(connector).ShortDuration,
 		Remaining:     sub.EndsAt.Sub(now),
 	}
+	if sub.StartsAt.After(now) {
+		decision.Reason = "subscription_not_started"
+		return decision, nil
+	}
 	if !connector.SupportsRecurring() {
 		decision.Reason = "connector_not_recurring"
 		return decision, nil
@@ -412,9 +416,11 @@ func (s *Service) BuildCancelPageData(ctx context.Context, token string, messeng
 	}
 
 	data.ActiveAccessCount = len(subs)
-	if userName, accountLabel, account := s.resolveRecurringCancelUserIdentity(ctx, subs, messengerUserID); userName != "" || accountLabel != "" {
+	account := domain.UserMessengerAccount{}
+	if userName, accountLabel, resolvedAccount := s.resolveRecurringCancelUserIdentity(ctx, subs, messengerUserID); userName != "" || accountLabel != "" {
 		data.UserName = userName
 		data.UserAccountLabel = accountLabel
+		account = resolvedAccount
 		data.ReturnURL, data.ReturnLabel = s.resolveRecurringCancelReturn(account)
 	}
 
@@ -435,7 +441,7 @@ func (s *Service) BuildCancelPageData(ctx context.Context, token string, messeng
 			PeriodLabel:    s.ConnectorPeriodLabel(connector),
 			StartsAtLabel:  sub.StartsAt.In(time.Local).Format("02.01.2006 15:04"),
 			EndsAtLabel:    sub.EndsAt.In(time.Local).Format("02.01.2006 15:04"),
-			ChannelURL:     s.ResolveConnectorChannel(connector.ChannelURL, connector.ChatID),
+			ChannelURL:     connector.AccessURL(account.MessengerKind),
 		})
 	}
 	data.AutoPayCount = len(data.ActiveSubscriptions)
@@ -543,7 +549,7 @@ func AttemptOrdinal(now, endsAt time.Time) int {
 }
 
 func attemptOrdinalForConnector(now, endsAt time.Time, connector domain.Connector) int {
-	if timing := periodpolicy.Resolve(connector); timing.ShortDuration {
+	if timing := periodpolicy.Resolve(connector); timing.CustomRebillTiming {
 		return timing.RebillAttemptOrdinal(now, endsAt)
 	}
 	return attemptOrdinalForPeriod(now, endsAt)

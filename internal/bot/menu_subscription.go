@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/Jopoleon/invest-control-bot/internal/channelurl"
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
 	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 )
@@ -44,8 +43,9 @@ func (h *Handler) buildSubscriptionOverviewText(ctx context.Context, userIdentit
 			continue
 		}
 
-		channel := resolveChannelForBot(connector.ChannelURL, connector.ChatID)
-		lines = append(lines, botSubscriptionOverviewLines(sub, connector, channel)...)
+		lines = append(lines, botSubscriptionOverviewLines(sub, connector, "")...)
+		lines = append(lines, botSubscriptionAccessLines(connector, userIdentity.Kind)...)
+		lines = append(lines, "")
 	}
 	if len(lines) <= 2 {
 		return "", false
@@ -88,8 +88,4 @@ func buildPaymentHistoryText(payments []domain.Payment) (string, bool) {
 		lines = append(lines, botPaymentHistoryLines(p)...)
 	}
 	return strings.Join(lines, "\n"), true
-}
-
-func resolveChannelForBot(channelURL, chatID string) string {
-	return channelurl.Resolve(channelURL, chatID)
 }

@@ -66,6 +66,15 @@ func TestAdapterDispatchesBotStartedAsStartMessage(t *testing.T) {
 	if !strings.Contains(sender.sent[0].Text, "Чтобы продолжить") {
 		t.Fatalf("unexpected start text: %q", sender.sent[0].Text)
 	}
+	if !strings.Contains(sender.sent[0].Text, "\nОферта: https://example.com/oferta") {
+		t.Fatalf("start text does not contain standalone offer URL: %q", sender.sent[0].Text)
+	}
+	if !strings.Contains(sender.sent[0].Text, "\nПолитика ПДн: https://example.com/policy") {
+		t.Fatalf("start text does not contain standalone privacy URL: %q", sender.sent[0].Text)
+	}
+	if strings.Contains(sender.sent[0].Text, "https://example.com/policy)") {
+		t.Fatalf("start text contains malformed privacy URL with trailing bracket: %q", sender.sent[0].Text)
+	}
 }
 
 func TestMapBotStartedUsesMessageSenderAndStartCommandText(t *testing.T) {

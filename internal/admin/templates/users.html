@@ -20,6 +20,52 @@
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: .8rem; }
     #usersSource { display: none; }
     .table-wrap a { color: #0d61ff; text-decoration: underline; }
+    #usersGrid .gridjs-container {
+      width: 100%;
+    }
+    #usersGrid .gridjs-wrapper {
+      overflow-x: auto;
+    }
+    #usersGrid table.gridjs-table {
+      width: 100%;
+      table-layout: auto;
+    }
+    #usersGrid .gridjs-wrapper table th,
+    #usersGrid .gridjs-wrapper table td {
+      white-space: normal;
+      vertical-align: top;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      line-height: 1.35;
+    }
+    #usersGrid .gridjs-wrapper table th:nth-child(1),
+    #usersGrid .gridjs-wrapper table td:nth-child(1),
+    #usersGrid .gridjs-wrapper table th:nth-child(8),
+    #usersGrid .gridjs-wrapper table td:nth-child(8),
+    #usersGrid .gridjs-wrapper table th:nth-child(9),
+    #usersGrid .gridjs-wrapper table td:nth-child(9) {
+      white-space: nowrap;
+    }
+    #usersGrid .gridjs-wrapper table th:nth-child(2),
+    #usersGrid .gridjs-wrapper table td:nth-child(2) {
+      min-width: 9rem;
+    }
+    #usersGrid .gridjs-wrapper table th:nth-child(3),
+    #usersGrid .gridjs-wrapper table td:nth-child(3),
+    #usersGrid .gridjs-wrapper table th:nth-child(4),
+    #usersGrid .gridjs-wrapper table td:nth-child(4) {
+      min-width: 12rem;
+    }
+    #usersGrid .gridjs-wrapper table td:nth-child(3) .mono,
+    #usersGrid .gridjs-wrapper table td:nth-child(4) .mono {
+      display: block;
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+    #usersGrid .gridjs-wrapper table td:nth-child(8) .badge {
+      white-space: nowrap;
+    }
   </style>
 </head>
 <body>

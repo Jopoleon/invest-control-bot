@@ -230,6 +230,7 @@ func (s *Store) ListSubscriptionsForReminder(ctx context.Context, remindBefore t
 		       s.reminder_sent_at, s.expiry_notice_sent_at, s.created_at, s.updated_at
 		FROM subscriptions s
 		WHERE s.status = $1
+		  AND s.starts_at <= $2
 		  AND s.reminder_sent_at IS NULL
 		  AND s.ends_at > $2
 		  AND s.ends_at <= $3
@@ -290,6 +291,7 @@ func (s *Store) ListSubscriptionsForExpiryNotice(ctx context.Context, noticeBefo
 		       s.reminder_sent_at, s.expiry_notice_sent_at, s.created_at, s.updated_at
 		FROM subscriptions s
 		WHERE s.status = $1
+		  AND s.starts_at <= $2
 		  AND s.expiry_notice_sent_at IS NULL
 		  AND s.ends_at > $2
 		  AND s.ends_at <= $3

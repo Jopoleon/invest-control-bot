@@ -277,7 +277,8 @@ GOCACHE=/tmp/go-build go test ./...
 Коннектор описывает условия оплаты:
 - стоимость
 - период
-- `channel_url` и/или `chat_id`
+- Telegram destination: `chat_id` и/или `channel_url`
+- MAX destination: `max_channel_url`
 - ссылки оферты/политики
 - `start_payload`
 

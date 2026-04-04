@@ -13,8 +13,10 @@ CREATE TABLE connectors (
     description TEXT NOT NULL DEFAULT '',
     -- Transport-specific access target or join key. Example: @invest_channel or -1001234567890.
     chat_id TEXT NOT NULL,
-    -- Explicit public channel link shown to user after payment. Example: https://web.max.ru/-72598909498032.
+    -- Explicit Telegram channel link shown to Telegram users after payment. Example: https://t.me/testtestinvest.
     channel_url TEXT NOT NULL DEFAULT '',
+    -- Explicit MAX destination link shown to MAX users after payment. Example: https://max.ru/-72598909498032.
+    max_channel_url TEXT NOT NULL DEFAULT '',
     -- Price in RUB stored as whole integer amount. Example: 2300.
     price_rub BIGINT NOT NULL,
     -- Connector period policy discriminator. Example: duration, calendar_months, fixed_deadline.
@@ -40,8 +42,9 @@ COMMENT ON COLUMN connectors.id IS 'Internal connector id. Example: 13.';
 COMMENT ON COLUMN connectors.start_payload IS 'Bot deep-link payload used in /start flow. Example: in-6ae23f91735bfab1.';
 COMMENT ON COLUMN connectors.name IS 'Human-readable tariff name shown in bot and admin. Example: MAX Premium March.';
 COMMENT ON COLUMN connectors.description IS 'Optional marketing or support description shown before checkout. Example: Monthly access to MAX test channel.';
-COMMENT ON COLUMN connectors.chat_id IS 'Transport-specific access target or join key. Example: @invest_channel or -1001234567890.';
-COMMENT ON COLUMN connectors.channel_url IS 'Explicit public channel link shown to user after payment. Example: https://web.max.ru/-72598909498032.';
+COMMENT ON COLUMN connectors.chat_id IS 'Telegram chat or channel join target used for invite link generation or fallback URL building. Example: @invest_channel or -1001234567890.';
+COMMENT ON COLUMN connectors.channel_url IS 'Explicit Telegram channel link shown to Telegram users after payment. Example: https://t.me/testtestinvest.';
+COMMENT ON COLUMN connectors.max_channel_url IS 'Explicit MAX destination link shown to MAX users after payment. Example: https://max.ru/-72598909498032.';
 COMMENT ON COLUMN connectors.price_rub IS 'Price in RUB stored as whole integer amount. Example: 2300.';
 COMMENT ON COLUMN connectors.period_mode IS 'Connector period policy discriminator. Example: duration, calendar_months, fixed_deadline.';
 COMMENT ON COLUMN connectors.period_seconds IS 'Relative duration in seconds for duration mode. Example: 2592000 for 30 days or 120 for 2 minutes.';

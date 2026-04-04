@@ -49,6 +49,10 @@ func (h *Handler) handleCallback(ctx context.Context, cb messenger.IncomingActio
 		h.sendTo(ctx, cb.ChatID, cb.User, botMsgConnectorUnavailable)
 		return
 	}
+	if warning := botConnectorAccessMismatchWarning(connector, cb.User.Kind); warning != "" {
+		h.sendTo(ctx, cb.ChatID, cb.User, warning)
+		return
+	}
 
 	user, ok := h.resolveMessengerUser(ctx, cb.User)
 	if !ok {
@@ -128,7 +132,7 @@ func (h *Handler) handlePayConsentToggle(ctx context.Context, cb messenger.Incom
 		return
 	}
 
-	text, keyboard := h.buildFinalPaymentStep(ctx, connectorID, enabled)
+	text, keyboard := h.buildFinalPaymentStep(ctx, connectorID, cb.User.Kind, enabled)
 	if err := h.respondToAction(ctx, cb, messenger.OutgoingMessage{
 		Text:    text,
 		Buttons: keyboard,

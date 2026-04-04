@@ -15,7 +15,8 @@ type connectorView struct {
 	StartPayload    string
 	Name            string
 	ChatID          string
-	ChannelURL      string
+	TelegramURL     string
+	MAXChannelURL   string
 	PriceRUB        int64
 	PeriodLabel     string
 	OfferURL        string

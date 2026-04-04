@@ -49,10 +49,9 @@ func TestActivateSuccessfulPayment_ExtendsFromCurrentSubscriptionEnd(t *testing.
 	}
 
 	service := &Service{
-		Store:                   st,
-		PaymentSuccessMessage:   func(domain.Payment, domain.Connector, time.Time) string { return "ok" },
-		ResolveConnectorChannel: func(a, b string) string { return "" },
-		SendUserNotification:    func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil },
+		Store:                 st,
+		PaymentSuccessMessage: func(domain.Payment, domain.Connector, time.Time) string { return "ok" },
+		SendUserNotification:  func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil },
 		BuildTargetAuditEvent: func(context.Context, int64, string, int64, string, string, time.Time) domain.AuditEvent {
 			return domain.AuditEvent{}
 		},
@@ -118,7 +117,6 @@ func TestActivateSuccessfulPayment_UsesTelegramAccessLinkWhenAvailable(t *testin
 			linkConnector = accessConnector
 			return "https://t.me/+private_one_time_link", nil
 		},
-		ResolveConnectorChannel: func(a, b string) string { return a },
 		SendUserNotification: func(_ context.Context, _ int64, _ string, msg messenger.OutgoingMessage) error {
 			sent = msg
 			return nil
@@ -180,10 +178,9 @@ func TestActivateSuccessfulPayment_WritesAccessDeliveryFailedAuditWhenDestinatio
 	}
 
 	service := &Service{
-		Store:                   st,
-		PaymentSuccessMessage:   func(domain.Payment, domain.Connector, time.Time) string { return "ok" },
-		ResolveConnectorChannel: func(a, b string) string { return "" },
-		SendUserNotification:    func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil },
+		Store:                 st,
+		PaymentSuccessMessage: func(domain.Payment, domain.Connector, time.Time) string { return "ok" },
+		SendUserNotification:  func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil },
 		BuildTargetAuditEvent: func(_ context.Context, userID int64, _ string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
 			return domain.AuditEvent{TargetUserID: userID, ConnectorID: connectorID, Action: action, Details: details, CreatedAt: createdAt}
 		},
@@ -241,10 +238,7 @@ func TestActivateSuccessfulPayment_WritesPaymentAccessReadyAuditWhenDeliverySucc
 	service := &Service{
 		Store:                 st,
 		PaymentSuccessMessage: func(domain.Payment, domain.Connector, time.Time) string { return "ok" },
-		ResolveConnectorChannel: func(a, b string) string {
-			return a
-		},
-		SendUserNotification: func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil },
+		SendUserNotification:  func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil },
 		BuildTargetAuditEvent: func(_ context.Context, userID int64, _ string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
 			return domain.AuditEvent{TargetUserID: userID, ConnectorID: connectorID, Action: action, Details: details, CreatedAt: createdAt}
 		},
@@ -261,8 +255,8 @@ func TestActivateSuccessfulPayment_WritesPaymentAccessReadyAuditWhenDeliverySucc
 	if got := countPaymentAuditEvents(events, domain.AuditActionPaymentAccessReady); got != 1 {
 		t.Fatalf("payment_access_ready count=%d want=1", got)
 	}
-	if !strings.Contains(findPaymentAuditDetails(events, domain.AuditActionPaymentAccessReady), "source=connector_channel_url") {
-		t.Fatalf("payment_access_ready details=%q want connector_channel_url", findPaymentAuditDetails(events, domain.AuditActionPaymentAccessReady))
+	if !strings.Contains(findPaymentAuditDetails(events, domain.AuditActionPaymentAccessReady), "source=telegram_channel_url") {
+		t.Fatalf("payment_access_ready details=%q want telegram_channel_url", findPaymentAuditDetails(events, domain.AuditActionPaymentAccessReady))
 	}
 }
 
@@ -306,9 +300,6 @@ func TestActivateSuccessfulPayment_WritesInviteLinkFailureAuditWhenFallbackSucce
 		BuildTelegramAccessLink: func(context.Context, int64, domain.Connector) (string, error) {
 			return "", errors.New("telegram api failed")
 		},
-		ResolveConnectorChannel: func(a, b string) string {
-			return a
-		},
 		SendUserNotification: func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil },
 		BuildTargetAuditEvent: func(_ context.Context, userID int64, _ string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
 			return domain.AuditEvent{TargetUserID: userID, ConnectorID: connectorID, Action: action, Details: details, CreatedAt: createdAt}
@@ -332,8 +323,77 @@ func TestActivateSuccessfulPayment_WritesInviteLinkFailureAuditWhenFallbackSucce
 	if got := countPaymentAuditEvents(events, domain.AuditActionPaymentAccessReady); got != 1 {
 		t.Fatalf("payment_access_ready count=%d want=1", got)
 	}
-	if !strings.Contains(findPaymentAuditDetails(events, domain.AuditActionPaymentAccessReady), "source=connector_channel_url") {
-		t.Fatalf("payment_access_ready details=%q want connector_channel_url", findPaymentAuditDetails(events, domain.AuditActionPaymentAccessReady))
+	if !strings.Contains(findPaymentAuditDetails(events, domain.AuditActionPaymentAccessReady), "source=telegram_channel_url") {
+		t.Fatalf("payment_access_ready details=%q want telegram_channel_url", findPaymentAuditDetails(events, domain.AuditActionPaymentAccessReady))
+	}
+}
+
+func TestActivateSuccessfulPayment_WritesIncompatibleAccessAuditForMAXOnTelegramOnlyConnector(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Date(2026, 4, 2, 10, 15, 0, 0, time.UTC)
+	connector := domain.Connector{
+		ID:            1,
+		StartPayload:  "in-payments-max-incompatible",
+		Name:          "telegram only",
+		ChannelURL:    "https://t.me/private_channel",
+		PriceRUB:      1000,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 30 * 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     now,
+	}
+	if err := st.CreateConnector(ctx, connector); err != nil {
+		t.Fatalf("CreateConnector err=%v", err)
+	}
+	maxUser, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465776", "fedor")
+	if err != nil {
+		t.Fatalf("GetOrCreateUserByMessenger err=%v", err)
+	}
+	paymentRow := domain.Payment{
+		ID:          1,
+		Provider:    "robokassa",
+		Status:      domain.PaymentStatusPending,
+		Token:       "p-max-incompatible",
+		UserID:      maxUser.ID,
+		ConnectorID: connector.ID,
+		AmountRUB:   1000,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := st.CreatePayment(ctx, paymentRow); err != nil {
+		t.Fatalf("CreatePayment err=%v", err)
+	}
+
+	var sent messenger.OutgoingMessage
+	service := &Service{
+		Store:                 st,
+		PaymentSuccessMessage: func(domain.Payment, domain.Connector, time.Time) string { return "ok" },
+		ResolvePreferredKind: func(context.Context, int64, string) messenger.Kind {
+			return messenger.KindMAX
+		},
+		SendUserNotification: func(_ context.Context, _ int64, _ string, msg messenger.OutgoingMessage) error {
+			sent = msg
+			return nil
+		},
+		BuildTargetAuditEvent: func(_ context.Context, userID int64, _ string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
+			return domain.AuditEvent{TargetUserID: userID, ConnectorID: connectorID, Action: action, Details: details, CreatedAt: createdAt}
+		},
+		OpenChannelActionLabel: "open",
+		MySubscriptionAction:   "sub",
+	}
+
+	service.ActivateSuccessfulPayment(ctx, paymentRow, "robokassa:p-max-incompatible", now)
+
+	if len(sent.Buttons) != 1 || len(sent.Buttons[0]) != 1 || sent.Buttons[0][0].Action != "menu:subscription" {
+		t.Fatalf("buttons=%+v want only subscription menu action", sent.Buttons)
+	}
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 50})
+	if err != nil {
+		t.Fatalf("ListAuditEvents err=%v", err)
+	}
+	if !strings.Contains(findPaymentAuditDetails(events, domain.AuditActionAccessDeliveryFailed), "reason=incompatible_access_destination") {
+		t.Fatalf("access_delivery_failed details=%q want incompatible_access_destination", findPaymentAuditDetails(events, domain.AuditActionAccessDeliveryFailed))
 	}
 }
 

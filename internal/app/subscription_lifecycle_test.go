@@ -57,6 +57,72 @@ func TestProcessSubscriptionReminders_MarksReminderOnce(t *testing.T) {
 	}
 }
 
+func TestProcessSubscriptionReminders_SkipsFutureQueuedSubscription(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	tg, err := telegram.NewClient("", "")
+	if err != nil {
+		t.Fatalf("create telegram client: %v", err)
+	}
+
+	now := time.Now().UTC()
+	connectorID := seedConnector(t, ctx, st, "in-lifecycle-reminder-future")
+	userID := seedTelegramUser(t, ctx, st, 880011)
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:    "robokassa",
+		Status:      domain.PaymentStatusPaid,
+		Token:       "sub-reminder-future",
+		UserID:      userID,
+		ConnectorID: connectorID,
+		AmountRUB:   2322,
+		CreatedAt:   now.Add(-time.Hour),
+		UpdatedAt:   now.Add(-time.Hour),
+		PaidAt:      &now,
+	})
+	paymentRow, found, err := st.GetPaymentByToken(ctx, "sub-reminder-future")
+	if err != nil || !found {
+		t.Fatalf("get payment by token: found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:      userID,
+		ConnectorID: connectorID,
+		PaymentID:   paymentRow.ID,
+		Status:      domain.SubscriptionStatusActive,
+		StartsAt:    now.Add(12 * time.Hour),
+		EndsAt:      now.Add(48 * time.Hour),
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}); err != nil {
+		t.Fatalf("upsert subscription: %v", err)
+	}
+
+	appCtx := &application{
+		config:         config.Config{Telegram: config.TelegramConfig{BotUsername: "test_bot"}},
+		store:          st,
+		telegramClient: tg,
+	}
+
+	processSubscriptionReminders(ctx, appCtx)
+
+	sub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, userID, connectorID)
+	if err != nil || !found {
+		t.Fatalf("get latest subscription: found=%v err=%v", found, err)
+	}
+	if sub.ReminderSentAt != nil {
+		t.Fatalf("reminder_sent_at = %v, want nil", sub.ReminderSentAt)
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionReminderSent); got != 0 {
+		t.Fatalf("subscription_reminder_sent count = %d, want 0", got)
+	}
+}
+
 func TestProcessExpiredSubscriptions_ExpiresOnce(t *testing.T) {
 	t.Helper()
 
@@ -280,6 +346,72 @@ func TestProcessSubscriptionExpiryNotices_MarksNoticeOnce(t *testing.T) {
 	}
 	if got := countAuditEvents(events, domain.AuditActionSubscriptionExpiryNoticeSent); got != 1 {
 		t.Fatalf("subscription_expiry_notice_sent count = %d, want 1", got)
+	}
+}
+
+func TestProcessSubscriptionExpiryNotices_SkipsFutureQueuedSubscription(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	tg, err := telegram.NewClient("", "")
+	if err != nil {
+		t.Fatalf("create telegram client: %v", err)
+	}
+
+	now := time.Now().UTC()
+	connectorID := seedConnector(t, ctx, st, "in-lifecycle-expiry-notice-future")
+	userID := seedTelegramUser(t, ctx, st, 880012)
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:    "robokassa",
+		Status:      domain.PaymentStatusPaid,
+		Token:       "sub-expiry-notice-future",
+		UserID:      userID,
+		ConnectorID: connectorID,
+		AmountRUB:   2322,
+		CreatedAt:   now.Add(-time.Hour),
+		UpdatedAt:   now.Add(-time.Hour),
+		PaidAt:      &now,
+	})
+	paymentRow, found, err := st.GetPaymentByToken(ctx, "sub-expiry-notice-future")
+	if err != nil || !found {
+		t.Fatalf("get payment by token: found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:      userID,
+		ConnectorID: connectorID,
+		PaymentID:   paymentRow.ID,
+		Status:      domain.SubscriptionStatusActive,
+		StartsAt:    now.Add(2 * time.Hour),
+		EndsAt:      now.Add(12 * time.Hour),
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}); err != nil {
+		t.Fatalf("upsert subscription: %v", err)
+	}
+
+	appCtx := &application{
+		config:         config.Config{Telegram: config.TelegramConfig{BotUsername: "test_bot"}},
+		store:          st,
+		telegramClient: tg,
+	}
+
+	processSubscriptionExpiryNotices(ctx, appCtx)
+
+	sub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, userID, connectorID)
+	if err != nil || !found {
+		t.Fatalf("get latest subscription: found=%v err=%v", found, err)
+	}
+	if sub.ExpiryNoticeSentAt != nil {
+		t.Fatalf("expiry_notice_sent_at = %v, want nil", sub.ExpiryNoticeSentAt)
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionExpiryNoticeSent); got != 0 {
+		t.Fatalf("subscription_expiry_notice_sent count = %d, want 0", got)
 	}
 }
 

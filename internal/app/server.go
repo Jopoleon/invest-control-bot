@@ -44,6 +44,10 @@ func New(cfg config.Config, st store.Store) (*Server, error) {
 		httpServer:         httpServer,
 		lifecycleScheduler: lifecycleScheduler,
 		lifecycleRunOnStart: func() {
+			// Run one synchronous pass on every process start so a deploy does not
+			// delay reminders/expiry/rebill work until the first ticker boundary.
+			// The pass is still idempotent because every branch re-evaluates the
+			// persisted DB state instead of relying on in-memory scheduler history.
 			runSubscriptionLifecyclePass(context.Background(), appCtx)
 		},
 	}, nil

@@ -86,6 +86,89 @@ func TestHandleCallback_MAXMissingUsernameUsesGenericPrompt(t *testing.T) {
 	}
 }
 
+func TestHandleStart_MAXOnTelegramOnlyConnector_ShowsMismatchWarning(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	sender := &fakeSender{}
+	h := NewHandler(st, sender, payment.NewMockService("http://localhost:8080"), false, "http://localhost:8080", "test-encryption-key-123456789012345")
+
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-max-telegram-only",
+		Name:          "telegram-only",
+		ChatID:        "1003626584986",
+		PriceRUB:      4444,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 30 * 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create connector: %v", err)
+	}
+
+	h.handleStart(ctx, messenger.IncomingMessage{
+		User:   maxIdentity(193465781, "fedor"),
+		ChatID: 193465781,
+		Text:   "/start in-max-telegram-only",
+	})
+
+	if len(sender.sent) != 1 {
+		t.Fatalf("sent messages = %d, want 1", len(sender.sent))
+	}
+	msg := sender.sent[0].msg
+	if !strings.Contains(msg.Text, "только в Telegram") {
+		t.Fatalf("text=%q want telegram-only warning", msg.Text)
+	}
+	if len(msg.Buttons) != 0 {
+		t.Fatalf("buttons=%+v want no consent/pay path for wrong messenger", msg.Buttons)
+	}
+}
+
+func TestHandlePay_MAXOnTelegramOnlyConnector_BlocksPaymentCreation(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	sender := &fakeSender{}
+	h := NewHandler(st, sender, payment.NewMockService("http://localhost:8080"), true, "http://localhost:8080", "test-encryption-key-123456789012345")
+
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-max-pay-blocked",
+		Name:          "telegram-only",
+		ChatID:        "1003626584986",
+		PriceRUB:      4444,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 30 * 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create connector: %v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-max-pay-blocked")
+	if err != nil || !found {
+		t.Fatalf("get connector by payload: found=%v err=%v", found, err)
+	}
+
+	h.handlePay(ctx, maxAction("cb-max-pay-blocked", 193465782, "fedor", "pay:"+int64ToString(connector.ID)+":1"))
+
+	if len(sender.sent) != 1 {
+		t.Fatalf("sent messages = %d, want 1", len(sender.sent))
+	}
+	if got := sender.sent[0].msg.Text; !strings.Contains(got, "только в Telegram") {
+		t.Fatalf("text=%q want telegram-only warning", got)
+	}
+	user, found, err := st.GetUserByMessenger(ctx, domain.MessengerKindMAX, "193465782")
+	if err != nil {
+		t.Fatalf("get user by MAX messenger: %v", err)
+	}
+	if found {
+		payments, err := st.ListPayments(ctx, domain.PaymentListQuery{UserID: user.ID, Limit: 10})
+		if err != nil {
+			t.Fatalf("list payments: %v", err)
+		}
+		if len(payments) != 0 {
+			t.Fatalf("payments len = %d, want 0", len(payments))
+		}
+	}
+}
+
 func TestMAXMenuParity_SubscriptionAndPayments(t *testing.T) {
 	ctx := context.Background()
 	st := memory.New()

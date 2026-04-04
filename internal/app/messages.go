@@ -131,10 +131,11 @@ func appPaymentPageActions(kind messenger.Kind, success bool, channelURL, botURL
 		if !success {
 			primaryLabel = appPaymentActionReturnToBot
 		}
-		return []paymentPageAction{
-			{Label: primaryLabel, URL: botURL},
-			{Label: appPaymentActionOpenChannel, URL: channelURL, Secondary: true},
-			{Label: appPaymentActionOpenTelegram, URL: "https://t.me"},
+		actions := []paymentPageAction{{Label: primaryLabel, URL: botURL}}
+		if strings.TrimSpace(channelURL) != "" {
+			actions = append(actions, paymentPageAction{Label: appPaymentActionOpenChannel, URL: channelURL, Secondary: true})
 		}
+		actions = append(actions, paymentPageAction{Label: appPaymentActionOpenTelegram, URL: "https://t.me", Secondary: len(actions) > 0})
+		return actions
 	}
 }

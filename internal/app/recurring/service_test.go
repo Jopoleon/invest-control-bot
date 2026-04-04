@@ -45,6 +45,9 @@ func TestAttemptOrdinalForPeriod_UsesShortTestWindows(t *testing.T) {
 	if got := attemptOrdinalForConnector(now, now.Add(40*time.Second), connector); got != 1 {
 		t.Fatalf("attemptOrdinalForConnector(40s remaining)=%d want=1", got)
 	}
+	if got := attemptOrdinalForConnector(now, now.Add(20*time.Second), connector); got != 1 {
+		t.Fatalf("attemptOrdinalForConnector(20s remaining)=%d want=1", got)
+	}
 	if got := attemptOrdinalForConnector(now, now.Add(12*time.Second), connector); got != 2 {
 		t.Fatalf("attemptOrdinalForConnector(12s remaining)=%d want=2", got)
 	}
@@ -60,11 +63,56 @@ func TestAttemptOrdinalForConnector_UsesFourMinuteRecurringPolicy(t *testing.T) 
 	if got := attemptOrdinalForConnector(now, now.Add(90*time.Second), connector); got != 0 {
 		t.Fatalf("attemptOrdinalForConnector(90s remaining)=%d want=0", got)
 	}
-	if got := attemptOrdinalForConnector(now, now.Add(70*time.Second), connector); got != 1 {
-		t.Fatalf("attemptOrdinalForConnector(70s remaining)=%d want=1", got)
+	if got := attemptOrdinalForConnector(now, now.Add(40*time.Second), connector); got != 1 {
+		t.Fatalf("attemptOrdinalForConnector(40s remaining)=%d want=1", got)
 	}
-	if got := attemptOrdinalForConnector(now, now.Add(20*time.Second), connector); got != 2 {
-		t.Fatalf("attemptOrdinalForConnector(20s remaining)=%d want=2", got)
+	if got := attemptOrdinalForConnector(now, now.Add(12*time.Second), connector); got != 3 {
+		t.Fatalf("attemptOrdinalForConnector(12s remaining)=%d want=3", got)
+	}
+	if got := attemptOrdinalForConnector(now, now.Add(5*time.Second), connector); got != 3 {
+		t.Fatalf("attemptOrdinalForConnector(5s remaining)=%d want=3", got)
+	}
+}
+
+func TestAttemptOrdinalForConnector_UsesThreeHourRecurringPolicy(t *testing.T) {
+	now := time.Now().UTC()
+	connector := domain.Connector{
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: int64((3 * time.Hour) / time.Second),
+	}
+
+	if got := attemptOrdinalForConnector(now, now.Add(90*time.Minute), connector); got != 0 {
+		t.Fatalf("attemptOrdinalForConnector(90m remaining)=%d want=0", got)
+	}
+	if got := attemptOrdinalForConnector(now, now.Add(50*time.Minute), connector); got != 1 {
+		t.Fatalf("attemptOrdinalForConnector(50m remaining)=%d want=1", got)
+	}
+	if got := attemptOrdinalForConnector(now, now.Add(15*time.Minute), connector); got != 2 {
+		t.Fatalf("attemptOrdinalForConnector(15m remaining)=%d want=2", got)
+	}
+	if got := attemptOrdinalForConnector(now, now.Add(5*time.Minute), connector); got != 3 {
+		t.Fatalf("attemptOrdinalForConnector(5m remaining)=%d want=3", got)
+	}
+}
+
+func TestAttemptOrdinalForConnector_UsesTwoDayRecurringPolicy(t *testing.T) {
+	now := time.Now().UTC()
+	connector := domain.Connector{
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: int64((48 * time.Hour) / time.Second),
+	}
+
+	if got := attemptOrdinalForConnector(now, now.Add(18*time.Hour), connector); got != 0 {
+		t.Fatalf("attemptOrdinalForConnector(18h remaining)=%d want=0", got)
+	}
+	if got := attemptOrdinalForConnector(now, now.Add(12*time.Hour), connector); got != 1 {
+		t.Fatalf("attemptOrdinalForConnector(12h remaining)=%d want=1", got)
+	}
+	if got := attemptOrdinalForConnector(now, now.Add(4*time.Hour), connector); got != 2 {
+		t.Fatalf("attemptOrdinalForConnector(4h remaining)=%d want=2", got)
+	}
+	if got := attemptOrdinalForConnector(now, now.Add(2*time.Hour), connector); got != 3 {
+		t.Fatalf("attemptOrdinalForConnector(2h remaining)=%d want=3", got)
 	}
 }
 
@@ -112,6 +160,48 @@ func TestShouldTriggerScheduledRebill_SkipsWhenPendingExists(t *testing.T) {
 	}
 	if ok {
 		t.Fatalf("ShouldTriggerScheduledRebill=true want false")
+	}
+}
+
+func TestShouldTriggerScheduledRebill_SkipsFutureQueuedSubscription(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Now().UTC()
+
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-future-sub",
+		Name:          "future-sub",
+		PriceRUB:      500,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: int64((3 * time.Hour) / time.Second),
+		IsActive:      true,
+		CreatedAt:     now,
+	}); err != nil {
+		t.Fatalf("CreateConnector err=%v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-future-sub")
+	if err != nil || !found {
+		t.Fatalf("GetConnectorByStartPayload found=%v err=%v", found, err)
+	}
+
+	service := &Service{Store: st}
+	decision, err := service.EvaluateScheduledRebill(ctx, domain.Subscription{
+		ID:             17,
+		UserID:         42,
+		ConnectorID:    connector.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       now.Add(2 * time.Hour),
+		EndsAt:         now.Add(5 * time.Hour),
+	}, now)
+	if err != nil {
+		t.Fatalf("EvaluateScheduledRebill err=%v", err)
+	}
+	if decision.Trigger {
+		t.Fatalf("EvaluateScheduledRebill trigger=true want false")
+	}
+	if decision.Reason != "subscription_not_started" {
+		t.Fatalf("EvaluateScheduledRebill reason=%q want subscription_not_started", decision.Reason)
 	}
 }
 

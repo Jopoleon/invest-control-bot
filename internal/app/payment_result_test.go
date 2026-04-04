@@ -490,7 +490,7 @@ func TestPaymentSuccessPage_MAXActionsUseMAXLinks(t *testing.T) {
 	if err := st.CreateConnector(ctx, domain.Connector{
 		StartPayload:  "in-max-page-success",
 		Name:          "max-page-connector",
-		ChannelURL:    "https://web.max.ru/-72598909498032",
+		MAXChannelURL: "https://web.max.ru/-72598909498032",
 		PriceRUB:      2322,
 		PeriodMode:    domain.ConnectorPeriodModeDuration,
 		PeriodSeconds: 30 * 24 * 60 * 60,
@@ -542,6 +542,107 @@ func TestPaymentSuccessPage_MAXActionsUseMAXLinks(t *testing.T) {
 	}
 	if strings.Contains(text, "https://t.me") {
 		t.Fatalf("response should not contain Telegram URLs for MAX payment page: %q", text)
+	}
+}
+
+func TestPaymentSuccessPage_ShowsPaymentDetailsWhenKnown(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Date(2026, 4, 4, 12, 30, 0, 0, time.UTC)
+	userID := seedTelegramUser(t, ctx, st, 777015)
+
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-success-details",
+		Name:          "Премиум 3 часа",
+		ChatID:        "1003626584986",
+		PriceRUB:      199,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: int64((3 * time.Hour) / time.Second),
+		IsActive:      true,
+		CreatedAt:     now.Add(-time.Hour),
+	}); err != nil {
+		t.Fatalf("create connector: %v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-success-details")
+	if err != nil || !found {
+		t.Fatalf("get connector by payload: found=%v err=%v", found, err)
+	}
+
+	paidAt := now
+	if err := st.CreatePayment(ctx, domain.Payment{
+		Provider:          "robokassa",
+		ProviderPaymentID: "robokassa:success-details-1",
+		Status:            domain.PaymentStatusPaid,
+		Token:             "success-details-1",
+		UserID:            userID,
+		ConnectorID:       connector.ID,
+		AmountRUB:         199,
+		CreatedAt:         now.Add(-5 * time.Minute),
+		UpdatedAt:         now,
+		PaidAt:            &paidAt,
+	}); err != nil {
+		t.Fatalf("create payment: %v", err)
+	}
+	paymentRow, found, err := st.GetPaymentByToken(ctx, "success-details-1")
+	if err != nil || !found {
+		t.Fatalf("get payment by token: found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         userID,
+		ConnectorID:    connector.ID,
+		PaymentID:      paymentRow.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       now,
+		EndsAt:         now.Add(3 * time.Hour),
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}); err != nil {
+		t.Fatalf("upsert subscription: %v", err)
+	}
+
+	handler := testServerHandler(t, st, "test-pass2")
+	req := httptest.NewRequest(http.MethodGet, "/payment/success?InvId=success-details-1", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		body, _ := io.ReadAll(rr.Body)
+		t.Fatalf("status=%d body=%q", rr.Code, string(body))
+	}
+	body, _ := io.ReadAll(rr.Body)
+	text := string(body)
+
+	if !strings.Contains(text, "Детали оплаты") {
+		t.Fatalf("response does not contain details section: %q", text)
+	}
+	if !strings.Contains(text, "Премиум 3 часа") {
+		t.Fatalf("response does not contain connector name: %q", text)
+	}
+	if !strings.Contains(text, "199 ₽") {
+		t.Fatalf("response does not contain amount: %q", text)
+	}
+	if !strings.Contains(text, "3 ч.") {
+		t.Fatalf("response does not contain period label: %q", text)
+	}
+	if !strings.Contains(text, "Оплачен") {
+		t.Fatalf("response does not contain payment status label: %q", text)
+	}
+	if !strings.Contains(text, now.In(time.Local).Format("02.01.2006 15:04")) {
+		t.Fatalf("response does not contain paid_at label: %q", text)
+	}
+	if !strings.Contains(text, now.Add(3*time.Hour).In(time.Local).Format("02.01.2006 15:04")) {
+		t.Fatalf("response does not contain subscription ends_at: %q", text)
+	}
+	if !strings.Contains(text, "success-details-1") {
+		t.Fatalf("response does not contain InvId token: %q", text)
+	}
+	if !strings.Contains(text, "robokassa:success-details-1") {
+		t.Fatalf("response does not contain provider reference: %q", text)
+	}
+	if !strings.Contains(text, strconv.FormatInt(paymentRow.ID, 10)) {
+		t.Fatalf("response does not contain internal payment id: %q", text)
 	}
 }
 
@@ -676,7 +777,7 @@ func TestPaymentFailPage_MAXActionsUseMAXLinks(t *testing.T) {
 	if err := st.CreateConnector(ctx, domain.Connector{
 		StartPayload:  "in-max-page-fail",
 		Name:          "max-fail-connector",
-		ChannelURL:    "https://web.max.ru/-72598909498032",
+		MAXChannelURL: "https://web.max.ru/-72598909498032",
 		PriceRUB:      2322,
 		PeriodMode:    domain.ConnectorPeriodModeDuration,
 		PeriodSeconds: 30 * 24 * 60 * 60,
@@ -1247,6 +1348,7 @@ func seedConnector(t *testing.T, ctx context.Context, st store.Store, payload st
 		StartPayload:  payload,
 		Name:          "test-connector",
 		ChatID:        "1003626584986",
+		MAXChannelURL: "https://web.max.ru/test-connector",
 		PriceRUB:      2322,
 		PeriodMode:    domain.ConnectorPeriodModeDuration,
 		PeriodSeconds: 30 * 24 * 60 * 60,

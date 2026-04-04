@@ -10,12 +10,29 @@
     h2{margin:0 0 10px}.muted{color:#5b6472}.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
     .btn{display:inline-block;padding:10px 14px;border-radius:10px;background:#111827;color:#fff;text-decoration:none}
     .btn.secondary{background:#4b5563}
+    .details{margin-top:18px;padding:16px;border:1px solid #e5eaf2;border-radius:12px;background:#f8fafc}
+    .details h3{margin:0 0 12px;font-size:16px}
+    .detail-grid{display:grid;grid-template-columns:minmax(120px, 180px) 1fr;gap:10px 14px}
+    .detail-label{color:#5b6472}
+    .detail-value{font-weight:600;word-break:break-word}
+    @media (max-width: 640px){.detail-grid{grid-template-columns:1fr}.detail-value{margin-top:-6px}}
   </style>
 </head>
 <body>
   <div class="card">
     <h2>{{.Title}}</h2>
     <p class="muted">{{.Message}}</p>
+    {{if .Details}}
+    <section class="details">
+      <h3>Детали оплаты</h3>
+      <div class="detail-grid">
+        {{range .Details}}
+        <div class="detail-label">{{.Label}}</div>
+        <div class="detail-value">{{.Value}}</div>
+        {{end}}
+      </div>
+    </section>
+    {{end}}
     <div class="row">
       {{range .Actions}}
       {{if .URL}}

@@ -108,7 +108,7 @@ func TestBillingPage_RendersAccessAndRevokeOperationalStatuses(t *testing.T) {
 		TargetUserID: user.ID,
 		ConnectorID:  connectorRow.ID,
 		Action:       domain.AuditActionPaymentAccessReady,
-		Details:      "payment_id=" + strconv.FormatInt(payment.ID, 10) + ";source=connector_channel_url",
+		Details:      "payment_id=" + strconv.FormatInt(payment.ID, 10) + ";source=telegram_channel_url",
 		CreatedAt:    time.Now().UTC(),
 	}); err != nil {
 		t.Fatalf("SaveAuditEvent access ready: %v", err)

@@ -16,7 +16,7 @@ const payConsentCallbackPrefix = "payconsent:"
 // buildFinalPaymentStep returns the last onboarding message before checkout.
 // It decides whether recurring opt-in can be offered for the selected connector
 // based on current product settings and available legal documents.
-func (h *Handler) buildFinalPaymentStep(ctx context.Context, connectorID int64, recurringOptIn bool) (string, [][]messenger.ActionButton) {
+func (h *Handler) buildFinalPaymentStep(ctx context.Context, connectorID int64, currentKind messenger.Kind, recurringOptIn bool) (string, [][]messenger.ActionButton) {
 	baseText := botMsgCheckoutBase
 
 	if !h.recurringEnabled {
@@ -26,6 +26,9 @@ func (h *Handler) buildFinalPaymentStep(ctx context.Context, connectorID int64, 
 	connector, ok, err := h.store.GetConnector(ctx, connectorID)
 	if err != nil || !ok || !connector.IsActive {
 		return baseText, paymentKeyboard(connectorID, false, false)
+	}
+	if warning := botConnectorAccessMismatchWarning(connector, currentKind); warning != "" {
+		return baseText + "\n\n" + warning, nil
 	}
 	if !connector.SupportsRecurring() {
 		return baseText, paymentKeyboard(connectorID, false, false)

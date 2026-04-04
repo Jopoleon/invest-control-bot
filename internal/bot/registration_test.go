@@ -407,6 +407,7 @@ func seedBotConnector(t *testing.T, ctx context.Context, st *memory.Store, paylo
 		StartPayload:  payload,
 		Name:          "test-connector",
 		ChatID:        "1003626584986",
+		MAXChannelURL: "https://max.ru/test-connector",
 		PriceRUB:      4444,
 		PeriodMode:    domain.ConnectorPeriodModeDuration,
 		PeriodSeconds: 30 * 24 * 60 * 60,

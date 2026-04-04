@@ -50,9 +50,13 @@ func (h *Handler) handleStart(ctx context.Context, msg messenger.IncomingMessage
 
 	out := messenger.OutgoingMessage{
 		Text: botStartCardText(connector, offerURL, privacyURL),
-		Buttons: [][]messenger.ActionButton{{
+	}
+	if warning := botConnectorAccessMismatchWarning(connector, msg.User.Kind); warning != "" {
+		out.Text += "\n\n" + warning
+	} else {
+		out.Buttons = [][]messenger.ActionButton{{
 			buttonAction(botBtnAcceptTerms, "accept_terms:"+strconv.FormatInt(connector.ID, 10)),
-		}},
+		}}
 	}
 
 	if err := h.sender.Send(ctx, recipientRef(msg.ChatID, msg.User), out); err != nil {

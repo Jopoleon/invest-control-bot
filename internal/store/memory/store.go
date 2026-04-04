@@ -1115,6 +1115,9 @@ func (s *Store) ListSubscriptionsForReminder(_ context.Context, remindBefore tim
 		if item.Status != domain.SubscriptionStatusActive {
 			continue
 		}
+		if item.StartsAt.After(now) {
+			continue
+		}
 		if item.ReminderSentAt != nil {
 			continue
 		}
@@ -1173,6 +1176,9 @@ func (s *Store) ListSubscriptionsForExpiryNotice(_ context.Context, noticeBefore
 	filtered := make([]domain.Subscription, 0, len(s.subsByPayID))
 	for _, item := range s.subsByPayID {
 		if item.Status != domain.SubscriptionStatusActive {
+			continue
+		}
+		if item.StartsAt.After(now) {
 			continue
 		}
 		if item.ExpiryNoticeSentAt != nil {

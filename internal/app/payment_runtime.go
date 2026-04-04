@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	apppayments "github.com/Jopoleon/invest-control-bot/internal/app/payments"
@@ -68,11 +70,9 @@ func (p *paymentRuntime) businessService() *apppayments.Service {
 		FailedRecurringButton:   appPaymentFailedRecurringButton,
 		PaymentSuccessMessage:   appPaymentSuccessMessage,
 		BuildTelegramAccessLink: p.buildTelegramAccessLink,
-		ResolveConnectorChannel: func(channelURL, chatID string) string {
-			return resolveConnectorChannelURL(channelURL, chatID)
-		},
-		SendUserNotification:  p.sendUserNotificationFn,
-		BuildTargetAuditEvent: p.buildAppTargetAuditEvent,
+		ResolvePreferredKind:    p.resolvePreferredKindFn,
+		SendUserNotification:    p.sendUserNotificationFn,
+		BuildTargetAuditEvent:   p.buildAppTargetAuditEvent,
 	}
 }
 
@@ -161,12 +161,16 @@ func (p *paymentRuntime) handlePaymentSuccess(w http.ResponseWriter, r *http.Req
 	channelURL := ""
 	var paymentRow domain.Payment
 	var paymentFound bool
+	var connector domain.Connector
+	var connectorFound bool
 	if invID != "" {
 		if loadedPayment, ok, err := p.store.GetPaymentByToken(r.Context(), invID); err == nil && ok {
 			paymentRow = loadedPayment
 			paymentFound = true
-			if connector, found, err := p.store.GetConnector(r.Context(), paymentRow.ConnectorID); err == nil && found {
-				channelURL = resolveConnectorChannelURL(connector.ChannelURL, connector.ChatID)
+			if loadedConnector, found, err := p.store.GetConnector(r.Context(), paymentRow.ConnectorID); err == nil && found {
+				connector = loadedConnector
+				connectorFound = true
+				channelURL = connector.AccessURL(messengerKindToDomain(p.resolvePreferredKindFn(r.Context(), paymentRow.UserID, "")))
 			}
 		}
 	}
@@ -181,6 +185,12 @@ func (p *paymentRuntime) handlePaymentSuccess(w http.ResponseWriter, r *http.Req
 	renderPaymentPage(w, paymentPageData{
 		Title:   appPaymentPageTitleSuccess,
 		Message: appPaymentPageMessageSuccess,
+		Details: func() []paymentPageDetail {
+			if !paymentFound {
+				return nil
+			}
+			return p.buildPaymentSuccessDetails(r.Context(), paymentRow, connector, connectorFound)
+		}(),
 		Actions: actions,
 	})
 }
@@ -224,7 +234,7 @@ func (p *paymentRuntime) handlePaymentFail(w http.ResponseWriter, r *http.Reques
 		if paymentRow, ok, err := p.store.GetPaymentByToken(r.Context(), invID); err == nil && ok {
 			channelURL := ""
 			if connector, found, err := p.store.GetConnector(r.Context(), paymentRow.ConnectorID); err == nil && found {
-				channelURL = resolveConnectorChannelURL(connector.ChannelURL, connector.ChatID)
+				channelURL = connector.AccessURL(messengerKindToDomain(p.resolvePreferredKindFn(r.Context(), paymentRow.UserID, "")))
 			}
 			actions = p.buildPaymentPageActions(r.Context(), paymentRow, channelURL, false)
 		}
@@ -379,14 +389,70 @@ type paymentPageAction struct {
 	Secondary bool
 }
 
+type paymentPageDetail struct {
+	Label string
+	Value string
+}
+
 type paymentPageData struct {
 	Title   string
 	Message string
+	Details []paymentPageDetail
 	Actions []paymentPageAction
 }
 
 func renderPaymentPage(w http.ResponseWriter, data paymentPageData) {
 	renderAppTemplate(w, "payment_status.html", data)
+}
+
+func (p *paymentRuntime) buildPaymentSuccessDetails(ctx context.Context, paymentRow domain.Payment, connector domain.Connector, connectorFound bool) []paymentPageDetail {
+	details := make([]paymentPageDetail, 0, 8)
+	if connectorFound && strings.TrimSpace(connector.Name) != "" {
+		details = append(details, paymentPageDetail{Label: "Подписка", Value: strings.TrimSpace(connector.Name)})
+	}
+	if paymentRow.AmountRUB > 0 {
+		details = append(details, paymentPageDetail{Label: "Сумма", Value: fmt.Sprintf("%d ₽", paymentRow.AmountRUB)})
+	} else if connectorFound && connector.PriceRUB > 0 {
+		details = append(details, paymentPageDetail{Label: "Сумма", Value: fmt.Sprintf("%d ₽", connector.PriceRUB)})
+	}
+	if connectorFound {
+		if periodLabel := strings.TrimSpace(appConnectorPeriodLabel(connector)); periodLabel != "" {
+			details = append(details, paymentPageDetail{Label: "Период", Value: periodLabel})
+		}
+	}
+	details = append(details, paymentPageDetail{Label: "Статус платежа", Value: paymentStatusLabel(paymentRow.Status)})
+	if paymentRow.PaidAt != nil && !paymentRow.PaidAt.IsZero() {
+		details = append(details, paymentPageDetail{Label: "Оплачено", Value: paymentRow.PaidAt.In(time.Local).Format("02.01.2006 15:04")})
+	}
+	if latestSub, found, err := p.store.GetLatestSubscriptionByUserConnector(ctx, paymentRow.UserID, paymentRow.ConnectorID); err == nil && found && latestSub.PaymentID == paymentRow.ID {
+		details = append(details, paymentPageDetail{Label: "Доступ до", Value: latestSub.EndsAt.In(time.Local).Format("02.01.2006 15:04")})
+	}
+	if paymentRow.ID > 0 {
+		details = append(details, paymentPageDetail{Label: "Номер платежа", Value: strconv.FormatInt(paymentRow.ID, 10)})
+	}
+	if token := strings.TrimSpace(paymentRow.Token); token != "" {
+		details = append(details, paymentPageDetail{Label: "InvId", Value: token})
+	}
+	if providerRef := strings.TrimSpace(paymentRow.ProviderPaymentID); providerRef != "" {
+		details = append(details, paymentPageDetail{Label: "Provider reference", Value: providerRef})
+	}
+	return details
+}
+
+func paymentStatusLabel(status domain.PaymentStatus) string {
+	switch status {
+	case domain.PaymentStatusPaid:
+		return "Оплачен"
+	case domain.PaymentStatusFailed:
+		return "Не прошел"
+	case domain.PaymentStatusPending:
+		return "Ожидает подтверждения"
+	default:
+		if strings.TrimSpace(string(status)) == "" {
+			return "Неизвестно"
+		}
+		return string(status)
+	}
 }
 
 type rebillResponse struct {

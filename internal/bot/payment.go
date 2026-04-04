@@ -30,6 +30,10 @@ func (h *Handler) handlePay(ctx context.Context, cb messenger.IncomingAction) {
 		h.sendTo(ctx, cb.ChatID, cb.User, botMsgConnectorUnavailable)
 		return
 	}
+	if warning := botConnectorAccessMismatchWarning(connector, cb.User.Kind); warning != "" {
+		h.sendTo(ctx, cb.ChatID, cb.User, warning)
+		return
+	}
 	if h.payment == nil {
 		h.sendTo(ctx, cb.ChatID, cb.User, botMsgPaymentProviderNotConfigured)
 		return

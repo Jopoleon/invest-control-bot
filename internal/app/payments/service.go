@@ -12,6 +12,15 @@ import (
 	"github.com/Jopoleon/invest-control-bot/internal/store"
 )
 
+func preferredMessengerKindToDomain(kind messenger.Kind) domain.MessengerKind {
+	switch kind {
+	case messenger.KindMAX:
+		return domain.MessengerKindMAX
+	default:
+		return domain.MessengerKindTelegram
+	}
+}
+
 // Service owns payment-side business rules that do not need to live on HTTP
 // handlers directly: payment activation and recurring failure notifications.
 //
@@ -29,7 +38,7 @@ type Service struct {
 	FailedRecurringButton   string
 	PaymentSuccessMessage   func(domain.Payment, domain.Connector, time.Time) string
 	BuildTelegramAccessLink func(context.Context, int64, domain.Connector) (string, error)
-	ResolveConnectorChannel func(string, string) string
+	ResolvePreferredKind    func(context.Context, int64, string) messenger.Kind
 	SendUserNotification    func(context.Context, int64, string, messenger.OutgoingMessage) error
 	BuildTargetAuditEvent   func(context.Context, int64, string, int64, string, string, time.Time) domain.AuditEvent
 }
@@ -111,7 +120,13 @@ func (s *Service) ActivateSuccessfulPayment(ctx context.Context, paymentRow doma
 	}
 	channelURL := ""
 	accessSource := ""
+	failureReason := "missing_access_destination"
 	if connectorExists {
+		preferredKind := messenger.KindTelegram
+		if s.ResolvePreferredKind != nil {
+			preferredKind = s.ResolvePreferredKind(ctx, paymentRow.UserID, "")
+		}
+		preferredDomainKind := preferredMessengerKindToDomain(preferredKind)
 		if s.BuildTelegramAccessLink != nil {
 			accessLink, err := s.BuildTelegramAccessLink(ctx, paymentRow.UserID, connector)
 			if err != nil {
@@ -133,10 +148,17 @@ func (s *Service) ActivateSuccessfulPayment(ctx context.Context, paymentRow doma
 			}
 		}
 		if channelURL == "" {
-			fallbackURL := s.ResolveConnectorChannel(connector.ChannelURL, connector.ChatID)
+			fallbackURL := connector.AccessURL(preferredDomainKind)
 			if strings.TrimSpace(fallbackURL) != "" {
 				channelURL = fallbackURL
-				accessSource = "connector_channel_url"
+				switch preferredDomainKind {
+				case domain.MessengerKindMAX:
+					accessSource = "max_channel_url"
+				default:
+					accessSource = "telegram_channel_url"
+				}
+			} else if connector.HasAnyAccessDestination() {
+				failureReason = "incompatible_access_destination"
 			}
 		}
 		if channelURL != "" {
@@ -152,11 +174,21 @@ func (s *Service) ActivateSuccessfulPayment(ctx context.Context, paymentRow doma
 				"payment_id", paymentRow.ID,
 				"connector_id", connector.ID,
 				"chat_id_configured", strings.TrimSpace(connector.ChatID) != "",
-				"channel_url_configured", strings.TrimSpace(connector.ChannelURL) != "",
+				"telegram_channel_url_configured", strings.TrimSpace(connector.ChannelURL) != "",
+				"max_channel_url_configured", strings.TrimSpace(connector.MAXChannelURL) != "",
+				"reason", failureReason,
 			)
 		}
 	}
 	successText := s.PaymentSuccessMessage(paymentRow, connector, endsAt)
+	if channelURL == "" && connectorExists && failureReason == "incompatible_access_destination" {
+		switch {
+		case connector.HasAccessFor(domain.MessengerKindTelegram):
+			successText += "\n\n⚠️ Доступ по этому тарифу выдается в Telegram. В текущем мессенджере кнопка входа недоступна."
+		case connector.HasAccessFor(domain.MessengerKindMAX):
+			successText += "\n\n⚠️ Доступ по этому тарифу выдается в MAX. В текущем мессенджере кнопка входа недоступна."
+		}
+	}
 	message := messenger.OutgoingMessage{Text: successText}
 	if channelURL != "" {
 		message.Text += s.SuccessChannelHint
@@ -207,7 +239,7 @@ func (s *Service) ActivateSuccessfulPayment(ctx context.Context, paymentRow doma
 			"",
 			paymentRow.ConnectorID,
 			domain.AuditActionAccessDeliveryFailed,
-			"payment_id="+strconv.FormatInt(paymentRow.ID, 10)+";reason=missing_access_destination",
+			"payment_id="+strconv.FormatInt(paymentRow.ID, 10)+";reason="+failureReason,
 			now,
 		)); err != nil {
 			slog.Error("save audit event failed", "error", err, "action", domain.AuditActionAccessDeliveryFailed)

@@ -31,6 +31,12 @@ func TestHandleStart_SendsConnectorCardWithConsentButton(t *testing.T) {
 	if !strings.Contains(msg.Text, "https://example.com/contract") {
 		t.Fatalf("text does not contain fallback offer url: %q", msg.Text)
 	}
+	if !strings.Contains(msg.Text, "\nОферта: https://example.com/contract") {
+		t.Fatalf("text does not contain standalone offer line: %q", msg.Text)
+	}
+	if !strings.Contains(msg.Text, "\nПолитика ПДн: https://example.com/policy") {
+		t.Fatalf("text does not contain standalone privacy line: %q", msg.Text)
+	}
 	if len(msg.Buttons) != 1 || len(msg.Buttons[0]) != 1 {
 		t.Fatalf("unexpected buttons layout: %+v", msg.Buttons)
 	}

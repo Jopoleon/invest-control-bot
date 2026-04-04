@@ -87,7 +87,7 @@ func (h *Handler) sendFinalRegistrationMessage(ctx context.Context, chatID int64
 	if handled := h.sendExistingSubscriptionMessage(ctx, chatID, userIdentity, connectorID); handled {
 		return
 	}
-	text, payKeyboard := h.buildFinalPaymentStep(ctx, connectorID, false)
+	text, payKeyboard := h.buildFinalPaymentStep(ctx, connectorID, userIdentity.Kind, false)
 	if err := h.sender.Send(ctx, recipientRef(chatID, userIdentity), messenger.OutgoingMessage{Text: text, Buttons: payKeyboard}); err != nil {
 		slog.Error("send final message failed", "error", err, "chat_id", chatID, "connector_id", connectorID)
 	}

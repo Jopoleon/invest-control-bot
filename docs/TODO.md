@@ -34,6 +34,8 @@
 - [x] Яснее объяснить на `/unsubscribe/{token}`, что отключается именно автоплатеж, а уже оплаченный доступ сохраняется до `ends_at`.
 - [x] Улучшить post-submit состояние `/unsubscribe/{token}`: сделать подтверждение отключения заметнее и понятнее.
 - [x] Проверить, нужны ли отдельные UI-состояния для stale submit, already-off и expired link, чтобы пользователь не видел их как одинаковую ошибку.
+- [x] Облагородить web-экран успешной оплаты `/payment/success`: показывать не только общий success state, но и понятные детали платежа/подписки, включая payment reference (`InvId` / token / номер платежа), если он уже известен по callback и payment row.
+- [ ] Довести public recurring pages `/subscribe/{start_payload}` и `/unsubscribe/{token}` до полной messenger-aware подачи destinations и warnings, чтобы web copy не оставалась более общей, чем bot/payment flow.
 
 ## Validation / Follow-up
 
@@ -47,6 +49,7 @@
 
 - [ ] Убрать bounded N+1 lookup в `internal/admin/users_page.go` и заменить его bulk projection для messenger accounts.
 - [ ] Добавить тесты на edge cases payment success/fail pages для messenger-aware actions и fallback path без `channel_url`.
+- [ ] Покрыть тестами messenger-mismatch flow для коннекторов с destination только в Telegram или только в MAX: start, checkout step, pay guard и success-notification fallback.
 - [ ] Добавить тесты на recurring cancel page для expired token, чужой subscription, already-disabled subscription и mixed-mode user resolution, если какие-то ветки все еще не покрыты после последних правок.
 - [ ] Усилить тесты `internal/bot` для recurring on/off, missing-docs scenarios, subscription overview и payment history.
 - [ ] Если provider-side сбои повторятся, вынести `OpStateExt` lookup из shell-only debug команды в более удобный admin/debug flow.

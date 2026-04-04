@@ -210,6 +210,11 @@
               <input name="channel_url" id="channel_url" placeholder="https://t.me/testtestinvest">
               <small>{{index .I18N "connectors.form.channel_hint"}}</small>
             </label>
+            <label>
+              {{index .I18N "connectors.form.max_channel_url"}}
+              <input name="max_channel_url" id="max_channel_url" placeholder="https://max.ru/-72598909498032">
+              <small>{{index .I18N "connectors.form.max_channel_hint"}}</small>
+            </label>
           </div>
         </div>
       </div>
@@ -285,7 +290,18 @@
             <td class="name-cell">{{.Name}}</td>
             <td class="price-cell">{{.PriceRUB}} ₽</td>
             <td class="period-cell">{{.PeriodLabel}}</td>
-            <td class="link-cell channel-cell">{{if .ChannelURL}}<a href="{{.ChannelURL}}" target="_blank" rel="noreferrer">{{.ChannelURL}}</a>{{else}}—{{end}}</td>
+            <td class="link-cell channel-cell">
+              {{if or .TelegramURL .MAXChannelURL .ChatID}}
+              <details class="link-group">
+                <summary class="link-summary">{{index $.I18N "connectors.table.open_link"}}</summary>
+                <div class="link-stack">
+                  {{if .TelegramURL}}<div><small>{{index $.I18N "connectors.table.telegram_channel"}}</small><a href="{{.TelegramURL}}" target="_blank" rel="noreferrer">{{.TelegramURL}}</a></div>{{end}}
+                  {{if .MAXChannelURL}}<div><small>{{index $.I18N "connectors.table.max_channel"}}</small><a href="{{.MAXChannelURL}}" target="_blank" rel="noreferrer">{{.MAXChannelURL}}</a></div>{{end}}
+                  {{if .ChatID}}<div><small>{{index $.I18N "connectors.table.chat"}}</small><code>{{.ChatID}}</code></div>{{end}}
+                </div>
+              </details>
+              {{else}}—{{end}}
+            </td>
             <td class="link-cell">
               {{if or .OfferURL .PrivacyURL}}
               <details class="link-group">
@@ -305,7 +321,6 @@
                   {{if .TelegramBotLink}}<div><small>{{index $.I18N "connectors.table.telegram_bot_link"}}</small><a href="{{.TelegramBotLink}}" target="_blank" rel="noreferrer">{{.TelegramBotLink}}</a></div>{{end}}
                   {{if .MAXBotLink}}<div><small>{{index $.I18N "connectors.table.max_bot_link"}}</small><a href="{{.MAXBotLink}}" target="_blank" rel="noreferrer">{{.MAXBotLink}}</a></div>{{end}}
                   {{if .MAXStartCommand}}<div><small>{{index $.I18N "connectors.table.max_start_command"}}</small><code>{{.MAXStartCommand}}</code></div>{{end}}
-                  {{if .ChatID}}<div><small>{{index $.I18N "connectors.table.chat"}}</small><code>{{.ChatID}}</code></div>{{end}}
                 </div>
               </details>
               {{else}}—{{end}}
@@ -337,25 +352,30 @@
     if (!form) return;
     const chat = form.querySelector("#chat_id");
     const channel = form.querySelector("#channel_url");
+    const maxChannel = form.querySelector("#max_channel_url");
     const periodMode = form.querySelector("#period_mode");
     const periodFields = form.querySelectorAll("[data-period-field]");
-    if (!chat || !channel) return;
+    if (!chat || !channel || !maxChannel) return;
 
-    const message = "Заполните Chat ID или Channel URL";
+    const message = "Заполните Telegram Chat ID, Telegram Channel URL или MAX Channel URL";
     const syncValidity = () => {
       const hasChat = chat.value.trim().length > 0;
       const hasChannel = channel.value.trim().length > 0;
-      if (hasChat || hasChannel) {
+      const hasMaxChannel = maxChannel.value.trim().length > 0;
+      if (hasChat || hasChannel || hasMaxChannel) {
         chat.setCustomValidity("");
         channel.setCustomValidity("");
+        maxChannel.setCustomValidity("");
       } else {
         chat.setCustomValidity(message);
         channel.setCustomValidity(message);
+        maxChannel.setCustomValidity(message);
       }
     };
 
     chat.addEventListener("input", syncValidity);
     channel.addEventListener("input", syncValidity);
+    maxChannel.addEventListener("input", syncValidity);
     const syncPeriodFields = () => {
       if (!periodMode) return;
       periodFields.forEach((field) => {

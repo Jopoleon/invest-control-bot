@@ -18,7 +18,51 @@
     main.container { max-width: 1280px; }
     .table-wrap { overflow: auto; }
     #eventsSource { display: none; }
-    .gridjs-wrapper table td:last-child { white-space: normal; min-width: 280px; }
+    #eventsGrid .gridjs-container {
+      display: block;
+      min-width: 100%;
+    }
+    #eventsGrid .gridjs-wrapper {
+      overflow-x: auto;
+    }
+    #eventsGrid table.gridjs-table {
+      table-layout: auto;
+      min-width: 1280px;
+      width: 100%;
+    }
+    #eventsGrid .gridjs-wrapper table th,
+    #eventsGrid .gridjs-wrapper table td {
+      vertical-align: top;
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+    #eventsGrid .gridjs-wrapper table th:nth-child(1),
+    #eventsGrid .gridjs-wrapper table td:nth-child(1) {
+      min-width: 11.5rem;
+      white-space: nowrap;
+    }
+    #eventsGrid .gridjs-wrapper table th:nth-child(2),
+    #eventsGrid .gridjs-wrapper table td:nth-child(2) {
+      min-width: 6rem;
+      white-space: nowrap;
+    }
+    #eventsGrid .gridjs-wrapper table th:nth-child(3),
+    #eventsGrid .gridjs-wrapper table td:nth-child(3) {
+      min-width: 10.5rem;
+    }
+    #eventsGrid .gridjs-wrapper table th:nth-child(4),
+    #eventsGrid .gridjs-wrapper table td:nth-child(4) {
+      min-width: 9rem;
+    }
+    #eventsGrid .gridjs-wrapper table th:nth-child(5),
+    #eventsGrid .gridjs-wrapper table td:nth-child(5) {
+      min-width: 14rem;
+    }
+    #eventsGrid .gridjs-wrapper table th:nth-child(6),
+    #eventsGrid .gridjs-wrapper table td:nth-child(6) {
+      min-width: 22rem;
+    }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: .8rem; }
   </style>
 </head>
