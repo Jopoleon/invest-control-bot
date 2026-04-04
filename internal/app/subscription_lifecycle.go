@@ -244,10 +244,16 @@ func (a *application) subscriptionLifecycleService() *appsubscriptions.Service {
 		BuildTargetAuditEvent:       a.buildAppTargetAuditEvent,
 		ResolvePreferredKind:        a.resolvePreferredMessengerKind,
 		ResolveTelegramAccount:      a.resolveTelegramMessengerAccount,
+		ResolveMAXAccount:           a.resolveMAXMessengerAccount,
 	}
 	if a.telegramClient != nil {
 		service.RemoveTelegramChatMember = func(ctx context.Context, chatID, userID int64) error {
 			return a.telegramClient.RemoveChatMember(ctx, chatID, userID)
+		}
+	}
+	if a.maxClient != nil {
+		service.RemoveMAXChatMember = func(ctx context.Context, chatID, userID int64) error {
+			return a.maxClient.RemoveChatMember(ctx, chatID, userID, false)
 		}
 	}
 	return service

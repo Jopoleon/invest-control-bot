@@ -146,6 +146,82 @@ func (c *Client) EnsureWebhook(ctx context.Context, desiredURL, secret string, u
 	return nil
 }
 
+// GetMyChatMember returns bot membership state for the target group chat.
+func (c *Client) GetMyChatMember(ctx context.Context, chatID int64) (ChatMember, error) {
+	var member ChatMember
+	if chatID == 0 {
+		return ChatMember{}, fmt.Errorf("get my chat member requires chat_id")
+	}
+	if err := c.doJSON(ctx, http.MethodGet, "/chats/"+strconv.FormatInt(chatID, 10)+"/members/me", nil, nil, &member); err != nil {
+		return ChatMember{}, err
+	}
+	return member, nil
+}
+
+// AddChatMembers adds one or more users to the target group chat.
+func (c *Client) AddChatMembers(ctx context.Context, chatID int64, userIDs []int64) error {
+	if chatID == 0 {
+		return fmt.Errorf("add chat members requires chat_id")
+	}
+	normalized := make([]int64, 0, len(userIDs))
+	for _, userID := range userIDs {
+		if userID > 0 {
+			normalized = append(normalized, userID)
+		}
+	}
+	if len(normalized) == 0 {
+		return fmt.Errorf("add chat members requires at least one user_id")
+	}
+
+	var resp mutationResponse
+	if err := c.doJSON(ctx, http.MethodPost, "/chats/"+strconv.FormatInt(chatID, 10)+"/members", nil, map[string]any{
+		"user_ids": normalized,
+	}, &resp); err != nil {
+		return err
+	}
+	if !resp.Success {
+		if strings.TrimSpace(resp.Message) == "" {
+			return fmt.Errorf("add chat members returned success=false")
+		}
+		return fmt.Errorf("add chat members returned success=false: %s", strings.TrimSpace(resp.Message))
+	}
+	if len(resp.FailedUserIDs) > 0 || len(resp.FailedUserDetails) > 0 {
+		if strings.TrimSpace(resp.Message) != "" {
+			return fmt.Errorf("add chat members returned partial failure: %s", strings.TrimSpace(resp.Message))
+		}
+		return fmt.Errorf("add chat members returned partial failure")
+	}
+	return nil
+}
+
+// RemoveChatMember removes one user from the target group chat. When block is
+// false the user is only removed and can be re-added later.
+func (c *Client) RemoveChatMember(ctx context.Context, chatID, userID int64, block bool) error {
+	if chatID == 0 {
+		return fmt.Errorf("remove chat member requires chat_id")
+	}
+	if userID <= 0 {
+		return fmt.Errorf("remove chat member requires user_id")
+	}
+	values := url.Values{}
+	values.Set("user_id", strconv.FormatInt(userID, 10))
+	if block {
+		values.Set("block", "true")
+	}
+
+	var resp mutationResponse
+	if err := c.doJSON(ctx, http.MethodDelete, "/chats/"+strconv.FormatInt(chatID, 10)+"/members", values, nil, &resp); err != nil {
+		return err
+	}
+	if !resp.Success {
+		if strings.TrimSpace(resp.Message) == "" {
+			return fmt.Errorf("remove chat member returned success=false")
+		}
+		return fmt.Errorf("remove chat member returned success=false: %s", strings.TrimSpace(resp.Message))
+	}
+	return nil
+}
+
 // SendMessage sends one text message to MAX user or group chat.
 func (c *Client) SendMessage(ctx context.Context, req SendMessageRequest) (Message, error) {
 	values := url.Values{}

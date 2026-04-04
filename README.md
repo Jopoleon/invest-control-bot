@@ -279,6 +279,7 @@ GOCACHE=/tmp/go-build go test ./...
 - период
 - Telegram destination: `chat_id` и/или `channel_url`
 - MAX destination: `max_channel_url`
+- MAX membership target for automatic revoke/regrant: `max_chat_id`
 - ссылки оферты/политики
 - `start_payload`
 

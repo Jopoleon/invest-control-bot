@@ -210,6 +210,68 @@ func TestProcessExpiredSubscriptions_TelegramWritesRevokeAudit(t *testing.T) {
 	}
 }
 
+func TestProcessExpiredSubscriptions_SkipsRevokeWhenOtherConnectorKeepsSameTelegramChatAccess(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+
+	oldConnectorID := seedConnector(t, ctx, st, "expire-same-chat-old")
+	newConnectorID := seedConnector(t, ctx, st, "expire-same-chat-new")
+	userID := seedTelegramUser(t, ctx, st, 880204)
+	oldSubscriptionID := seedActiveSubscriptionForUser(t, ctx, st, oldConnectorID, userID, 880204, "sub-expire-same-chat-old", time.Now().UTC().Add(-1*time.Minute))
+	seedActiveSubscriptionForUser(t, ctx, st, newConnectorID, userID, 880204, "sub-expire-same-chat-new", time.Now().UTC().Add(29*24*time.Hour))
+
+	appCtx := &application{
+		config: config.Config{Telegram: config.TelegramConfig{BotUsername: "test_bot"}},
+		store:  st,
+	}
+	svc := appCtx.subscriptionLifecycleService()
+	revokeCalls := 0
+	svc.RemoveTelegramChatMember = func(context.Context, int64, int64) error {
+		revokeCalls++
+		return nil
+	}
+	notifications := 0
+	svc.SendUserNotification = func(context.Context, int64, string, messenger.OutgoingMessage) error {
+		notifications++
+		return nil
+	}
+
+	svc.ProcessExpiredSubscriptions(ctx)
+
+	sub, found, err := st.GetSubscriptionByID(ctx, oldSubscriptionID)
+	if err != nil {
+		t.Fatalf("get subscription: %v", err)
+	}
+	if !found {
+		t.Fatalf("subscription not found")
+	}
+	if sub.Status != domain.SubscriptionStatusExpired {
+		t.Fatalf("subscription status = %s, want %s", sub.Status, domain.SubscriptionStatusExpired)
+	}
+	if revokeCalls != 0 {
+		t.Fatalf("revoke calls = %d, want 0", revokeCalls)
+	}
+	if notifications != 0 {
+		t.Fatalf("notifications = %d, want 0", notifications)
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionRevokedFromChat); got != 0 {
+		t.Fatalf("subscription_revoked_from_chat count = %d, want 0", got)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionExpired); got != 1 {
+		t.Fatalf("subscription_expired count = %d, want 1", got)
+	}
+	if details := findAuditEventDetails(events, domain.AuditActionSubscriptionExpired); !strings.Contains(details, "same_telegram_chat_active=true") {
+		t.Fatalf("subscription_expired details=%q want same_telegram_chat_active=true", details)
+	}
+}
+
 func TestProcessExpiredSubscriptions_WritesRetryableRevokeFailureAudit(t *testing.T) {
 	t.Helper()
 
@@ -293,6 +355,60 @@ func TestProcessExpiredSubscriptions_WithoutTelegramClient_WritesRevokeFailureAu
 	}
 	if details := findAuditEventDetails(events, domain.AuditActionSubscriptionRevokeFailed); !strings.Contains(details, "reason=telegram_client_not_configured") {
 		t.Fatalf("subscription_revoke_failed details=%q want telegram_client_not_configured", details)
+	}
+}
+
+func TestProcessFailedSubscriptionRevokes_SkipsRetryWhenOtherConnectorKeepsSameTelegramChatAccess(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+
+	oldConnectorID := seedConnector(t, ctx, st, "retry-same-chat-old")
+	newConnectorID := seedConnector(t, ctx, st, "retry-same-chat-new")
+	userID := seedTelegramUser(t, ctx, st, 880205)
+	oldSubscriptionID := seedActiveSubscriptionForUser(t, ctx, st, oldConnectorID, userID, 880205, "sub-retry-same-chat-old", time.Now().UTC().Add(-1*time.Hour))
+	seedActiveSubscriptionForUser(t, ctx, st, newConnectorID, userID, 880205, "sub-retry-same-chat-new", time.Now().UTC().Add(29*24*time.Hour))
+	if err := st.UpdateSubscriptionStatus(ctx, oldSubscriptionID, domain.SubscriptionStatusExpired, time.Now().UTC()); err != nil {
+		t.Fatalf("expire old subscription: %v", err)
+	}
+	if err := st.SaveAuditEvent(ctx, domain.AuditEvent{
+		ActorType:    domain.AuditActorTypeApp,
+		TargetUserID: userID,
+		ConnectorID:  oldConnectorID,
+		Action:       domain.AuditActionSubscriptionRevokeFailed,
+		Details:      "subscription_id=" + strconv.FormatInt(oldSubscriptionID, 10) + ";attempt=1;source=expiry_job;reason=remove_chat_member_failed",
+		CreatedAt:    time.Now().UTC().Add(-10 * time.Minute),
+	}); err != nil {
+		t.Fatalf("save audit event: %v", err)
+	}
+
+	appCtx := &application{
+		config: config.Config{Telegram: config.TelegramConfig{BotUsername: "test_bot"}},
+		store:  st,
+	}
+	svc := appCtx.subscriptionLifecycleService()
+	revokeCalls := 0
+	svc.RemoveTelegramChatMember = func(context.Context, int64, int64) error {
+		revokeCalls++
+		return nil
+	}
+
+	svc.ProcessFailedSubscriptionRevokes(ctx)
+
+	if revokeCalls != 0 {
+		t.Fatalf("revoke calls = %d, want 0", revokeCalls)
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionRevokeFailed); got != 1 {
+		t.Fatalf("subscription_revoke_failed count = %d, want 1", got)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionRevokedFromChat); got != 0 {
+		t.Fatalf("subscription_revoked_from_chat count = %d, want 0", got)
 	}
 }
 
@@ -658,6 +774,280 @@ func TestProcessExpiredSubscriptions_MAXDoesNotWriteTelegramRevokeAudit(t *testi
 	}
 	if got := countAuditEvents(events, domain.AuditActionSubscriptionRevokeFailed); got != 0 {
 		t.Fatalf("subscription_revoke_failed count = %d, want 0 for MAX", got)
+	}
+}
+
+func TestProcessExpiredSubscriptions_MAXRevokesMemberWhenChatIDConfigured(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	maxSpy := &spySender{}
+	now := time.Now().UTC()
+
+	maxUser, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465779", "Федор Николаевич")
+	if err != nil {
+		t.Fatalf("create max user: %v", err)
+	}
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-expired-max-revoke",
+		Name:          "max revoke",
+		MAXChatID:     "-72598909498032",
+		MAXChannelURL: "https://web.max.ru/-72598909498032",
+		PriceRUB:      1,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     now,
+	}); err != nil {
+		t.Fatalf("create connector: %v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-expired-max-revoke")
+	if err != nil || !found {
+		t.Fatalf("get connector found=%v err=%v", found, err)
+	}
+	seedActiveSubscriptionForUser(t, ctx, st, connector.ID, maxUser.ID, 193465779, "sub-max-expired-revoke", now.Add(-1*time.Minute))
+
+	appCtx := &application{
+		config:    config.Config{Telegram: config.TelegramConfig{BotUsername: "test_bot"}},
+		store:     st,
+		maxSender: maxSpy,
+	}
+	svc := appCtx.subscriptionLifecycleService()
+	removeCalls := 0
+	var removedChatID, removedUserID int64
+	svc.RemoveMAXChatMember = func(_ context.Context, chatID, userID int64) error {
+		removeCalls++
+		removedChatID = chatID
+		removedUserID = userID
+		return nil
+	}
+
+	svc.ProcessExpiredSubscriptions(ctx)
+
+	if removeCalls != 1 {
+		t.Fatalf("remove calls = %d, want 1", removeCalls)
+	}
+	if removedChatID != -72598909498032 || removedUserID != 193465779 {
+		t.Fatalf("removed chat/user = (%d,%d) want (-72598909498032,193465779)", removedChatID, removedUserID)
+	}
+	if len(maxSpy.sent) != 1 {
+		t.Fatalf("max sent messages = %d, want 1", len(maxSpy.sent))
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionRevokedFromChat); got != 1 {
+		t.Fatalf("subscription_revoked_from_chat count = %d, want 1", got)
+	}
+}
+
+func TestProcessExpiredSubscriptions_MAXOnlyConnectorIgnoresTelegramPreferredFallback(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	maxSpy := &spySender{}
+	now := time.Now().UTC()
+
+	maxUser, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465781", "Федор Николаевич")
+	if err != nil {
+		t.Fatalf("create max user: %v", err)
+	}
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-expired-max-fallback",
+		Name:          "max revoke fallback",
+		MAXChatID:     "-72598909498032",
+		MAXChannelURL: "https://web.max.ru/-72598909498032",
+		PriceRUB:      1,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     now,
+	}); err != nil {
+		t.Fatalf("create connector: %v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-expired-max-fallback")
+	if err != nil || !found {
+		t.Fatalf("get connector found=%v err=%v", found, err)
+	}
+	seedActiveSubscriptionForUser(t, ctx, st, connector.ID, maxUser.ID, 193465781, "sub-max-fallback", now.Add(-1*time.Minute))
+
+	appCtx := &application{
+		config:    config.Config{Telegram: config.TelegramConfig{BotUsername: "test_bot"}},
+		store:     st,
+		maxSender: maxSpy,
+	}
+	svc := appCtx.subscriptionLifecycleService()
+	svc.ResolvePreferredKind = func(context.Context, int64, string) messenger.Kind {
+		return messenger.KindTelegram
+	}
+	removeCalls := 0
+	svc.RemoveMAXChatMember = func(_ context.Context, chatID, userID int64) error {
+		removeCalls++
+		if chatID != -72598909498032 || userID != 193465781 {
+			t.Fatalf("removed chat/user = (%d,%d) want (-72598909498032,193465781)", chatID, userID)
+		}
+		return nil
+	}
+
+	svc.ProcessExpiredSubscriptions(ctx)
+
+	if removeCalls != 1 {
+		t.Fatalf("remove calls = %d, want 1", removeCalls)
+	}
+}
+
+func TestProcessExpiredSubscriptions_MAXSkipsRevokeWhenOtherConnectorKeepsSameChatAccess(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	maxSpy := &spySender{}
+	now := time.Now().UTC()
+
+	maxUser, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465780", "Федор Николаевич")
+	if err != nil {
+		t.Fatalf("create max user: %v", err)
+	}
+	oldConnector := domain.Connector{
+		StartPayload:  "in-expired-max-same-chat-old",
+		Name:          "max old",
+		MAXChatID:     "-72598909498032",
+		MAXChannelURL: "https://web.max.ru/-72598909498032",
+		PriceRUB:      1,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     now,
+	}
+	newConnector := oldConnector
+	newConnector.StartPayload = "in-expired-max-same-chat-new"
+	newConnector.Name = "max new"
+	if err := st.CreateConnector(ctx, oldConnector); err != nil {
+		t.Fatalf("create old connector: %v", err)
+	}
+	if err := st.CreateConnector(ctx, newConnector); err != nil {
+		t.Fatalf("create new connector: %v", err)
+	}
+	oldLoaded, found, err := st.GetConnectorByStartPayload(ctx, oldConnector.StartPayload)
+	if err != nil || !found {
+		t.Fatalf("get old connector found=%v err=%v", found, err)
+	}
+	newLoaded, found, err := st.GetConnectorByStartPayload(ctx, newConnector.StartPayload)
+	if err != nil || !found {
+		t.Fatalf("get new connector found=%v err=%v", found, err)
+	}
+	seedActiveSubscriptionForUser(t, ctx, st, oldLoaded.ID, maxUser.ID, 193465780, "sub-max-same-chat-old", now.Add(-1*time.Minute))
+	seedActiveSubscriptionForUser(t, ctx, st, newLoaded.ID, maxUser.ID, 193465780, "sub-max-same-chat-new", now.Add(29*24*time.Hour))
+
+	appCtx := &application{
+		config:    config.Config{Telegram: config.TelegramConfig{BotUsername: "test_bot"}},
+		store:     st,
+		maxSender: maxSpy,
+	}
+	svc := appCtx.subscriptionLifecycleService()
+	removeCalls := 0
+	svc.RemoveMAXChatMember = func(context.Context, int64, int64) error {
+		removeCalls++
+		return nil
+	}
+
+	svc.ProcessExpiredSubscriptions(ctx)
+
+	if removeCalls != 0 {
+		t.Fatalf("remove calls = %d, want 0", removeCalls)
+	}
+	if len(maxSpy.sent) != 0 {
+		t.Fatalf("max sent messages = %d, want 0", len(maxSpy.sent))
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if details := findAuditEventDetails(events, domain.AuditActionSubscriptionExpired); !strings.Contains(details, "same_max_chat_active=true") {
+		t.Fatalf("subscription_expired details=%q want same_max_chat_active=true", details)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionRevokedFromChat); got != 0 {
+		t.Fatalf("subscription_revoked_from_chat count = %d, want 0", got)
+	}
+}
+
+func TestProcessSubscriptionRevokeRetries_MAXMarksManualCheckAfterRetryExhaustion(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Now().UTC()
+
+	maxUser, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465782", "Федор Николаевич")
+	if err != nil {
+		t.Fatalf("create max user: %v", err)
+	}
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-max-revoke-retries",
+		Name:          "max revoke retries",
+		MAXChatID:     "-72598909498032",
+		MAXChannelURL: "https://web.max.ru/-72598909498032",
+		PriceRUB:      1,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     now,
+	}); err != nil {
+		t.Fatalf("create connector: %v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-max-revoke-retries")
+	if err != nil || !found {
+		t.Fatalf("get connector found=%v err=%v", found, err)
+	}
+	seedActiveSubscriptionForUser(t, ctx, st, connector.ID, maxUser.ID, 193465782, "sub-max-retry", now.Add(-2*time.Hour))
+
+	appCtx := &application{
+		config:    config.Config{Telegram: config.TelegramConfig{BotUsername: "test_bot"}},
+		store:     st,
+		maxSender: &spySender{},
+	}
+	sub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, maxUser.ID, connector.ID)
+	if err != nil || !found {
+		t.Fatalf("GetLatestSubscriptionByUserConnector found=%v err=%v", found, err)
+	}
+	if err := st.UpdateSubscriptionStatus(ctx, sub.ID, domain.SubscriptionStatusExpired, now.Add(-90*time.Minute)); err != nil {
+		t.Fatalf("UpdateSubscriptionStatus err=%v", err)
+	}
+	sub, found, err = st.GetSubscriptionByID(ctx, sub.ID)
+	if err != nil || !found {
+		t.Fatalf("GetSubscriptionByID found=%v err=%v", found, err)
+	}
+
+	failureAtOne := now.Add(-2 * time.Hour)
+	failureAtTwo := now.Add(-40 * time.Minute)
+	if err := st.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, "", sub.ConnectorID, domain.AuditActionSubscriptionRevokeFailed, "subscription_id="+strconv.FormatInt(sub.ID, 10)+";attempt=1;source=expiry_job;reason=remove_max_chat_member_failed", failureAtOne)); err != nil {
+		t.Fatalf("SaveAuditEvent attempt1 err=%v", err)
+	}
+	if err := st.SaveAuditEvent(ctx, appCtx.buildAppTargetAuditEvent(ctx, sub.UserID, "", sub.ConnectorID, domain.AuditActionSubscriptionRevokeFailed, "subscription_id="+strconv.FormatInt(sub.ID, 10)+";attempt=2;source=retry_job;reason=remove_max_chat_member_failed", failureAtTwo)); err != nil {
+		t.Fatalf("SaveAuditEvent attempt2 err=%v", err)
+	}
+
+	svc := appCtx.subscriptionLifecycleService()
+	svc.RemoveMAXChatMember = func(context.Context, int64, int64) error { return errors.New("max failed again") }
+	svc.ProcessFailedSubscriptionRevokes(ctx)
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionRevokeFailed); got != 3 {
+		t.Fatalf("subscription_revoke_failed count = %d, want 3", got)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionRevokeManualCheck); got != 1 {
+		t.Fatalf("subscription_revoke_manual_check count = %d, want 1", got)
+	}
+	if details := findAuditEventDetails(events, domain.AuditActionSubscriptionRevokeManualCheck); !strings.Contains(details, "failed_attempts=3") {
+		t.Fatalf("subscription_revoke_manual_check details=%q want failed_attempts=3", details)
 	}
 }
 

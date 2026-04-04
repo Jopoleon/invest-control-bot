@@ -16,6 +16,7 @@ type connectorView struct {
 	Name            string
 	ChatID          string
 	TelegramURL     string
+	MAXChatID       string
 	MAXChannelURL   string
 	PriceRUB        int64
 	PeriodLabel     string

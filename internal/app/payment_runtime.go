@@ -12,6 +12,7 @@ import (
 
 	apppayments "github.com/Jopoleon/invest-control-bot/internal/app/payments"
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/max"
 	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 	"github.com/Jopoleon/invest-control-bot/internal/payment"
 	"github.com/Jopoleon/invest-control-bot/internal/store"
@@ -34,10 +35,12 @@ type paymentRuntime struct {
 	adminToken               string
 	telegramBotUsername      string
 	maxBotUsername           string
+	maxClient                *max.Client
 	sendUserNotificationFn   func(context.Context, int64, string, messenger.OutgoingMessage) error
 	buildAppTargetAuditEvent func(context.Context, int64, string, int64, string, string, time.Time) domain.AuditEvent
 	buildTelegramAccessLink  func(context.Context, int64, domain.Connector) (string, error)
 	resolvePreferredKindFn   func(context.Context, int64, string) messenger.Kind
+	resolveMAXAccountFn      func(context.Context, int64) (domain.UserMessengerAccount, bool, error)
 	triggerRebillFn          func(context.Context, int64, string) (rebillResponse, error)
 }
 
@@ -48,10 +51,12 @@ func (a *application) payments() *paymentRuntime {
 		adminToken:               a.config.Security.AdminToken,
 		telegramBotUsername:      a.config.Telegram.BotUsername,
 		maxBotUsername:           a.config.MAX.BotUsername,
+		maxClient:                a.maxClient,
 		sendUserNotificationFn:   a.sendUserNotification,
 		buildAppTargetAuditEvent: a.buildAppTargetAuditEvent,
 		buildTelegramAccessLink:  a.buildTelegramPaymentAccessLink,
 		resolvePreferredKindFn:   a.resolvePreferredMessengerKind,
+		resolveMAXAccountFn:      a.resolveMAXMessengerAccount,
 		triggerRebillFn:          a.triggerRebill,
 	}
 }
@@ -60,7 +65,7 @@ func (a *application) payments() *paymentRuntime {
 // service package so HTTP handlers in the root app package do not have to own
 // subscription activation and recurring-failure notification rules directly.
 func (p *paymentRuntime) businessService() *apppayments.Service {
-	return &apppayments.Service{
+	service := &apppayments.Service{
 		Store:                   p.store,
 		TelegramBotUsername:     p.telegramBotUsername,
 		SuccessChannelHint:      appPaymentSuccessChannelHint,
@@ -70,10 +75,17 @@ func (p *paymentRuntime) businessService() *apppayments.Service {
 		FailedRecurringButton:   appPaymentFailedRecurringButton,
 		PaymentSuccessMessage:   appPaymentSuccessMessage,
 		BuildTelegramAccessLink: p.buildTelegramAccessLink,
+		ResolveMAXAccount:       p.resolveMAXAccountFn,
 		ResolvePreferredKind:    p.resolvePreferredKindFn,
 		SendUserNotification:    p.sendUserNotificationFn,
 		BuildTargetAuditEvent:   p.buildAppTargetAuditEvent,
 	}
+	if p.maxClient != nil {
+		service.AddMAXChatMembers = func(ctx context.Context, chatID int64, userIDs []int64) error {
+			return p.maxClient.AddChatMembers(ctx, chatID, userIDs)
+		}
+	}
+	return service
 }
 
 func (p *paymentRuntime) handlePaymentResult(w http.ResponseWriter, r *http.Request) {
@@ -170,7 +182,8 @@ func (p *paymentRuntime) handlePaymentSuccess(w http.ResponseWriter, r *http.Req
 			if loadedConnector, found, err := p.store.GetConnector(r.Context(), paymentRow.ConnectorID); err == nil && found {
 				connector = loadedConnector
 				connectorFound = true
-				channelURL = connector.AccessURL(messengerKindToDomain(p.resolvePreferredKindFn(r.Context(), paymentRow.UserID, "")))
+				deliveryKind := connector.DeliveryMessengerKind(messengerKindToDomain(p.resolvePreferredKindFn(r.Context(), paymentRow.UserID, "")))
+				channelURL = connector.AccessURL(deliveryKind)
 			} else if err != nil {
 				logStoreError("load connector for payment success page failed", err, "payment_id", paymentRow.ID, "connector_id", paymentRow.ConnectorID)
 			}
@@ -242,7 +255,8 @@ func (p *paymentRuntime) handlePaymentFail(w http.ResponseWriter, r *http.Reques
 		if paymentRow, ok, err := p.store.GetPaymentByToken(r.Context(), invID); err == nil && ok {
 			channelURL := ""
 			if connector, found, err := p.store.GetConnector(r.Context(), paymentRow.ConnectorID); err == nil && found {
-				channelURL = connector.AccessURL(messengerKindToDomain(p.resolvePreferredKindFn(r.Context(), paymentRow.UserID, "")))
+				deliveryKind := connector.DeliveryMessengerKind(messengerKindToDomain(p.resolvePreferredKindFn(r.Context(), paymentRow.UserID, "")))
+				channelURL = connector.AccessURL(deliveryKind)
 			} else if err != nil {
 				logStoreError("load connector for payment fail page failed", err, "payment_id", paymentRow.ID, "connector_id", paymentRow.ConnectorID)
 			}
@@ -373,18 +387,25 @@ func (p *paymentRuntime) handleMockPaySuccess(w http.ResponseWriter, r *http.Req
 }
 
 func (p *paymentRuntime) buildPaymentPageActions(ctx context.Context, paymentRow domain.Payment, channelURL string, success bool) []paymentPageAction {
-	kind := p.resolvePreferredKindFn(ctx, paymentRow.UserID, "")
+	displayKind := p.resolvePreferredKindFn(ctx, paymentRow.UserID, "")
 	botURL := firstNonEmpty(buildBotChatURL(p.telegramBotUsername), "https://t.me")
-	if kind == messenger.KindMAX {
-		botURL = firstNonEmpty(buildMAXBotChatURL(p.maxBotUsername), "https://web.max.ru/")
-		if connector, found, err := p.store.GetConnector(ctx, paymentRow.ConnectorID); err == nil && found {
+	if connector, found, err := p.store.GetConnector(ctx, paymentRow.ConnectorID); err == nil && found {
+		switch connector.DeliveryMessengerKind(messengerKindToDomain(displayKind)) {
+		case domain.MessengerKindMAX:
+			displayKind = messenger.KindMAX
+			botURL = firstNonEmpty(buildMAXBotChatURL(p.maxBotUsername), "https://web.max.ru/")
 			botURL = firstNonEmpty(
 				buildMAXBotStartURL(p.maxBotUsername, connector.StartPayload),
 				botURL,
 			)
+		default:
+			displayKind = messenger.KindTelegram
+			botURL = firstNonEmpty(buildBotChatURL(p.telegramBotUsername), "https://t.me")
 		}
+	} else if err != nil {
+		logStoreError("load connector for payment page actions failed", err, "payment_id", paymentRow.ID, "connector_id", paymentRow.ConnectorID)
 	}
-	return appPaymentPageActions(kind, success, channelURL, botURL)
+	return appPaymentPageActions(displayKind, success, channelURL, botURL)
 }
 
 func (p *paymentRuntime) notifyFailedRecurringPayment(ctx context.Context, paymentRow domain.Payment) {

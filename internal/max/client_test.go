@@ -206,3 +206,110 @@ func TestClientEnsureWebhookDeletesStaleAndCreatesDesired(t *testing.T) {
 		t.Fatalf("created update types = %q", got)
 	}
 }
+
+func TestClientAddChatMembersBuildsRequest(t *testing.T) {
+	t.Helper()
+
+	var body map[string][]int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Path != "/chats/-72598909498032/members" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("test-token", server.Client())
+	client.SetBaseURL(server.URL)
+
+	if err := client.AddChatMembers(context.Background(), -72598909498032, []int64{193465776}); err != nil {
+		t.Fatalf("AddChatMembers: %v", err)
+	}
+	if got := body["user_ids"]; len(got) != 1 || got[0] != 193465776 {
+		t.Fatalf("user_ids = %+v, want [193465776]", got)
+	}
+}
+
+func TestClientAddChatMembers_ReturnsErrorOnPartialFailure(t *testing.T) {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/chats/-72598909498032/members" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true,"failed_user_ids":[193465776],"message":"user already in chat"}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("test-token", server.Client())
+	client.SetBaseURL(server.URL)
+
+	err := client.AddChatMembers(context.Background(), -72598909498032, []int64{193465776})
+	if err == nil || !strings.Contains(err.Error(), "partial failure") {
+		t.Fatalf("AddChatMembers err=%v want partial failure", err)
+	}
+}
+
+func TestClientRemoveChatMemberBuildsRequestWithoutBlock(t *testing.T) {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			t.Fatalf("method = %s, want DELETE", r.Method)
+		}
+		if r.URL.Path != "/chats/-72598909498032/members" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("user_id"); got != "193465776" {
+			t.Fatalf("user_id = %q", got)
+		}
+		if got := r.URL.Query().Get("block"); got != "" {
+			t.Fatalf("block = %q, want empty", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":true}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("test-token", server.Client())
+	client.SetBaseURL(server.URL)
+
+	if err := client.RemoveChatMember(context.Background(), -72598909498032, 193465776, false); err != nil {
+		t.Fatalf("RemoveChatMember: %v", err)
+	}
+}
+
+func TestClientGetMyChatMemberCallsMembershipEndpoint(t *testing.T) {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %s, want GET", r.Method)
+		}
+		if r.URL.Path != "/chats/-72598909498032/members/me" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"user_id":218306705,"is_admin":true,"permissions":["add_remove_members"]}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("test-token", server.Client())
+	client.SetBaseURL(server.URL)
+
+	member, err := client.GetMyChatMember(context.Background(), -72598909498032)
+	if err != nil {
+		t.Fatalf("GetMyChatMember: %v", err)
+	}
+	if member.UserID != 218306705 || !member.IsAdmin || len(member.Permissions) != 1 || member.Permissions[0] != "add_remove_members" {
+		t.Fatalf("member = %+v", member)
+	}
+}

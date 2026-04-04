@@ -143,6 +143,7 @@ func (h *Handler) createConnector(ctx context.Context, r *http.Request) error {
 	name := strings.TrimSpace(r.FormValue("name"))
 	description := strings.TrimSpace(r.FormValue("description"))
 	chatID := strings.TrimSpace(r.FormValue("chat_id"))
+	maxChatID := strings.TrimSpace(r.FormValue("max_chat_id"))
 	maxChannelURL := strings.TrimSpace(r.FormValue("max_channel_url"))
 	priceRaw := strings.TrimSpace(r.FormValue("price_rub"))
 	periodModeRaw := strings.TrimSpace(r.FormValue("period_mode"))
@@ -160,7 +161,7 @@ func (h *Handler) createConnector(ctx context.Context, r *http.Request) error {
 	if name == "" || priceRaw == "" {
 		return errCreateConnectorRequired
 	}
-	if chatID == "" && channelURL == "" && maxChannelURL == "" {
+	if chatID == "" && channelURL == "" && maxChannelURL == "" && maxChatID == "" {
 		return errCreateConnectorChatOrURL
 	}
 	// Keep chat ID in unsigned form to stay consistent with current admin input convention.
@@ -181,6 +182,7 @@ func (h *Handler) createConnector(ctx context.Context, r *http.Request) error {
 		Description:   description,
 		ChatID:        chatID,
 		ChannelURL:    channelURL,
+		MAXChatID:     maxChatID,
 		MAXChannelURL: maxChannelURL,
 		PriceRUB:      price,
 		PeriodMode:    periodMode,
@@ -227,6 +229,7 @@ func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWrite
 			Name:            c.Name,
 			ChatID:          c.ChatID,
 			TelegramURL:     c.TelegramAccessURL(),
+			MAXChatID:       c.MAXChatID,
 			MAXChannelURL:   c.MAXChannelURL,
 			PriceRUB:        c.PriceRUB,
 			PeriodLabel:     adminConnectorPeriodLabel(c),

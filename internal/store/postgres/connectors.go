@@ -20,16 +20,17 @@ func (s *Store) CreateConnector(ctx context.Context, c domain.Connector) error {
 
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO connectors (
-			start_payload, name, description, chat_id, channel_url, max_channel_url, price_rub,
+			start_payload, name, description, chat_id, channel_url, max_chat_id, max_channel_url, price_rub,
 			period_mode, period_seconds, period_months, fixed_ends_at,
 			offer_url, privacy_url, is_active, created_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
 	`,
 		c.StartPayload,
 		c.Name,
 		c.Description,
 		c.ChatID,
 		c.ChannelURL,
+		c.MAXChatID,
 		c.MAXChannelURL,
 		c.PriceRUB,
 		c.PeriodMode,
@@ -47,7 +48,7 @@ func (s *Store) CreateConnector(ctx context.Context, c domain.Connector) error {
 // ListConnectors returns connectors ordered by created_at.
 func (s *Store) ListConnectors(ctx context.Context) ([]domain.Connector, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, start_payload, name, description, chat_id, channel_url, max_channel_url, price_rub,
+		SELECT id, start_payload, name, description, chat_id, channel_url, max_chat_id, max_channel_url, price_rub,
 		       period_mode, period_seconds, period_months, fixed_ends_at,
 		       offer_url, privacy_url, is_active, created_at
 		FROM connectors
@@ -69,6 +70,7 @@ func (s *Store) ListConnectors(ctx context.Context) ([]domain.Connector, error) 
 			&c.Description,
 			&c.ChatID,
 			&c.ChannelURL,
+			&c.MAXChatID,
 			&c.MAXChannelURL,
 			&c.PriceRUB,
 			&c.PeriodMode,
@@ -96,7 +98,7 @@ func (s *Store) GetConnector(ctx context.Context, connectorID int64) (domain.Con
 	var c domain.Connector
 	var fixedEndsAt sql.NullTime
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, start_payload, name, description, chat_id, channel_url, max_channel_url, price_rub,
+		SELECT id, start_payload, name, description, chat_id, channel_url, max_chat_id, max_channel_url, price_rub,
 		       period_mode, period_seconds, period_months, fixed_ends_at,
 		       offer_url, privacy_url, is_active, created_at
 		FROM connectors
@@ -108,6 +110,7 @@ func (s *Store) GetConnector(ctx context.Context, connectorID int64) (domain.Con
 		&c.Description,
 		&c.ChatID,
 		&c.ChannelURL,
+		&c.MAXChatID,
 		&c.MAXChannelURL,
 		&c.PriceRUB,
 		&c.PeriodMode,
@@ -137,7 +140,7 @@ func (s *Store) GetConnectorByStartPayload(ctx context.Context, payload string) 
 	var c domain.Connector
 	var fixedEndsAt sql.NullTime
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, start_payload, name, description, chat_id, channel_url, max_channel_url, price_rub,
+		SELECT id, start_payload, name, description, chat_id, channel_url, max_chat_id, max_channel_url, price_rub,
 		       period_mode, period_seconds, period_months, fixed_ends_at,
 		       offer_url, privacy_url, is_active, created_at
 		FROM connectors
@@ -149,6 +152,7 @@ func (s *Store) GetConnectorByStartPayload(ctx context.Context, payload string) 
 		&c.Description,
 		&c.ChatID,
 		&c.ChannelURL,
+		&c.MAXChatID,
 		&c.MAXChannelURL,
 		&c.PriceRUB,
 		&c.PeriodMode,

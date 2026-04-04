@@ -31,6 +31,19 @@ type DeleteWebhookSubscriptionResponse struct {
 	Message string `json:"message,omitempty"`
 }
 
+type mutationResponse struct {
+	Success           bool               `json:"success"`
+	Message           string             `json:"message,omitempty"`
+	FailedUserIDs     []int64            `json:"failed_user_ids,omitempty"`
+	FailedUserDetails []FailedUserDetail `json:"failed_user_details,omitempty"`
+}
+
+type FailedUserDetail struct {
+	UserID  int64  `json:"user_id"`
+	Message string `json:"message,omitempty"`
+	Code    string `json:"code,omitempty"`
+}
+
 // BotInfo is returned by GET /me and is enough for startup health checks.
 type BotInfo struct {
 	UserID           int64  `json:"user_id"`
@@ -104,6 +117,17 @@ type Recipient struct {
 	ChatType string `json:"chat_type,omitempty"`
 	Type     string `json:"type,omitempty"`
 	Name     string `json:"name,omitempty"`
+}
+
+// ChatMember is enough for chat membership checks and admin rights inspection.
+type ChatMember struct {
+	UserID      int64    `json:"user_id"`
+	Username    string   `json:"username,omitempty"`
+	IsBot       bool     `json:"is_bot,omitempty"`
+	IsOwner     bool     `json:"is_owner,omitempty"`
+	IsAdmin     bool     `json:"is_admin,omitempty"`
+	Permissions []string `json:"permissions,omitempty"`
+	JoinTime    int64    `json:"join_time,omitempty"`
 }
 
 type MessageBody struct {

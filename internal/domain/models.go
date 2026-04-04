@@ -27,6 +27,7 @@ type Connector struct {
 	Description   string              `db:"description" json:"description"`
 	ChatID        string              `db:"chat_id" json:"chat_id"`
 	ChannelURL    string              `db:"channel_url" json:"channel_url"`
+	MAXChatID     string              `db:"max_chat_id" json:"max_chat_id"`
 	MAXChannelURL string              `db:"max_channel_url" json:"max_channel_url"`
 	PriceRUB      int64               `db:"price_rub" json:"price_rub"`
 	PeriodMode    ConnectorPeriodMode `db:"period_mode" json:"period_mode"`

@@ -260,6 +260,295 @@ func TestActivateSuccessfulPayment_WritesPaymentAccessReadyAuditWhenDeliverySucc
 	}
 }
 
+func TestActivateSuccessfulPayment_AddsMAXMemberAndKeepsChannelButton(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
+	connector := domain.Connector{
+		ID:            1,
+		StartPayload:  "in-max-access-ready",
+		Name:          "private max",
+		PriceRUB:      1000,
+		MAXChatID:     "-72598909498032",
+		MAXChannelURL: "https://web.max.ru/-72598909498032",
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 30 * 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     now,
+	}
+	if err := st.CreateConnector(ctx, connector); err != nil {
+		t.Fatalf("CreateConnector err=%v", err)
+	}
+	maxUser, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465776", "fedor")
+	if err != nil {
+		t.Fatalf("GetOrCreateUserByMessenger err=%v", err)
+	}
+	paymentRow := domain.Payment{
+		ID:          1,
+		Provider:    "robokassa",
+		Status:      domain.PaymentStatusPending,
+		Token:       "p-max-access-ready",
+		UserID:      maxUser.ID,
+		ConnectorID: connector.ID,
+		AmountRUB:   1000,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := st.CreatePayment(ctx, paymentRow); err != nil {
+		t.Fatalf("CreatePayment err=%v", err)
+	}
+
+	var addedChatID int64
+	var addedUserIDs []int64
+	var sent messenger.OutgoingMessage
+	service := &Service{
+		Store:                 st,
+		PaymentSuccessMessage: func(domain.Payment, domain.Connector, time.Time) string { return "ok" },
+		ResolveMAXAccount: func(context.Context, int64) (domain.UserMessengerAccount, bool, error) {
+			return domain.UserMessengerAccount{MessengerKind: domain.MessengerKindMAX, MessengerUserID: "193465776"}, true, nil
+		},
+		AddMAXChatMembers: func(_ context.Context, chatID int64, userIDs []int64) error {
+			addedChatID = chatID
+			addedUserIDs = append([]int64(nil), userIDs...)
+			return nil
+		},
+		ResolvePreferredKind: func(context.Context, int64, string) messenger.Kind { return messenger.KindMAX },
+		SendUserNotification: func(_ context.Context, _ int64, _ string, msg messenger.OutgoingMessage) error {
+			sent = msg
+			return nil
+		},
+		BuildTargetAuditEvent: func(_ context.Context, userID int64, _ string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
+			return domain.AuditEvent{TargetUserID: userID, ConnectorID: connectorID, Action: action, Details: details, CreatedAt: createdAt}
+		},
+		OpenChannelActionLabel: "open",
+		MySubscriptionAction:   "sub",
+	}
+
+	service.ActivateSuccessfulPayment(ctx, paymentRow, "robokassa:p-max-access-ready", now)
+
+	if addedChatID != -72598909498032 {
+		t.Fatalf("added chat id=%d want=-72598909498032", addedChatID)
+	}
+	if len(addedUserIDs) != 1 || addedUserIDs[0] != 193465776 {
+		t.Fatalf("added user ids=%v want [193465776]", addedUserIDs)
+	}
+	if len(sent.Buttons) == 0 || len(sent.Buttons[0]) == 0 || sent.Buttons[0][0].URL != "https://web.max.ru/-72598909498032" {
+		t.Fatalf("sent buttons=%+v want MAX channel URL button", sent.Buttons)
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 50})
+	if err != nil {
+		t.Fatalf("ListAuditEvents err=%v", err)
+	}
+	if details := findPaymentAuditDetails(events, domain.AuditActionPaymentAccessReady); !strings.Contains(details, "source=max_chat_member_added") {
+		t.Fatalf("payment_access_ready details=%q want source=max_chat_member_added", details)
+	}
+}
+
+func TestActivateSuccessfulPayment_DualDestinationMAXFlowDoesNotBuildTelegramInvite(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
+	connector := domain.Connector{
+		ID:            1,
+		StartPayload:  "in-max-dual-access",
+		Name:          "dual access",
+		ChatID:        "1001234567890",
+		ChannelURL:    "https://t.me/private_tg_channel",
+		MAXChatID:     "-72598909498032",
+		MAXChannelURL: "https://web.max.ru/-72598909498032",
+		PriceRUB:      1000,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 30 * 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     now,
+	}
+	if err := st.CreateConnector(ctx, connector); err != nil {
+		t.Fatalf("CreateConnector err=%v", err)
+	}
+	maxUser, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465776", "fedor")
+	if err != nil {
+		t.Fatalf("GetOrCreateUserByMessenger err=%v", err)
+	}
+	paymentRow := domain.Payment{
+		ID:          1,
+		Provider:    "robokassa",
+		Status:      domain.PaymentStatusPending,
+		Token:       "p-max-dual-access",
+		UserID:      maxUser.ID,
+		ConnectorID: connector.ID,
+		AmountRUB:   1000,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := st.CreatePayment(ctx, paymentRow); err != nil {
+		t.Fatalf("CreatePayment err=%v", err)
+	}
+
+	telegramInviteCalls := 0
+	var sent messenger.OutgoingMessage
+	service := &Service{
+		Store:                 st,
+		PaymentSuccessMessage: func(domain.Payment, domain.Connector, time.Time) string { return "ok" },
+		BuildTelegramAccessLink: func(context.Context, int64, domain.Connector) (string, error) {
+			telegramInviteCalls++
+			return "https://t.me/+invite-link", nil
+		},
+		ResolveMAXAccount: func(context.Context, int64) (domain.UserMessengerAccount, bool, error) {
+			return domain.UserMessengerAccount{MessengerKind: domain.MessengerKindMAX, MessengerUserID: "193465776"}, true, nil
+		},
+		AddMAXChatMembers: func(_ context.Context, _ int64, _ []int64) error { return nil },
+		ResolvePreferredKind: func(context.Context, int64, string) messenger.Kind {
+			return messenger.KindMAX
+		},
+		SendUserNotification: func(_ context.Context, _ int64, _ string, msg messenger.OutgoingMessage) error {
+			sent = msg
+			return nil
+		},
+		BuildTargetAuditEvent: func(_ context.Context, userID int64, _ string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
+			return domain.AuditEvent{TargetUserID: userID, ConnectorID: connectorID, Action: action, Details: details, CreatedAt: createdAt}
+		},
+		OpenChannelActionLabel: "open",
+		MySubscriptionAction:   "sub",
+	}
+
+	service.ActivateSuccessfulPayment(ctx, paymentRow, "robokassa:p-max-dual-access", now)
+
+	if telegramInviteCalls != 0 {
+		t.Fatalf("telegram invite calls=%d want 0 for MAX flow", telegramInviteCalls)
+	}
+	if len(sent.Buttons) == 0 || len(sent.Buttons[0]) == 0 || sent.Buttons[0][0].URL != "https://web.max.ru/-72598909498032" {
+		t.Fatalf("sent buttons=%+v want MAX channel URL button", sent.Buttons)
+	}
+}
+
+func TestActivateSuccessfulPayment_MAXMissingChatIDAuditsFailureAndFallsBackToURL(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
+	connector := domain.Connector{
+		ID:            1,
+		StartPayload:  "in-max-missing-chat-id",
+		Name:          "max access",
+		MAXChannelURL: "https://web.max.ru/channel-without-id",
+		PriceRUB:      1000,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 30 * 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     now,
+	}
+	if err := st.CreateConnector(ctx, connector); err != nil {
+		t.Fatalf("CreateConnector err=%v", err)
+	}
+	maxUser, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465776", "fedor")
+	if err != nil {
+		t.Fatalf("GetOrCreateUserByMessenger err=%v", err)
+	}
+	paymentRow := domain.Payment{
+		ID:          1,
+		Provider:    "robokassa",
+		Status:      domain.PaymentStatusPending,
+		Token:       "p-max-missing-chat-id",
+		UserID:      maxUser.ID,
+		ConnectorID: connector.ID,
+		AmountRUB:   1000,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := st.CreatePayment(ctx, paymentRow); err != nil {
+		t.Fatalf("CreatePayment err=%v", err)
+	}
+
+	service := &Service{
+		Store:                 st,
+		PaymentSuccessMessage: func(domain.Payment, domain.Connector, time.Time) string { return "ok" },
+		ResolvePreferredKind:  func(context.Context, int64, string) messenger.Kind { return messenger.KindMAX },
+		SendUserNotification:  func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil },
+		BuildTargetAuditEvent: func(_ context.Context, userID int64, _ string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
+			return domain.AuditEvent{TargetUserID: userID, ConnectorID: connectorID, Action: action, Details: details, CreatedAt: createdAt}
+		},
+		OpenChannelActionLabel: "open",
+		MySubscriptionAction:   "sub",
+	}
+
+	service.ActivateSuccessfulPayment(ctx, paymentRow, "robokassa:p-max-missing-chat-id", now)
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 50})
+	if err != nil {
+		t.Fatalf("ListAuditEvents err=%v", err)
+	}
+	if !strings.Contains(findPaymentAuditDetails(events, domain.AuditActionPaymentAccessReady), "source=max_channel_url") {
+		t.Fatalf("payment_access_ready details=%q want source=max_channel_url", findPaymentAuditDetails(events, domain.AuditActionPaymentAccessReady))
+	}
+	if !strings.Contains(findPaymentAuditDetails(events, domain.AuditActionAccessDeliveryFailed), "reason=missing_max_chat_id") {
+		t.Fatalf("access_delivery_failed details=%q want missing_max_chat_id", findPaymentAuditDetails(events, domain.AuditActionAccessDeliveryFailed))
+	}
+}
+
+func TestActivateSuccessfulPayment_MAXClientMissingAuditsFailureAndFallsBackToURL(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
+	connector := domain.Connector{
+		ID:            1,
+		StartPayload:  "in-max-client-missing",
+		Name:          "max access",
+		MAXChatID:     "-72598909498032",
+		MAXChannelURL: "https://web.max.ru/-72598909498032",
+		PriceRUB:      1000,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 30 * 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     now,
+	}
+	if err := st.CreateConnector(ctx, connector); err != nil {
+		t.Fatalf("CreateConnector err=%v", err)
+	}
+	maxUser, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465776", "fedor")
+	if err != nil {
+		t.Fatalf("GetOrCreateUserByMessenger err=%v", err)
+	}
+	paymentRow := domain.Payment{
+		ID:          1,
+		Provider:    "robokassa",
+		Status:      domain.PaymentStatusPending,
+		Token:       "p-max-client-missing",
+		UserID:      maxUser.ID,
+		ConnectorID: connector.ID,
+		AmountRUB:   1000,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := st.CreatePayment(ctx, paymentRow); err != nil {
+		t.Fatalf("CreatePayment err=%v", err)
+	}
+
+	service := &Service{
+		Store:                 st,
+		PaymentSuccessMessage: func(domain.Payment, domain.Connector, time.Time) string { return "ok" },
+		ResolvePreferredKind:  func(context.Context, int64, string) messenger.Kind { return messenger.KindMAX },
+		SendUserNotification:  func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil },
+		BuildTargetAuditEvent: func(_ context.Context, userID int64, _ string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
+			return domain.AuditEvent{TargetUserID: userID, ConnectorID: connectorID, Action: action, Details: details, CreatedAt: createdAt}
+		},
+		OpenChannelActionLabel: "open",
+		MySubscriptionAction:   "sub",
+	}
+
+	service.ActivateSuccessfulPayment(ctx, paymentRow, "robokassa:p-max-client-missing", now)
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 50})
+	if err != nil {
+		t.Fatalf("ListAuditEvents err=%v", err)
+	}
+	if !strings.Contains(findPaymentAuditDetails(events, domain.AuditActionPaymentAccessReady), "source=max_channel_url") {
+		t.Fatalf("payment_access_ready details=%q want source=max_channel_url", findPaymentAuditDetails(events, domain.AuditActionPaymentAccessReady))
+	}
+	if !strings.Contains(findPaymentAuditDetails(events, domain.AuditActionAccessDeliveryFailed), "reason=max_client_not_configured") {
+		t.Fatalf("access_delivery_failed details=%q want max_client_not_configured", findPaymentAuditDetails(events, domain.AuditActionAccessDeliveryFailed))
+	}
+}
+
 func TestActivateSuccessfulPayment_DuplicatePaidCallbackDoesNotShiftExistingSubscription(t *testing.T) {
 	ctx := context.Background()
 	st := memory.New()
@@ -416,7 +705,7 @@ func TestActivateSuccessfulPayment_WritesInviteLinkFailureAuditWhenFallbackSucce
 	}
 }
 
-func TestActivateSuccessfulPayment_WritesIncompatibleAccessAuditForMAXOnTelegramOnlyConnector(t *testing.T) {
+func TestActivateSuccessfulPayment_TelegramOnlyConnectorUsesTelegramAccessEvenWithMAXFallback(t *testing.T) {
 	ctx := context.Background()
 	st := memory.New()
 	now := time.Date(2026, 4, 2, 10, 15, 0, 0, time.UTC)
@@ -473,15 +762,18 @@ func TestActivateSuccessfulPayment_WritesIncompatibleAccessAuditForMAXOnTelegram
 
 	service.ActivateSuccessfulPayment(ctx, paymentRow, "robokassa:p-max-incompatible", now)
 
-	if len(sent.Buttons) != 1 || len(sent.Buttons[0]) != 1 || sent.Buttons[0][0].Action != "menu:subscription" {
-		t.Fatalf("buttons=%+v want only subscription menu action", sent.Buttons)
+	if len(sent.Buttons) == 0 || len(sent.Buttons[0]) == 0 || sent.Buttons[0][0].URL != "https://t.me/private_channel" {
+		t.Fatalf("buttons=%+v want telegram access button", sent.Buttons)
 	}
 	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 50})
 	if err != nil {
 		t.Fatalf("ListAuditEvents err=%v", err)
 	}
-	if !strings.Contains(findPaymentAuditDetails(events, domain.AuditActionAccessDeliveryFailed), "reason=incompatible_access_destination") {
-		t.Fatalf("access_delivery_failed details=%q want incompatible_access_destination", findPaymentAuditDetails(events, domain.AuditActionAccessDeliveryFailed))
+	if got := countPaymentAuditEvents(events, domain.AuditActionAccessDeliveryFailed); got != 0 {
+		t.Fatalf("access_delivery_failed count=%d want 0", got)
+	}
+	if !strings.Contains(findPaymentAuditDetails(events, domain.AuditActionPaymentAccessReady), "source=telegram_channel_url") {
+		t.Fatalf("payment_access_ready details=%q want telegram_channel_url", findPaymentAuditDetails(events, domain.AuditActionPaymentAccessReady))
 	}
 }
 

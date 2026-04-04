@@ -429,6 +429,85 @@ func TestBuildPaymentPageActions_SelectsMessengerSpecificActions(t *testing.T) {
 	}
 }
 
+func TestBuildPaymentPageActions_UsesConnectorDeliveryKindOverPreferredFallback(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+
+	maxUser, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465776", "Федор Николаевич")
+	if err != nil {
+		t.Fatalf("create max user: %v", err)
+	}
+	telegramUser := seedTelegramUser(t, ctx, st, 777123)
+
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-tg-only-actions",
+		Name:          "tg only",
+		ChannelURL:    "https://t.me/private_channel",
+		PriceRUB:      100,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create telegram-only connector: %v", err)
+	}
+	tgConnector, found, err := st.GetConnectorByStartPayload(ctx, "in-tg-only-actions")
+	if err != nil || !found {
+		t.Fatalf("get telegram-only connector: found=%v err=%v", found, err)
+	}
+
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-max-only-actions",
+		Name:          "max only",
+		MAXChannelURL: "https://web.max.ru/-72598909498032",
+		PriceRUB:      100,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create max-only connector: %v", err)
+	}
+	maxConnector, found, err := st.GetConnectorByStartPayload(ctx, "in-max-only-actions")
+	if err != nil || !found {
+		t.Fatalf("get max-only connector: found=%v err=%v", found, err)
+	}
+
+	appCtx := &application{store: st}
+	appCtx.config.Telegram.BotUsername = "friendly_111_neighbour_bot"
+	appCtx.config.MAX.BotUsername = "id9718272494_bot"
+
+	telegramActions := appCtx.buildPaymentPageActions(ctx, domain.Payment{
+		UserID:      maxUser.ID,
+		ConnectorID: tgConnector.ID,
+	}, "https://t.me/private_channel", true)
+	if telegramActions[0].Label != appPaymentActionOpenBot {
+		t.Fatalf("telegram-only first label=%q want=%q", telegramActions[0].Label, appPaymentActionOpenBot)
+	}
+	if telegramActions[0].URL != "https://t.me/friendly_111_neighbour_bot" {
+		t.Fatalf("telegram-only first url=%q want telegram bot url", telegramActions[0].URL)
+	}
+	if telegramActions[1].Label != appPaymentActionOpenChannel {
+		t.Fatalf("telegram-only second label=%q want=%q", telegramActions[1].Label, appPaymentActionOpenChannel)
+	}
+
+	maxActions := appCtx.buildPaymentPageActions(ctx, domain.Payment{
+		UserID:      telegramUser,
+		ConnectorID: maxConnector.ID,
+	}, "https://web.max.ru/-72598909498032", true)
+	if maxActions[0].Label != appPaymentActionOpenMAXChannel {
+		t.Fatalf("max-only first label=%q want=%q", maxActions[0].Label, appPaymentActionOpenMAXChannel)
+	}
+	if maxActions[1].Label != appPaymentActionOpenMAXBot {
+		t.Fatalf("max-only second label=%q want=%q", maxActions[1].Label, appPaymentActionOpenMAXBot)
+	}
+	if maxActions[1].URL != "https://max.ru/id9718272494_bot?start=in-max-only-actions" {
+		t.Fatalf("max-only second url=%q want MAX bot start url", maxActions[1].URL)
+	}
+}
+
 func TestNotifyFailedRecurringPayment_SendsMAXNotification(t *testing.T) {
 	t.Helper()
 

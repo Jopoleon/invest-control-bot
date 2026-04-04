@@ -38,6 +38,8 @@ type Service struct {
 	FailedRecurringButton   string
 	PaymentSuccessMessage   func(domain.Payment, domain.Connector, time.Time) string
 	BuildTelegramAccessLink func(context.Context, int64, domain.Connector) (string, error)
+	ResolveMAXAccount       func(context.Context, int64) (domain.UserMessengerAccount, bool, error)
+	AddMAXChatMembers       func(context.Context, int64, []int64) error
 	ResolvePreferredKind    func(context.Context, int64, string) messenger.Kind
 	SendUserNotification    func(context.Context, int64, string, messenger.OutgoingMessage) error
 	BuildTargetAuditEvent   func(context.Context, int64, string, int64, string, string, time.Time) domain.AuditEvent
@@ -131,13 +133,14 @@ func (s *Service) ActivateSuccessfulPayment(ctx context.Context, paymentRow doma
 	channelURL := ""
 	accessSource := ""
 	failureReason := "missing_access_destination"
+	deliveryFailureReason := ""
 	if connectorExists {
 		preferredKind := messenger.KindTelegram
 		if s.ResolvePreferredKind != nil {
 			preferredKind = s.ResolvePreferredKind(ctx, paymentRow.UserID, "")
 		}
-		preferredDomainKind := preferredMessengerKindToDomain(preferredKind)
-		if s.BuildTelegramAccessLink != nil {
+		deliveryKind := connector.DeliveryMessengerKind(preferredMessengerKindToDomain(preferredKind))
+		if deliveryKind == domain.MessengerKindTelegram && s.BuildTelegramAccessLink != nil {
 			accessLink, err := s.BuildTelegramAccessLink(ctx, paymentRow.UserID, connector)
 			if err != nil {
 				slog.Error("build telegram access link failed", "error", err, "user_id", paymentRow.UserID, "connector_id", connector.ID, "payment_id", paymentRow.ID)
@@ -157,15 +160,52 @@ func (s *Service) ActivateSuccessfulPayment(ctx context.Context, paymentRow doma
 				accessSource = "telegram_invite_link"
 			}
 		}
+		if deliveryKind == domain.MessengerKindMAX {
+			if chatID, ok := connector.ResolvedMAXChatID(); ok && s.ResolveMAXAccount != nil && s.AddMAXChatMembers != nil {
+				account, found, err := s.ResolveMAXAccount(ctx, paymentRow.UserID)
+				switch {
+				case err != nil:
+					slog.Error("resolve max account for access grant failed", "error", err, "user_id", paymentRow.UserID, "connector_id", connector.ID, "payment_id", paymentRow.ID)
+					failureReason = "resolve_max_account_error"
+					deliveryFailureReason = failureReason
+				case !found:
+					slog.Warn("max account missing for access grant", "user_id", paymentRow.UserID, "connector_id", connector.ID, "payment_id", paymentRow.ID)
+					failureReason = "max_account_not_found"
+					deliveryFailureReason = failureReason
+				default:
+					maxUserID, parseErr := strconv.ParseInt(strings.TrimSpace(account.MessengerUserID), 10, 64)
+					if parseErr != nil || maxUserID <= 0 {
+						slog.Error("invalid max account id for access grant", "error", parseErr, "user_id", paymentRow.UserID, "connector_id", connector.ID, "payment_id", paymentRow.ID, "messenger_user_id", account.MessengerUserID)
+						failureReason = "invalid_max_account_id"
+						deliveryFailureReason = failureReason
+					} else if err := s.AddMAXChatMembers(ctx, chatID, []int64{maxUserID}); err != nil {
+						slog.Error("add max chat member failed", "error", err, "user_id", paymentRow.UserID, "connector_id", connector.ID, "payment_id", paymentRow.ID, "chat_id", chatID, "messenger_user_id", maxUserID)
+						failureReason = "max_add_member_failed"
+						deliveryFailureReason = failureReason
+					} else {
+						accessSource = "max_chat_member_added"
+					}
+				}
+			} else if chatID, ok := connector.ResolvedMAXChatID(); ok && (s.ResolveMAXAccount == nil || s.AddMAXChatMembers == nil) {
+				_ = chatID
+				failureReason = "max_client_not_configured"
+				deliveryFailureReason = failureReason
+			} else if channelURL == "" && connector.HasAccessFor(domain.MessengerKindMAX) {
+				failureReason = "missing_max_chat_id"
+				deliveryFailureReason = failureReason
+			}
+		}
 		if channelURL == "" {
-			fallbackURL := connector.AccessURL(preferredDomainKind)
+			fallbackURL := connector.AccessURL(deliveryKind)
 			if strings.TrimSpace(fallbackURL) != "" {
 				channelURL = fallbackURL
-				switch preferredDomainKind {
-				case domain.MessengerKindMAX:
-					accessSource = "max_channel_url"
-				default:
-					accessSource = "telegram_channel_url"
+				if strings.TrimSpace(accessSource) == "" {
+					switch deliveryKind {
+					case domain.MessengerKindMAX:
+						accessSource = "max_channel_url"
+					default:
+						accessSource = "telegram_channel_url"
+					}
 				}
 			} else if connector.HasAnyAccessDestination() {
 				failureReason = "incompatible_access_destination"
@@ -241,6 +281,19 @@ func (s *Service) ActivateSuccessfulPayment(ctx context.Context, paymentRow doma
 			now,
 		)); err != nil {
 			slog.Error("save audit event failed", "error", err, "action", domain.AuditActionPaymentAccessReady)
+		}
+		if deliveryFailureReason != "" {
+			if err := s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(
+				ctx,
+				paymentRow.UserID,
+				"",
+				paymentRow.ConnectorID,
+				domain.AuditActionAccessDeliveryFailed,
+				"payment_id="+strconv.FormatInt(paymentRow.ID, 10)+";reason="+deliveryFailureReason,
+				now,
+			)); err != nil {
+				slog.Error("save audit event failed", "error", err, "action", domain.AuditActionAccessDeliveryFailed)
+			}
 		}
 	} else {
 		if err := s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(

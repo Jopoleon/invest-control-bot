@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/Jopoleon/invest-control-bot/internal/channelurl"
+	"github.com/Jopoleon/invest-control-bot/internal/maxchat"
 )
 
 // TelegramAccessURL resolves the Telegram destination configured for this
@@ -15,6 +16,35 @@ func (c Connector) TelegramAccessURL() string {
 // MAXAccessURL resolves the MAX destination configured for this connector.
 func (c Connector) MAXAccessURL() string {
 	return strings.TrimSpace(c.MAXChannelURL)
+}
+
+// ResolvedMAXChatID returns a MAX chat identifier suitable for membership
+// operations. It prefers the explicit stored field and falls back to parsing a
+// numeric chat ID from the configured MAX URL for backward compatibility.
+func (c Connector) ResolvedMAXChatID() (int64, bool) {
+	return maxchat.ResolveChatID(c.MAXChatID, c.MAXChannelURL)
+}
+
+// DeliveryMessengerKind resolves which messenger should be used for access
+// delivery and membership operations for this connector. Single-destination
+// connectors must not depend on a user's globally preferred account, while
+// dual-destination connectors may still use the caller's fallback choice.
+func (c Connector) DeliveryMessengerKind(fallback MessengerKind) MessengerKind {
+	hasTelegram := c.HasAccessFor(MessengerKindTelegram)
+	hasMAX := c.HasAccessFor(MessengerKindMAX)
+	switch {
+	case hasTelegram && !hasMAX:
+		return MessengerKindTelegram
+	case hasMAX && !hasTelegram:
+		return MessengerKindMAX
+	case hasTelegram && hasMAX:
+		if fallback == MessengerKindMAX {
+			return MessengerKindMAX
+		}
+		return MessengerKindTelegram
+	default:
+		return fallback
+	}
 }
 
 // AccessURL returns the access destination that matches the current messenger.

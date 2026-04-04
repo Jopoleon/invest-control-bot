@@ -121,6 +121,31 @@ func (a *application) resolveTelegramMessengerUserID(ctx context.Context, userID
 	return telegramID, true, nil
 }
 
+func (a *application) resolveMAXMessengerAccount(ctx context.Context, userID int64) (domain.UserMessengerAccount, bool, error) {
+	accounts, err := a.loadUserMessengerAccounts(ctx, userID)
+	if err != nil {
+		return domain.UserMessengerAccount{}, false, err
+	}
+	for _, account := range accounts {
+		if account.MessengerKind == domain.MessengerKindMAX {
+			return account, true, nil
+		}
+	}
+	return domain.UserMessengerAccount{}, false, nil
+}
+
+func (a *application) resolveMAXMessengerUserID(ctx context.Context, userID int64) (int64, bool, error) {
+	account, found, err := a.resolveMAXMessengerAccount(ctx, userID)
+	if err != nil || !found {
+		return 0, false, err
+	}
+	maxID, parseErr := strconv.ParseInt(strings.TrimSpace(account.MessengerUserID), 10, 64)
+	if parseErr != nil || maxID <= 0 {
+		return 0, false, nil
+	}
+	return maxID, true, nil
+}
+
 func (a *application) loadUserMessengerAccounts(ctx context.Context, userID int64) ([]domain.UserMessengerAccount, error) {
 	if userID <= 0 {
 		return nil, nil
