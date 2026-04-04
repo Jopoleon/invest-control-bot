@@ -12,7 +12,7 @@ import (
 
 const (
 	botMsgConnectorUnavailable                    = "Коннектор не найден или отключен."
-	botMsgStartUsage                              = "Нужна ссылка вида /start <connector_payload>."
+	botMsgStartUsage                              = "Нужна ссылка вида /start <код_запуска>."
 	botBtnAcceptTerms                             = "Принимаю условия"
 	botMsgEmptyValue                              = "Пустое значение. Попробуйте еще раз."
 	botMsgInvalidPhone                            = "⚠️ Неправильный телефон. Введите номер в международном формате."
@@ -70,7 +70,7 @@ const (
 	botMsgExistingSubscriptionAutopayEnabled      = "\n\nАвтоплатеж для этого тарифа уже включен."
 	botMsgExistingSubscriptionAutopayDisabledHint = "\n\nАвтоплатеж для этого тарифа сейчас выключен, но его можно включить обратно без повторной оплаты."
 	botBtnAutopayEnableAgain                      = "Включить автоплатеж обратно"
-	botMsgCheckoutBase                            = "✅ Данные для оплаты подготовлены.\n💳 Осталось завершить оплату.\nНажмите кнопку «Оплатить» ниже, чтобы перейти на платежную страницу."
+	botMsgCheckoutBase                            = "✅ Почти готово.\n💳 Осталось оплатить подписку.\nНажмите кнопку «Оплатить» ниже, чтобы перейти на платежную страницу."
 	botMsgCheckoutAutopayDisabled                 = "\n\n☐ Автоплатеж выключен.\nЕсли хотите подключить автоматические списания, подтвердите согласие кнопкой ниже."
 	botBtnCheckoutAutopayOff                      = "☐ Я согласен на автоматические списания"
 	botBtnCheckoutAutopayOn                       = "☑ Я согласен на автоматические списания"
@@ -105,14 +105,14 @@ func botConnectorAccessMismatchWarning(connector domain.Connector, kind messenge
 	switch currentKind {
 	case domain.MessengerKindMAX:
 		if connector.HasAccessFor(domain.MessengerKindTelegram) {
-			return "⚠️ Этот тариф выдает доступ только в Telegram.\nОформление в MAX для него недоступно. Откройте тот же тариф в Telegram или попросите администратора прислать Telegram-ссылку."
+			return "⚠️ Этот тариф доступен только в Telegram.\nПосле оплаты доступ откроется только в Telegram-канале.\nВ MAX оформить его нельзя. Попросите администратора прислать ссылку для Telegram."
 		}
 	default:
 		if connector.HasAccessFor(domain.MessengerKindMAX) {
-			return "⚠️ Этот тариф выдает доступ только в MAX.\nОформление в Telegram для него недоступно. Откройте тот же тариф в MAX или попросите администратора прислать MAX-ссылку."
+			return "⚠️ Этот тариф доступен только в MAX.\nПосле оплаты доступ откроется только в канале MAX.\nВ Telegram оформить его нельзя. Попросите администратора прислать ссылку для MAX."
 		}
 	}
-	return "⚠️ Для этого тарифа не настроен доступ в текущем мессенджере. Попросите администратора прислать правильную ссылку."
+	return "⚠️ Для этого тарифа не настроен доступ в текущем мессенджере.\nДо оплаты попросите администратора прислать правильную ссылку."
 }
 
 func botPaymentLinkCreated(provider string, testMode bool) string {
@@ -150,14 +150,14 @@ func botSubscriptionAccessLines(connector domain.Connector, kind messenger.Kind)
 	case domain.MessengerKindMAX:
 		if telegramURL := connector.TelegramAccessURL(); telegramURL != "" {
 			return []string{
-				"  Доступ: этот тариф выдается в Telegram",
+				"  Доступ: по этому тарифу доступ открывается в Telegram",
 				fmt.Sprintf("  Telegram: %s", telegramURL),
 			}
 		}
 	default:
 		if maxURL := connector.MAXAccessURL(); maxURL != "" {
 			return []string{
-				"  Доступ: этот тариф выдается в MAX",
+				"  Доступ: по этому тарифу доступ открывается в MAX",
 				fmt.Sprintf("  MAX: %s", maxURL),
 			}
 		}

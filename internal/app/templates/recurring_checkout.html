@@ -341,7 +341,7 @@
     <section class="stage">
       <div class="layout">
         <section class="left">
-          <span class="eyebrow">Подписка с автосписанием</span>
+          <span class="eyebrow">Подписка с автоплатежом</span>
           <div>
             <h1>{{.ConnectorName}}</h1>
             {{if .ConnectorDesc}}<p class="lead">{{.ConnectorDesc}}</p>{{else}}<p class="lead">Оформление подписки с автоматическими списаниями и сохранением непрерывного доступа.</p>{{end}}
@@ -360,7 +360,7 @@
             </div>
             <div class="metric">
               <small>Формат</small>
-              <strong>Автосписание</strong>
+              <strong>Автоплатеж</strong>
             </div>
           </div>
 
@@ -373,7 +373,7 @@
               <li>Стоимость каждого списания фиксируется по тарифу и видна пользователю до оплаты.</li>
               <li>Периодичность продления: каждые {{.PeriodLabel}}, пока пользователь не отключит автоплатеж.</li>
               <li>Отмена доступна на отдельной публичной странице управления подпиской без входа в админку.</li>
-              <li>История согласий на автосписания и действий пользователя сохраняется в системе.</li>
+              <li>История согласий на автоплатеж и действий пользователя сохраняется в системе.</li>
             </ul>
           </div>
         </section>
@@ -389,7 +389,7 @@
           <div class="consent">
             <label>
               <input type="checkbox" aria-label="Согласие на автоматические списания">
-              <span>Я согласен на автоматические списания согласно условиям оферты.</span>
+              <span>Я согласен на автоплатеж согласно условиям оферты.</span>
             </label>
             <small>{{.ConsentNote}}</small>
           </div>
@@ -409,7 +409,7 @@
               <code>{{.StartCommand}}</code>
               <div class="command-actions">
                 {{if .MAXBotURL}}<a class="primary" href="{{.MAXBotURL}}" target="_blank" rel="noreferrer">{{.MAXCTA}}</a>{{end}}
-                {{if .MAXBotChatURL}}<a href="{{.MAXBotChatURL}}" target="_blank" rel="noreferrer">Открыть чат бота в MAX</a>{{end}}
+                {{if .MAXBotChatURL}}<a href="{{.MAXBotChatURL}}" target="_blank" rel="noreferrer">Открыть чат в MAX</a>{{end}}
                 {{if .MAXWebURL}}<a href="{{.MAXWebURL}}" target="_blank" rel="noreferrer">{{.MAXFallbackCTA}}</a>{{end}}
               </div>
             </div>
@@ -418,7 +418,7 @@
 
           <div class="warnings">
             {{if not .HasRecurringDocs}}<div class="warning">Для полноценного сценария автоплатежа должны быть опубликованы активные версии оферты и пользовательского соглашения.</div>{{end}}
-            {{if .RecurringDisabled}}<div class="warning">Интерфейс автоплатежа подготовлен. Фактическое подключение автоматических списаний зависит от активации услуги магазином Robokassa.</div>{{end}}
+            {{if .RecurringDisabled}}<div class="warning">Автоплатеж для этого тарифа пока недоступен. Попробуйте позже.</div>{{end}}
           </div>
         </aside>
       </div>

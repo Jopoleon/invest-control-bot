@@ -69,6 +69,16 @@ func (s *Service) ActivateSuccessfulPayment(ctx context.Context, paymentRow doma
 		effectivePaidAt = *paymentRow.PaidAt
 	}
 
+	if !paymentMarkedNow {
+		alreadyActivated, err := s.hasSubscriptionForPayment(ctx, paymentRow.UserID, paymentRow.ConnectorID, paymentRow.ID)
+		if err != nil {
+			slog.Error("check subscription activation state failed", "error", err, "payment_id", paymentRow.ID, "user_id", paymentRow.UserID, "connector_id", paymentRow.ConnectorID)
+		} else if alreadyActivated {
+			slog.Info("payment already activated, skip duplicate callback side effects", "payment_id", paymentRow.ID, "provider_payment_id", providerPaymentID)
+			return
+		}
+	}
+
 	endsAt := effectivePaidAt.AddDate(0, 0, 30)
 	connector, connectorExists, err := s.Store.GetConnector(ctx, paymentRow.ConnectorID)
 	if err != nil {
@@ -256,6 +266,23 @@ func (s *Service) ActivateSuccessfulPayment(ctx context.Context, paymentRow doma
 	)); err != nil {
 		slog.Error("save audit event failed", "error", err, "action", domain.AuditActionPaymentSuccessNotified)
 	}
+}
+
+func (s *Service) hasSubscriptionForPayment(ctx context.Context, userID, connectorID, paymentID int64) (bool, error) {
+	subs, err := s.Store.ListSubscriptions(ctx, domain.SubscriptionListQuery{
+		UserID:      userID,
+		ConnectorID: connectorID,
+		Limit:       200,
+	})
+	if err != nil {
+		return false, err
+	}
+	for _, sub := range subs {
+		if sub.PaymentID == paymentID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (s *Service) NotifyFailedRecurringPayment(ctx context.Context, paymentRow domain.Payment) {

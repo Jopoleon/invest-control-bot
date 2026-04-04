@@ -14,19 +14,19 @@ const (
 	appLegalTitlePrivacy               = "Политика обработки персональных данных"
 	appLegalTitleAgreement             = "Пользовательское соглашение"
 	appPaymentPageTitleSuccess         = "Оплата успешно завершена"
-	appPaymentPageMessageSuccess       = "Платеж подтвержден. Подписка уже активна, а в боте придет сообщение с деталями."
+	appPaymentPageMessageSuccess       = "Платеж подтвержден. Доступ в канал активирован, а в боте придет сообщение с деталями."
 	appPaymentPageTitleFail            = "Оплата не завершена"
 	appPaymentPageMessageFail          = "Платеж был отменен или не прошел. Вернитесь в бота и попробуйте снова."
 	appPaymentActionOpenBot            = "Открыть бота"
 	appPaymentActionReturnToBot        = "Вернуться в бота"
 	appPaymentActionOpenChannel        = "Открыть канал"
 	appPaymentActionOpenTelegram       = "Открыть Telegram"
-	appPaymentActionOpenMAXBot         = "Открыть MAX-бота"
-	appPaymentActionReturnToMAXBot     = "Вернуться в MAX-бот"
-	appPaymentActionOpenMAX            = "Открыть MAX Web"
-	appPaymentActionOpenMAXChannel     = "Открыть канал MAX"
-	appPaymentActionReturnMAXChannel   = "Вернуться в канал MAX"
-	appPaymentSuccessChannelHint       = "\n\nНажмите кнопку ниже, чтобы перейти к доступу по подписке."
+	appPaymentActionOpenMAXBot         = "Открыть бота в MAX"
+	appPaymentActionReturnToMAXBot     = "Вернуться к боту в MAX"
+	appPaymentActionOpenMAX            = "Открыть MAX"
+	appPaymentActionOpenMAXChannel     = "Открыть канал в MAX"
+	appPaymentActionReturnMAXChannel   = "Вернуться в канал в MAX"
+	appPaymentSuccessChannelHint       = "\n\nНажмите кнопку ниже, чтобы перейти в канал."
 	appPaymentActionMySubscription     = "Моя подписка"
 	appPaymentFailedRecurringText      = "⚠️ Автоматическое списание не прошло. Чтобы не потерять доступ, оплатите подписку вручную по кнопке ниже."
 	appPaymentFailedRecurringButton    = "Оплатить вручную"
@@ -35,13 +35,13 @@ const (
 	appSubscriptionExpiredText         = "⏰ Срок подписки истек. Чтобы восстановить доступ, оформите продление."
 	appRecurringCheckoutTitle          = "Оформление подписки"
 	appRecurringCheckoutHelperNote     = "Автоплатеж подключается во время новой оплаты этого тарифа. Уже действующая подписка не переводится на автосписания задним числом."
-	appRecurringCheckoutTelegramCTA    = "Открыть Telegram-бот"
-	appRecurringCheckoutMAXCTA         = "Открыть MAX-бота"
-	appRecurringCheckoutMAXFallbackCTA = "Открыть MAX Web"
+	appRecurringCheckoutTelegramCTA    = "Открыть бота в Telegram"
+	appRecurringCheckoutMAXCTA         = "Открыть бота в MAX"
+	appRecurringCheckoutMAXFallbackCTA = "Открыть MAX"
 	appRecurringCheckoutBotCTA         = "Продолжить оформление в боте"
-	appRecurringCheckoutMAXTitle       = "Оформление в MAX"
-	appRecurringCheckoutMAXHint        = "Если оформляете подписку в MAX, лучше открыть конкретного бота сразу по кнопке ниже. Если диплинк не сработает, откройте чат бота и отправьте команду:"
-	appRecurringCheckoutConsentNote    = "Чекбокс не проставлен по умолчанию. Финальное согласие фиксируется на следующем шаге оформления в боте и сохраняется в истории согласий пользователя."
+	appRecurringCheckoutMAXTitle       = "Продолжить в MAX"
+	appRecurringCheckoutMAXHint        = "Если оформляете подписку в MAX, откройте бота по кнопке ниже. Если кнопка не сработает, откройте чат бота и отправьте команду:"
+	appRecurringCheckoutConsentNote    = "Чекбокс не отмечен заранее. Автоплатеж включится только после вашего явного согласия на следующем шаге."
 	appRecurringCancelTitle            = "Отключение автоплатежа"
 	appRecurringCancelInvalidLink      = "Некорректная ссылка отключения автоплатежа."
 	appRecurringCancelExpiredLink      = "Ссылка отключения автоплатежа истекла. Откройте новую ссылку из бота."
@@ -75,7 +75,7 @@ func appPaymentSuccessMessage(paymentRow domain.Payment, connector domain.Connec
 			lines = append(lines, "Период: "+periodLabel)
 		}
 	}
-	lines = append(lines, "Доступ активирован до "+endsAt.In(time.Local).Format("02.01.2006 15:04")+".")
+	lines = append(lines, "Доступ в канал активирован до "+endsAt.In(time.Local).Format("02.01.2006 15:04")+".")
 	if paymentRow.AutoPayEnabled {
 		lines = append(lines, "Автоплатеж для следующих списаний включен.")
 	}

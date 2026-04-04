@@ -260,6 +260,94 @@ func TestActivateSuccessfulPayment_WritesPaymentAccessReadyAuditWhenDeliverySucc
 	}
 }
 
+func TestActivateSuccessfulPayment_DuplicatePaidCallbackDoesNotShiftExistingSubscription(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Date(2026, 4, 4, 7, 43, 46, 0, time.UTC)
+	connector := domain.Connector{
+		ID:            1,
+		StartPayload:  "in-duplicate-paid",
+		Name:          "3h recurring",
+		PriceRUB:      100,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: int64((3 * 60 * 60)),
+		IsActive:      true,
+		CreatedAt:     now,
+	}
+	if err := st.CreateConnector(ctx, connector); err != nil {
+		t.Fatalf("CreateConnector err=%v", err)
+	}
+
+	paidAt := now
+	paymentRow := domain.Payment{
+		ID:                41,
+		Provider:          "robokassa",
+		ProviderPaymentID: "robokassa:41",
+		Status:            domain.PaymentStatusPaid,
+		Token:             "paid-41",
+		UserID:            42,
+		ConnectorID:       connector.ID,
+		AmountRUB:         100,
+		CreatedAt:         now.Add(-10 * time.Second),
+		PaidAt:            &paidAt,
+		UpdatedAt:         now,
+	}
+	if err := st.CreatePayment(ctx, paymentRow); err != nil {
+		t.Fatalf("CreatePayment err=%v", err)
+	}
+
+	originalStart := now
+	originalEnd := now.Add(3 * time.Hour)
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         paymentRow.UserID,
+		ConnectorID:    connector.ID,
+		PaymentID:      paymentRow.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       originalStart,
+		EndsAt:         originalEnd,
+		CreatedAt:      originalStart,
+		UpdatedAt:      now,
+	}); err != nil {
+		t.Fatalf("UpsertSubscriptionByPayment err=%v", err)
+	}
+
+	service := &Service{
+		Store:                 st,
+		PaymentSuccessMessage: func(domain.Payment, domain.Connector, time.Time) string { return "ok" },
+		SendUserNotification:  func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil },
+		BuildTargetAuditEvent: func(_ context.Context, userID int64, _ string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
+			return domain.AuditEvent{TargetUserID: userID, ConnectorID: connectorID, Action: action, Details: details, CreatedAt: createdAt}
+		},
+		OpenChannelActionLabel: "open",
+		MySubscriptionAction:   "sub",
+	}
+
+	service.ActivateSuccessfulPayment(ctx, paymentRow, "robokassa:41", now.Add(time.Minute))
+
+	sub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, paymentRow.UserID, connector.ID)
+	if err != nil || !found {
+		t.Fatalf("GetLatestSubscriptionByUserConnector found=%v err=%v", found, err)
+	}
+	if !sub.StartsAt.Equal(originalStart) {
+		t.Fatalf("starts_at=%s want=%s", sub.StartsAt, originalStart)
+	}
+	if !sub.EndsAt.Equal(originalEnd) {
+		t.Fatalf("ends_at=%s want=%s", sub.EndsAt, originalEnd)
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 50})
+	if err != nil {
+		t.Fatalf("ListAuditEvents err=%v", err)
+	}
+	if got := countPaymentAuditEvents(events, domain.AuditActionSubscriptionActivated); got != 0 {
+		t.Fatalf("subscription_activated count=%d want=0 on duplicate callback", got)
+	}
+	if got := countPaymentAuditEvents(events, domain.AuditActionPaymentSuccessNotified); got != 0 {
+		t.Fatalf("payment_success_notified count=%d want=0 on duplicate callback", got)
+	}
+}
+
 func TestActivateSuccessfulPayment_WritesInviteLinkFailureAuditWhenFallbackSucceeds(t *testing.T) {
 	ctx := context.Background()
 	st := memory.New()

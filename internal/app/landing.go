@@ -28,7 +28,7 @@ func (a *application) handleLanding(w http.ResponseWriter, r *http.Request) {
 
 	renderAppTemplate(w, "landing.html", landingPageData{
 		Title:        title,
-		Subtitle:     "Платный доступ в закрытые каналы, платежи и автосписания, admin-панель и multi-messenger backend.",
+		Subtitle:     "Сервис управления платным доступом и подписками.",
 		AdminURL:     "/admin",
 		HealthURL:    "/healthz",
 		OfferURL:     "/legal/offer",

@@ -10,50 +10,78 @@ import (
 	"github.com/Jopoleon/invest-control-bot/internal/app"
 	"github.com/Jopoleon/invest-control-bot/internal/config"
 	"github.com/Jopoleon/invest-control-bot/internal/logger"
+	"github.com/Jopoleon/invest-control-bot/internal/store"
 )
 
 // main is the backend entrypoint used for local/dev runs and VPS deployments.
 func main() {
+	os.Exit(runServerMain(defaultServerDeps()))
+}
+
+type serverRunner interface {
+	Run(context.Context) error
+}
+
+type serverDeps struct {
+	initLogger    func(string, string) (string, error)
+	loadConfig    func() (config.Config, error)
+	openStore     func(config.Config) (store.Store, func(), error)
+	newServer     func(config.Config, store.Store) (serverRunner, error)
+	notifyContext func(context.Context, ...os.Signal) (context.Context, context.CancelFunc)
+}
+
+func defaultServerDeps() serverDeps {
+	return serverDeps{
+		initLogger: logger.Init,
+		loadConfig: config.Load,
+		openStore:  app.OpenStore,
+		newServer: func(cfg config.Config, st store.Store) (serverRunner, error) {
+			return app.New(cfg, st)
+		},
+		notifyContext: signal.NotifyContext,
+	}
+}
+
+func runServerMain(deps serverDeps) int {
 	// Bootstrap logger before config load, then reconfigure from LOG_LEVEL.
-	if _, err := logger.Init("info", ""); err != nil {
+	if _, err := deps.initLogger("info", ""); err != nil {
 		slog.Error("bootstrap logger init failed", "error", err)
 	}
 
-	cfg, err := config.Load()
+	cfg, err := deps.loadConfig()
 	if err != nil {
 		slog.Error("load config failed", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	if cfg.Runtime != config.RuntimeServer {
 		slog.Error("invalid APP_RUNTIME for cmd/server", "runtime", cfg.Runtime, "expected", config.RuntimeServer)
-		os.Exit(1)
+		return 1
 	}
-	_, err = logger.Init(cfg.Logging.Level, cfg.Logging.FilePath)
-	if err != nil {
+	if _, err := deps.initLogger(cfg.Logging.Level, cfg.Logging.FilePath); err != nil {
 		slog.Error("logger init with file failed", "error", err, "file_path", cfg.Logging.FilePath)
-		os.Exit(1)
+		return 1
 	}
-	//slog.Info("config loaded", "config", cfg, "effective_log_level", effectiveLevel, "log_file_path", cfg.Logging.FilePath)
 
-	st, cleanup, err := app.OpenStore(cfg)
+	st, cleanup, err := deps.openStore(cfg)
 	if err != nil {
 		slog.Error("init store failed", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	defer cleanup()
 
-	srv, err := app.New(cfg, st)
+	srv, err := deps.newServer(cfg, st)
 	if err != nil {
 		slog.Error("create app server failed", "error", err)
-		os.Exit(1)
+		return 1
 	}
 
-	runCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	runCtx, stop := deps.notifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	slog.Info("service started", "service", cfg.AppName, "env", cfg.Environment, "http_addr", cfg.HTTP.Address)
 	if err := srv.Run(runCtx); err != nil {
 		slog.Error("server stopped", "error", err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }

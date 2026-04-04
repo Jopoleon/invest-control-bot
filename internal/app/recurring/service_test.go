@@ -3,6 +3,7 @@ package recurring
 import (
 	"context"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -278,6 +279,217 @@ func TestShouldTriggerScheduledRebill_UsesShortTestPeriodWindows(t *testing.T) {
 	}
 	if !ok {
 		t.Fatalf("ShouldTriggerScheduledRebill near end=false want true")
+	}
+}
+
+func TestEvaluateScheduledRebill_ForThreeHourSubscriptionTriggersAboutOneHourBeforeEnd(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Now().UTC()
+
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-three-hour-window",
+		Name:          "three-hour-window",
+		PriceRUB:      500,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: int64((3 * time.Hour) / time.Second),
+		IsActive:      true,
+		CreatedAt:     now,
+	}); err != nil {
+		t.Fatalf("CreateConnector err=%v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-three-hour-window")
+	if err != nil || !found {
+		t.Fatalf("GetConnectorByStartPayload found=%v err=%v", found, err)
+	}
+
+	service := &Service{Store: st}
+	sub := domain.Subscription{
+		ID:             77,
+		UserID:         42,
+		ConnectorID:    connector.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       now.Add(-2 * time.Hour),
+		EndsAt:         now.Add(3 * time.Hour),
+	}
+
+	decision, err := service.EvaluateScheduledRebill(ctx, sub, sub.EndsAt.Add(-61*time.Minute))
+	if err != nil {
+		t.Fatalf("EvaluateScheduledRebill before window err=%v", err)
+	}
+	if decision.Trigger {
+		t.Fatalf("EvaluateScheduledRebill before window trigger=true want false")
+	}
+	if decision.Reason != "outside_rebill_window" {
+		t.Fatalf("EvaluateScheduledRebill before window reason=%q want outside_rebill_window", decision.Reason)
+	}
+
+	decision, err = service.EvaluateScheduledRebill(ctx, sub, sub.EndsAt.Add(-59*time.Minute))
+	if err != nil {
+		t.Fatalf("EvaluateScheduledRebill inside window err=%v", err)
+	}
+	if !decision.Trigger {
+		t.Fatalf("EvaluateScheduledRebill inside window trigger=false want true")
+	}
+	if decision.Reason != "rebill_due" {
+		t.Fatalf("EvaluateScheduledRebill inside window reason=%q want rebill_due", decision.Reason)
+	}
+	if decision.TargetAttempt != 1 {
+		t.Fatalf("EvaluateScheduledRebill inside window targetAttempt=%d want 1", decision.TargetAttempt)
+	}
+}
+
+func TestEvaluateScheduledRebill_ForFifteenDaySubscriptionCapsFirstLeadAtSeventyTwoHours(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Now().UTC()
+
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-fifteen-day-window",
+		Name:          "fifteen-day-window",
+		PriceRUB:      500,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: int64((15 * 24 * time.Hour) / time.Second),
+		IsActive:      true,
+		CreatedAt:     now,
+	}); err != nil {
+		t.Fatalf("CreateConnector err=%v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-fifteen-day-window")
+	if err != nil || !found {
+		t.Fatalf("GetConnectorByStartPayload found=%v err=%v", found, err)
+	}
+
+	service := &Service{Store: st}
+	sub := domain.Subscription{
+		ID:             78,
+		UserID:         42,
+		ConnectorID:    connector.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       now.Add(-10 * 24 * time.Hour),
+		EndsAt:         now.Add(15 * 24 * time.Hour),
+	}
+
+	decision, err := service.EvaluateScheduledRebill(ctx, sub, sub.EndsAt.Add(-(72*time.Hour + time.Hour)))
+	if err != nil {
+		t.Fatalf("EvaluateScheduledRebill before 72h cap err=%v", err)
+	}
+	if decision.Trigger {
+		t.Fatalf("EvaluateScheduledRebill before 72h cap trigger=true want false")
+	}
+	if decision.Reason != "outside_rebill_window" {
+		t.Fatalf("EvaluateScheduledRebill before 72h cap reason=%q want outside_rebill_window", decision.Reason)
+	}
+
+	decision, err = service.EvaluateScheduledRebill(ctx, sub, sub.EndsAt.Add(-(72*time.Hour - time.Hour)))
+	if err != nil {
+		t.Fatalf("EvaluateScheduledRebill inside 72h cap err=%v", err)
+	}
+	if !decision.Trigger {
+		t.Fatalf("EvaluateScheduledRebill inside 72h cap trigger=false want true")
+	}
+	if decision.Reason != "rebill_due" {
+		t.Fatalf("EvaluateScheduledRebill inside 72h cap reason=%q want rebill_due", decision.Reason)
+	}
+	if decision.TargetAttempt != 1 {
+		t.Fatalf("EvaluateScheduledRebill inside 72h cap targetAttempt=%d want 1", decision.TargetAttempt)
+	}
+}
+
+func TestEvaluateScheduledRebill_ForThirtyDaySubscriptionCapsFirstLeadAtSeventyTwoHours(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Now().UTC()
+
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-thirty-day-window",
+		Name:          "thirty-day-window",
+		PriceRUB:      500,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: int64((30 * 24 * time.Hour) / time.Second),
+		IsActive:      true,
+		CreatedAt:     now,
+	}); err != nil {
+		t.Fatalf("CreateConnector err=%v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-thirty-day-window")
+	if err != nil || !found {
+		t.Fatalf("GetConnectorByStartPayload found=%v err=%v", found, err)
+	}
+
+	service := &Service{Store: st}
+	sub := domain.Subscription{
+		ID:             79,
+		UserID:         42,
+		ConnectorID:    connector.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       now.Add(-20 * 24 * time.Hour),
+		EndsAt:         now.Add(30 * 24 * time.Hour),
+	}
+
+	decision, err := service.EvaluateScheduledRebill(ctx, sub, sub.EndsAt.Add(-(72*time.Hour + time.Hour)))
+	if err != nil {
+		t.Fatalf("EvaluateScheduledRebill before 72h cap err=%v", err)
+	}
+	if decision.Trigger {
+		t.Fatalf("EvaluateScheduledRebill before 72h cap trigger=true want false")
+	}
+	if decision.Reason != "outside_rebill_window" {
+		t.Fatalf("EvaluateScheduledRebill before 72h cap reason=%q want outside_rebill_window", decision.Reason)
+	}
+
+	decision, err = service.EvaluateScheduledRebill(ctx, sub, sub.EndsAt.Add(-(72*time.Hour - time.Hour)))
+	if err != nil {
+		t.Fatalf("EvaluateScheduledRebill inside 72h cap err=%v", err)
+	}
+	if !decision.Trigger {
+		t.Fatalf("EvaluateScheduledRebill inside 72h cap trigger=false want true")
+	}
+	if decision.Reason != "rebill_due" {
+		t.Fatalf("EvaluateScheduledRebill inside 72h cap reason=%q want rebill_due", decision.Reason)
+	}
+	if decision.TargetAttempt != 1 {
+		t.Fatalf("EvaluateScheduledRebill inside 72h cap targetAttempt=%d want 1", decision.TargetAttempt)
+	}
+}
+
+func TestRecurringHelperFunctions(t *testing.T) {
+	if got := trimRecurringAuditValue(strings.Repeat("a", 300)); len(got) != 240 || !strings.HasSuffix(got, "...") {
+		t.Fatalf("trimRecurringAuditValue=%q want 240 chars with ellipsis", got)
+	}
+	if got := formatPreferredMessengerUserID(42); got != "42" {
+		t.Fatalf("formatPreferredMessengerUserID=%q want 42", got)
+	}
+	if got := formatPreferredMessengerUserID(0); got != "" {
+		t.Fatalf("formatPreferredMessengerUserID=%q want empty", got)
+	}
+	if got := firstNonEmpty("", " value ", "fallback"); got != "value" {
+		t.Fatalf("firstNonEmpty=%q want value", got)
+	}
+	if got := formatRecurringCancelAccountLabel(domain.UserMessengerAccount{
+		MessengerKind:   domain.MessengerKindTelegram,
+		MessengerUserID: "264704572",
+		Username:        "egor",
+	}); got != "@egor" {
+		t.Fatalf("formatRecurringCancelAccountLabel=%q", got)
+	}
+}
+
+func TestResolveRecurringCancelReturn(t *testing.T) {
+	service := &Service{
+		TelegramBotChatURL:               "https://t.me/test_bot",
+		MAXBotChatURL:                    "https://max.ru/test_bot",
+		RecurringCancelOpenTelegramLabel: "Открыть Telegram",
+		RecurringCancelOpenMAXLabel:      "Открыть MAX",
+	}
+	if url, label := service.resolveRecurringCancelReturn(domain.UserMessengerAccount{MessengerKind: domain.MessengerKindMAX}); url != "https://max.ru/test_bot" || label != "Открыть MAX" {
+		t.Fatalf("MAX return=(%q,%q)", url, label)
+	}
+	if url, label := service.resolveRecurringCancelReturn(domain.UserMessengerAccount{MessengerKind: domain.MessengerKindTelegram}); url != "https://t.me/test_bot" || label != "Открыть Telegram" {
+		t.Fatalf("Telegram return=(%q,%q)", url, label)
 	}
 }
 

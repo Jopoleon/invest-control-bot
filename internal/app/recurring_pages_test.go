@@ -51,7 +51,7 @@ func TestRecurringCheckoutPage_RendersConnectorAndConsent(t *testing.T) {
 	}
 	body, _ := io.ReadAll(rr.Body)
 	text := string(body)
-	if !strings.Contains(text, "Я согласен на автоматические списания согласно условиям оферты") {
+	if !strings.Contains(text, "Я согласен на автоплатеж согласно условиям оферты") {
 		t.Fatalf("response does not contain recurring consent text: %q", text)
 	}
 	if !strings.Contains(text, "https://t.me/test_bot?start=in-public-recurring") {
@@ -66,7 +66,7 @@ func TestRecurringCheckoutPage_RendersConnectorAndConsent(t *testing.T) {
 	if !strings.Contains(text, "https://max.ru/id9718272494_bot") {
 		t.Fatalf("response does not contain MAX bot chat link: %q", text)
 	}
-	if !strings.Contains(text, "Открыть MAX Web") {
+	if !strings.Contains(text, "Открыть MAX") {
 		t.Fatalf("response does not contain MAX web fallback action: %q", text)
 	}
 	if strings.Contains(text, "Продолжить оформление в Telegram") {

@@ -51,7 +51,7 @@ Useful recurring/ops logs to recognize quickly:
 - `internal/admin`: admin panel and sessions
 - `internal/payment`: mock + Robokassa providers
 - `internal/store/postgres`: primary persistence
-- `internal/store/memory`: local/dev support and test scenarios
+- `internal/store/memory`: local/dev support and test scenarios only; not a product-priority storage backend
 
 ### Messenger-neutral foundation
 - `internal/messenger` contains transport-neutral outbound and inbound models
@@ -177,12 +177,17 @@ Transport-specific actions may still exist, but they should be clearly marked as
 
 Refactoring and tests go together.
 
+Storage priority:
+- PostgreSQL is the real production path and the default target for meaningful store coverage.
+- `internal/store/memory` is intentionally de-prioritized and should be touched only when it adds clear workflow coverage or is required to keep local/dev flows working.
+- Do not spend significant product effort trying to make `internal/store/memory` feature-complete before the PostgreSQL path is correct.
+
 Priority for tests:
 1. `internal/bot`
 2. `internal/app`
 3. `internal/store/postgres`
 4. `internal/payment`
-5. `internal/store/memory` only when it adds workflow coverage
+5. `internal/store/memory` only as a last-priority dev/test backend when it adds workflow coverage
 
 Preferred test style:
 - unit tests around use-case logic
@@ -220,6 +225,7 @@ This is especially important for:
 ## DB / Migration Rules
 
 - PostgreSQL is the source of truth
+- PostgreSQL is the target production-ready storage path; design and validation decisions should optimize for the Postgres-backed runtime first
 - do not introduce schema changes without a migration
 - prefer additive migrations for risky transitions
 - keep compatibility windows only when they are actually needed
