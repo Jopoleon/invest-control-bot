@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -390,6 +391,134 @@ func TestProcessRecurringRebills_TriggersScheduledAttempt(t *testing.T) {
 	}
 }
 
+func TestProcessRecurringRebills_EndToEndCallbackActivatesExactlyOneRenewal(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	connectorID := seedConnector(t, ctx, st, "in-recurring-end-to-end")
+	parentInv := "rec-parent-e2e"
+	userID := seedTelegramUser(t, ctx, st, 990777)
+	now := time.Now().UTC()
+
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPaid,
+		Token:          parentInv,
+		UserID:         userID,
+		ConnectorID:    connectorID,
+		AmountRUB:      2322,
+		AutoPayEnabled: true,
+		CreatedAt:      now.Add(-24 * time.Hour),
+		UpdatedAt:      now.Add(-24 * time.Hour),
+		PaidAt:         ptrTime(now.Add(-24 * time.Hour)),
+	})
+	parentPayment, found, err := st.GetPaymentByToken(ctx, parentInv)
+	if err != nil || !found {
+		t.Fatalf("parent payment not found: found=%v err=%v", found, err)
+	}
+	parentStart := now.Add(-24 * time.Hour).Truncate(time.Second)
+	parentEnd := now.Add(70 * time.Hour).Truncate(time.Second)
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         userID,
+		ConnectorID:    connectorID,
+		PaymentID:      parentPayment.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       parentStart,
+		EndsAt:         parentEnd,
+		CreatedAt:      parentStart,
+		UpdatedAt:      parentStart,
+	}); err != nil {
+		t.Fatalf("seed subscription: %v", err)
+	}
+
+	rebillMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("OK+scheduled"))
+	}))
+	defer rebillMock.Close()
+
+	cfg := testRecurringConfig(rebillMock.URL)
+	appCtx, err := newApplication(cfg, st, appInitOptions{ensureTelegramSetup: true})
+	if err != nil {
+		t.Fatalf("newApplication: %v", err)
+	}
+	processRecurringRebills(ctx, appCtx)
+
+	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{UserID: userID, Limit: 20})
+	if err != nil {
+		t.Fatalf("list payments: %v", err)
+	}
+	var child domain.Payment
+	found = false
+	for _, paymentRow := range payments {
+		if paymentRow.ParentPaymentID == parentPayment.ID && paymentRow.Status == domain.PaymentStatusPending {
+			child = paymentRow
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("pending child payment not found")
+	}
+
+	handler := testServerHandler(t, st, "test-pass2")
+	code, body := postPaymentResult(t, handler, "2322.00", child.Token, resultSignature("2322.00", child.Token, "test-pass2"))
+	if code != http.StatusOK || body != "OK"+child.Token {
+		t.Fatalf("callback status=%d body=%q want %d/%q", code, body, http.StatusOK, "OK"+child.Token)
+	}
+
+	updatedChild, found, err := st.GetPaymentByToken(ctx, child.Token)
+	if err != nil || !found {
+		t.Fatalf("updated child payment found=%v err=%v", found, err)
+	}
+	if updatedChild.Status != domain.PaymentStatusPaid {
+		t.Fatalf("child payment status=%s want=%s", updatedChild.Status, domain.PaymentStatusPaid)
+	}
+
+	subs, err := st.ListSubscriptions(ctx, domain.SubscriptionListQuery{UserID: userID, ConnectorID: connectorID, Limit: 20})
+	if err != nil {
+		t.Fatalf("list subscriptions: %v", err)
+	}
+	if len(subs) != 2 {
+		t.Fatalf("subscriptions len=%d want=2", len(subs))
+	}
+
+	var renewal domain.Subscription
+	found = false
+	for _, sub := range subs {
+		if sub.PaymentID == updatedChild.ID {
+			renewal = sub
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("renewal subscription for child payment not found")
+	}
+	if !renewal.StartsAt.Equal(parentEnd) {
+		t.Fatalf("renewal starts_at=%s want=%s", renewal.StartsAt, parentEnd)
+	}
+	expectedEnd := parentEnd.Add(30 * 24 * time.Hour)
+	if !renewal.EndsAt.Equal(expectedEnd) {
+		t.Fatalf("renewal ends_at=%s want=%s", renewal.EndsAt, expectedEnd)
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{
+		TargetUserID: userID,
+		ConnectorID:  connectorID,
+		Page:         1,
+		PageSize:     100,
+	})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionActivated); got != 1 {
+		t.Fatalf("subscription_activated count=%d want=1", got)
+	}
+	if details := findAuditEventDetails(events, domain.AuditActionSubscriptionActivated); !strings.Contains(details, "payment_id="+strconv.FormatInt(updatedChild.ID, 10)) {
+		t.Fatalf("subscription_activated details=%q want payment_id=%d", details, updatedChild.ID)
+	}
+}
+
 func TestRecurringRuntimeTriggerRebill_ReusesExistingPendingPayment(t *testing.T) {
 	ctx := context.Background()
 	st := memory.New()
@@ -558,6 +687,198 @@ func TestProcessRecurringRebills_RecordsStalePendingShortPeriodOnce(t *testing.T
 	}
 	if len(events) != 1 {
 		t.Fatalf("rebill_pending_stale events=%d want=1", len(events))
+	}
+}
+
+func TestProcessRecurringRebills_DoesNotCreateNewPaymentWhenAttemptBudgetExhausted(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Now().UTC()
+
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-attempt-budget-exhausted",
+		Name:          "3h recurring",
+		PriceRUB:      3,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 3 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     now.Add(-10 * time.Minute),
+	}); err != nil {
+		t.Fatalf("CreateConnector: %v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-attempt-budget-exhausted")
+	if err != nil || !found {
+		t.Fatalf("GetConnectorByStartPayload found=%v err=%v", found, err)
+	}
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPaid,
+		Token:          "attempt-budget-parent",
+		UserID:         seedTelegramUser(t, ctx, st, 990124),
+		ConnectorID:    connector.ID,
+		AmountRUB:      3,
+		AutoPayEnabled: true,
+		CreatedAt:      now.Add(-4 * time.Hour),
+		UpdatedAt:      now.Add(-4 * time.Hour),
+	})
+	parentPayment, found, err := st.GetPaymentByToken(ctx, "attempt-budget-parent")
+	if err != nil || !found {
+		t.Fatalf("parent payment found=%v err=%v", found, err)
+	}
+	endsAt := now.Add(59 * time.Minute)
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         parentPayment.UserID,
+		ConnectorID:    connector.ID,
+		PaymentID:      parentPayment.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       now.Add(-2 * time.Hour),
+		EndsAt:         endsAt,
+		CreatedAt:      now.Add(-2 * time.Hour),
+		UpdatedAt:      now.Add(-2 * time.Hour),
+	}); err != nil {
+		t.Fatalf("UpsertSubscriptionByPayment: %v", err)
+	}
+	sub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, parentPayment.UserID, connector.ID)
+	if err != nil || !found {
+		t.Fatalf("GetLatestSubscriptionByUserConnector found=%v err=%v", found, err)
+	}
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:          "robokassa",
+		ProviderPaymentID: "rebill_parent:" + parentPayment.Token,
+		Status:            domain.PaymentStatusFailed,
+		Token:             "attempt-budget-failed-child",
+		UserID:            parentPayment.UserID,
+		ConnectorID:       connector.ID,
+		SubscriptionID:    sub.ID,
+		ParentPaymentID:   parentPayment.ID,
+		AmountRUB:         3,
+		AutoPayEnabled:    true,
+		CreatedAt:         now.Add(-5 * time.Minute),
+		UpdatedAt:         now.Add(-5 * time.Minute),
+	})
+
+	appCtx := testApplicationForRecurring(t, st)
+	processRecurringRebills(ctx, appCtx)
+
+	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{UserID: parentPayment.UserID, Limit: 20})
+	if err != nil {
+		t.Fatalf("ListPayments: %v", err)
+	}
+	failedCount := 0
+	pendingCount := 0
+	for _, paymentRow := range payments {
+		if paymentRow.SubscriptionID != sub.ID || paymentRow.ParentPaymentID != parentPayment.ID {
+			continue
+		}
+		switch paymentRow.Status {
+		case domain.PaymentStatusFailed:
+			failedCount++
+		case domain.PaymentStatusPending:
+			pendingCount++
+		}
+	}
+	if failedCount != 1 {
+		t.Fatalf("failed rebill payments=%d want=1", failedCount)
+	}
+	if pendingCount != 0 {
+		t.Fatalf("pending rebill payments=%d want=0", pendingCount)
+	}
+}
+
+func TestProcessRecurringRebills_DoesNotCreateNewPaymentWhenRebillAlreadyPaid(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Now().UTC()
+
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-rebill-already-paid",
+		Name:          "3h recurring",
+		PriceRUB:      3,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 3 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     now.Add(-10 * time.Minute),
+	}); err != nil {
+		t.Fatalf("CreateConnector: %v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-rebill-already-paid")
+	if err != nil || !found {
+		t.Fatalf("GetConnectorByStartPayload found=%v err=%v", found, err)
+	}
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPaid,
+		Token:          "rebill-already-paid-parent",
+		UserID:         seedTelegramUser(t, ctx, st, 990125),
+		ConnectorID:    connector.ID,
+		AmountRUB:      3,
+		AutoPayEnabled: true,
+		CreatedAt:      now.Add(-4 * time.Hour),
+		UpdatedAt:      now.Add(-4 * time.Hour),
+	})
+	parentPayment, found, err := st.GetPaymentByToken(ctx, "rebill-already-paid-parent")
+	if err != nil || !found {
+		t.Fatalf("parent payment found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         parentPayment.UserID,
+		ConnectorID:    connector.ID,
+		PaymentID:      parentPayment.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       now.Add(-2 * time.Hour),
+		EndsAt:         now.Add(59 * time.Minute),
+		CreatedAt:      now.Add(-2 * time.Hour),
+		UpdatedAt:      now.Add(-2 * time.Hour),
+	}); err != nil {
+		t.Fatalf("UpsertSubscriptionByPayment: %v", err)
+	}
+	sub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, parentPayment.UserID, connector.ID)
+	if err != nil || !found {
+		t.Fatalf("GetLatestSubscriptionByUserConnector found=%v err=%v", found, err)
+	}
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:          "robokassa",
+		ProviderPaymentID: "robokassa:rebill-already-paid-child",
+		Status:            domain.PaymentStatusPaid,
+		Token:             "rebill-already-paid-child",
+		UserID:            parentPayment.UserID,
+		ConnectorID:       connector.ID,
+		SubscriptionID:    sub.ID,
+		ParentPaymentID:   parentPayment.ID,
+		AmountRUB:         3,
+		AutoPayEnabled:    true,
+		CreatedAt:         now.Add(-5 * time.Minute),
+		UpdatedAt:         now.Add(-5 * time.Minute),
+		PaidAt:            ptrTime(now.Add(-5 * time.Minute)),
+	})
+
+	appCtx := testApplicationForRecurring(t, st)
+	processRecurringRebills(ctx, appCtx)
+
+	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{UserID: parentPayment.UserID, Limit: 20})
+	if err != nil {
+		t.Fatalf("ListPayments: %v", err)
+	}
+	paidCount := 0
+	pendingCount := 0
+	for _, paymentRow := range payments {
+		if paymentRow.SubscriptionID != sub.ID || paymentRow.ParentPaymentID != parentPayment.ID {
+			continue
+		}
+		switch paymentRow.Status {
+		case domain.PaymentStatusPaid:
+			paidCount++
+		case domain.PaymentStatusPending:
+			pendingCount++
+		}
+	}
+	if paidCount != 1 {
+		t.Fatalf("paid rebill payments=%d want=1", paidCount)
+	}
+	if pendingCount != 0 {
+		t.Fatalf("pending rebill payments=%d want=0", pendingCount)
 	}
 }
 

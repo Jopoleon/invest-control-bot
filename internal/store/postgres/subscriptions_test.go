@@ -130,3 +130,125 @@ func TestDisableAutoPayForActiveSubscriptions(t *testing.T) {
 		t.Fatalf("sql expectations: %v", err)
 	}
 }
+
+func TestGetLatestSubscriptionByUserConnectorOrdersByEndsAtDescThenIDDesc(t *testing.T) {
+	store, mock, cleanup := newMockStore(t)
+	defer cleanup()
+
+	now := time.Date(2026, 4, 4, 12, 0, 0, 0, time.UTC)
+	rows := sqlmock.NewRows([]string{
+		"id", "user_id", "connector_id", "payment_id", "status", "auto_pay_enabled",
+		"starts_at", "ends_at", "reminder_sent_at", "expiry_notice_sent_at", "created_at", "updated_at",
+	}).AddRow(
+		99, 17, 11, 19, "active", true,
+		now.Add(-24*time.Hour), now.Add(24*time.Hour), nil, nil, now.Add(-24*time.Hour), now,
+	)
+
+	mock.ExpectQuery(regexp.QuoteMeta(`
+		SELECT s.id, COALESCE(s.user_id, 0),
+		       s.connector_id, s.payment_id, s.status, s.auto_pay_enabled, s.starts_at, s.ends_at,
+		       s.reminder_sent_at, s.expiry_notice_sent_at, s.created_at, s.updated_at
+		FROM subscriptions s
+		WHERE s.user_id = $1 AND s.connector_id = $2
+		ORDER BY s.ends_at DESC, s.id DESC
+		LIMIT 1
+	`)).
+		WithArgs(int64(17), int64(11)).
+		WillReturnRows(rows)
+
+	sub, found, err := store.GetLatestSubscriptionByUserConnector(context.Background(), 17, 11)
+	if err != nil {
+		t.Fatalf("GetLatestSubscriptionByUserConnector: %v", err)
+	}
+	if !found {
+		t.Fatal("expected subscription to be found")
+	}
+	if sub.ID != 99 {
+		t.Fatalf("subscription id=%d want=99", sub.ID)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestListSubscriptionsForReminderExcludesFutureQueuedSubscriptions(t *testing.T) {
+	store, mock, cleanup := newMockStore(t)
+	defer cleanup()
+
+	remindBefore := time.Date(2026, 4, 5, 12, 0, 0, 0, time.UTC)
+	rows := sqlmock.NewRows([]string{
+		"id", "user_id", "connector_id", "payment_id", "status", "auto_pay_enabled",
+		"starts_at", "ends_at", "reminder_sent_at", "expiry_notice_sent_at", "created_at", "updated_at",
+	}).AddRow(
+		71, 17, 11, 19, "active", true,
+		remindBefore.Add(-12*time.Hour), remindBefore.Add(-time.Hour), nil, nil, remindBefore.Add(-24*time.Hour), remindBefore.Add(-2*time.Hour),
+	)
+
+	mock.ExpectQuery(regexp.QuoteMeta(`
+		SELECT s.id, COALESCE(s.user_id, 0),
+		       s.connector_id, s.payment_id, s.status, s.auto_pay_enabled, s.starts_at, s.ends_at,
+		       s.reminder_sent_at, s.expiry_notice_sent_at, s.created_at, s.updated_at
+		FROM subscriptions s
+		WHERE s.status = $1
+		  AND s.starts_at <= $2
+		  AND s.reminder_sent_at IS NULL
+		  AND s.ends_at > $2
+		  AND s.ends_at <= $3
+		ORDER BY s.ends_at ASC
+		LIMIT $4
+	`)).
+		WithArgs(string(domain.SubscriptionStatusActive), sqlmock.AnyArg(), remindBefore, 50).
+		WillReturnRows(rows)
+
+	subs, err := store.ListSubscriptionsForReminder(context.Background(), remindBefore, 50)
+	if err != nil {
+		t.Fatalf("ListSubscriptionsForReminder: %v", err)
+	}
+	if len(subs) != 1 || subs[0].ID != 71 {
+		t.Fatalf("subscriptions=%+v want one row with id=71", subs)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestListSubscriptionsForExpiryNoticeExcludesFutureQueuedSubscriptions(t *testing.T) {
+	store, mock, cleanup := newMockStore(t)
+	defer cleanup()
+
+	noticeBefore := time.Date(2026, 4, 5, 12, 0, 0, 0, time.UTC)
+	rows := sqlmock.NewRows([]string{
+		"id", "user_id", "connector_id", "payment_id", "status", "auto_pay_enabled",
+		"starts_at", "ends_at", "reminder_sent_at", "expiry_notice_sent_at", "created_at", "updated_at",
+	}).AddRow(
+		81, 17, 11, 29, "active", true,
+		noticeBefore.Add(-6*time.Hour), noticeBefore.Add(-30*time.Minute), nil, nil, noticeBefore.Add(-24*time.Hour), noticeBefore.Add(-2*time.Hour),
+	)
+
+	mock.ExpectQuery(regexp.QuoteMeta(`
+		SELECT s.id, COALESCE(s.user_id, 0),
+		       s.connector_id, s.payment_id, s.status, s.auto_pay_enabled, s.starts_at, s.ends_at,
+		       s.reminder_sent_at, s.expiry_notice_sent_at, s.created_at, s.updated_at
+		FROM subscriptions s
+		WHERE s.status = $1
+		  AND s.starts_at <= $2
+		  AND s.expiry_notice_sent_at IS NULL
+		  AND s.ends_at > $2
+		  AND s.ends_at <= $3
+		ORDER BY s.ends_at ASC
+		LIMIT $4
+	`)).
+		WithArgs(string(domain.SubscriptionStatusActive), sqlmock.AnyArg(), noticeBefore, 25).
+		WillReturnRows(rows)
+
+	subs, err := store.ListSubscriptionsForExpiryNotice(context.Background(), noticeBefore, 25)
+	if err != nil {
+		t.Fatalf("ListSubscriptionsForExpiryNotice: %v", err)
+	}
+	if len(subs) != 1 || subs[0].ID != 81 {
+		t.Fatalf("subscriptions=%+v want one row with id=81", subs)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}

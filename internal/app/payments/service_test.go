@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/max"
 	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 	"github.com/Jopoleon/invest-control-bot/internal/store/memory"
 )
@@ -176,6 +177,11 @@ func TestActivateSuccessfulPayment_WritesAccessDeliveryFailedAuditWhenDestinatio
 	if err := st.CreatePayment(ctx, paymentRow); err != nil {
 		t.Fatalf("CreatePayment err=%v", err)
 	}
+	createdPayment, found, err := st.GetPaymentByToken(ctx, paymentRow.Token)
+	if err != nil || !found {
+		t.Fatalf("GetPaymentByToken found=%v err=%v", found, err)
+	}
+	paymentRow = createdPayment
 
 	service := &Service{
 		Store:                 st,
@@ -234,6 +240,11 @@ func TestActivateSuccessfulPayment_WritesPaymentAccessReadyAuditWhenDeliverySucc
 	if err := st.CreatePayment(ctx, paymentRow); err != nil {
 		t.Fatalf("CreatePayment err=%v", err)
 	}
+	createdPayment, found, err := st.GetPaymentByToken(ctx, paymentRow.Token)
+	if err != nil || !found {
+		t.Fatalf("GetPaymentByToken found=%v err=%v", found, err)
+	}
+	paymentRow = createdPayment
 
 	service := &Service{
 		Store:                 st,
@@ -458,6 +469,11 @@ func TestActivateSuccessfulPayment_MAXMissingChatIDAuditsFailureAndFallsBackToUR
 	if err := st.CreatePayment(ctx, paymentRow); err != nil {
 		t.Fatalf("CreatePayment err=%v", err)
 	}
+	createdPayment, found, err := st.GetPaymentByToken(ctx, paymentRow.Token)
+	if err != nil || !found {
+		t.Fatalf("GetPaymentByToken found=%v err=%v", found, err)
+	}
+	paymentRow = createdPayment
 
 	service := &Service{
 		Store:                 st,
@@ -522,6 +538,11 @@ func TestActivateSuccessfulPayment_MAXClientMissingAuditsFailureAndFallsBackToUR
 	if err := st.CreatePayment(ctx, paymentRow); err != nil {
 		t.Fatalf("CreatePayment err=%v", err)
 	}
+	createdPayment, found, err := st.GetPaymentByToken(ctx, paymentRow.Token)
+	if err != nil || !found {
+		t.Fatalf("GetPaymentByToken found=%v err=%v", found, err)
+	}
+	paymentRow = createdPayment
 
 	service := &Service{
 		Store:                 st,
@@ -546,6 +567,101 @@ func TestActivateSuccessfulPayment_MAXClientMissingAuditsFailureAndFallsBackToUR
 	}
 	if !strings.Contains(findPaymentAuditDetails(events, domain.AuditActionAccessDeliveryFailed), "reason=max_client_not_configured") {
 		t.Fatalf("access_delivery_failed details=%q want max_client_not_configured", findPaymentAuditDetails(events, domain.AuditActionAccessDeliveryFailed))
+	}
+}
+
+func TestActivateSuccessfulPayment_MAXAddMemberFailureAuditsVerboseDetailsAndFallsBackToURL(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Date(2026, 4, 5, 2, 26, 53, 0, time.UTC)
+	connector := domain.Connector{
+		ID:            1,
+		StartPayload:  "in-max-add-member-failed",
+		Name:          "max access",
+		MAXChatID:     "-72598909498032",
+		MAXChannelURL: "https://web.max.ru/-72598909498032",
+		PriceRUB:      1000,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 6 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     now,
+	}
+	if err := st.CreateConnector(ctx, connector); err != nil {
+		t.Fatalf("CreateConnector err=%v", err)
+	}
+	maxUser, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465776", "fedor")
+	if err != nil {
+		t.Fatalf("GetOrCreateUserByMessenger err=%v", err)
+	}
+	paymentRow := domain.Payment{
+		ID:          56,
+		Provider:    "robokassa",
+		Status:      domain.PaymentStatusPending,
+		Token:       "p-max-add-member-failed",
+		UserID:      maxUser.ID,
+		ConnectorID: connector.ID,
+		AmountRUB:   1000,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := st.CreatePayment(ctx, paymentRow); err != nil {
+		t.Fatalf("CreatePayment err=%v", err)
+	}
+	createdPayment, found, err := st.GetPaymentByToken(ctx, "p-max-add-member-failed")
+	if err != nil || !found {
+		t.Fatalf("GetPaymentByToken found=%v err=%v", found, err)
+	}
+	paymentRow = createdPayment
+
+	service := &Service{
+		Store:                 st,
+		PaymentSuccessMessage: func(domain.Payment, domain.Connector, time.Time) string { return "ok" },
+		ResolveMAXAccount: func(context.Context, int64) (domain.UserMessengerAccount, bool, error) {
+			return domain.UserMessengerAccount{MessengerKind: domain.MessengerKindMAX, MessengerUserID: "193465776"}, true, nil
+		},
+		AddMAXChatMembers: func(context.Context, int64, []int64) error {
+			return &max.MutationError{
+				Operation:     "add chat members returned success=false",
+				Message:       "cannot add member",
+				FailedUserIDs: []int64{193465776},
+				FailedUserDetails: []max.FailedUserDetail{{
+					UserID:  193465776,
+					Code:    "already_member",
+					Message: "user already in chat",
+				}},
+			}
+		},
+		ResolvePreferredKind: func(context.Context, int64, string) messenger.Kind { return messenger.KindMAX },
+		SendUserNotification: func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil },
+		BuildTargetAuditEvent: func(_ context.Context, userID int64, _ string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
+			return domain.AuditEvent{TargetUserID: userID, ConnectorID: connectorID, Action: action, Details: details, CreatedAt: createdAt}
+		},
+		OpenChannelActionLabel: "open",
+		MySubscriptionAction:   "sub",
+	}
+
+	service.ActivateSuccessfulPayment(ctx, paymentRow, "robokassa:p-max-add-member-failed", now)
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 50})
+	if err != nil {
+		t.Fatalf("ListAuditEvents err=%v", err)
+	}
+	readyDetails := findPaymentAuditDetails(events, domain.AuditActionPaymentAccessReady)
+	if !strings.Contains(readyDetails, "source=max_channel_url") {
+		t.Fatalf("payment_access_ready details=%q want source=max_channel_url", readyDetails)
+	}
+	failureDetails := findPaymentAuditDetails(events, domain.AuditActionAccessDeliveryFailed)
+	if !strings.Contains(failureDetails, "reason=max_add_member_failed") {
+		t.Fatalf("access_delivery_failed details=%q want reason=max_add_member_failed", failureDetails)
+	}
+	if !strings.Contains(failureDetails, "max_message=cannot add member") {
+		t.Fatalf("access_delivery_failed details=%q want max_message", failureDetails)
+	}
+	if !strings.Contains(failureDetails, "failed_user_ids=193465776") {
+		t.Fatalf("access_delivery_failed details=%q want failed_user_ids", failureDetails)
+	}
+	if !strings.Contains(failureDetails, "failed_user_details={user_id:193465776, code:already_member, message:user already in chat}") {
+		t.Fatalf("access_delivery_failed details=%q want failed_user_details", failureDetails)
 	}
 }
 

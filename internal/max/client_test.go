@@ -256,6 +256,39 @@ func TestClientAddChatMembers_ReturnsErrorOnPartialFailure(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "partial failure") {
 		t.Fatalf("AddChatMembers err=%v want partial failure", err)
 	}
+	if !strings.Contains(err.Error(), "failed_user_ids=193465776") {
+		t.Fatalf("AddChatMembers err=%v want failed_user_ids", err)
+	}
+	if !strings.Contains(err.Error(), "user already in chat") {
+		t.Fatalf("AddChatMembers err=%v want message", err)
+	}
+}
+
+func TestClientAddChatMembers_ReturnsVerboseErrorOnSuccessFalseWithFailedDetails(t *testing.T) {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/chats/-72598909498032/members" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"success":false,"message":"cannot add member","failed_user_ids":[193465776],"failed_user_details":[{"user_id":193465776,"code":"already_member","message":"user already in chat"}]}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("test-token", server.Client())
+	client.SetBaseURL(server.URL)
+
+	err := client.AddChatMembers(context.Background(), -72598909498032, []int64{193465776})
+	if err == nil || !strings.Contains(err.Error(), "cannot add member") {
+		t.Fatalf("AddChatMembers err=%v want verbose message", err)
+	}
+	if !strings.Contains(err.Error(), "already_member") {
+		t.Fatalf("AddChatMembers err=%v want failed detail code", err)
+	}
+	if !strings.Contains(err.Error(), "failed_user_ids=193465776") {
+		t.Fatalf("AddChatMembers err=%v want failed_user_ids", err)
+	}
 }
 
 func TestClientRemoveChatMemberBuildsRequestWithoutBlock(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	apppayments "github.com/Jopoleon/invest-control-bot/internal/app/payments"
 	"github.com/Jopoleon/invest-control-bot/internal/config"
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
 	"github.com/Jopoleon/invest-control-bot/internal/messenger"
@@ -1280,6 +1281,263 @@ func TestBuildRenewalNotification_WithoutPayloadLeavesPlainText(t *testing.T) {
 	}
 	if len(msg.Buttons) != 0 {
 		t.Fatalf("button rows = %d, want 0", len(msg.Buttons))
+	}
+}
+
+func TestMAXAccessLifecycle_RegrantsSameChatAccessViaDifferentConnectorAfterExpiry(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	maxUser, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindMAX, "193465783", "Федор Николаевич")
+	if err != nil {
+		t.Fatalf("create max user: %v", err)
+	}
+
+	oldConnector := domain.Connector{
+		StartPayload:  "max-regrant-old",
+		Name:          "max old access",
+		MAXChatID:     "-72598909498032",
+		MAXChannelURL: "https://web.max.ru/-72598909498032",
+		PriceRUB:      1,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     now,
+	}
+	newConnector := oldConnector
+	newConnector.StartPayload = "max-regrant-new"
+	newConnector.Name = "max new access"
+	if err := st.CreateConnector(ctx, oldConnector); err != nil {
+		t.Fatalf("create old connector: %v", err)
+	}
+	if err := st.CreateConnector(ctx, newConnector); err != nil {
+		t.Fatalf("create new connector: %v", err)
+	}
+	oldLoaded, found, err := st.GetConnectorByStartPayload(ctx, oldConnector.StartPayload)
+	if err != nil || !found {
+		t.Fatalf("get old connector found=%v err=%v", found, err)
+	}
+	newLoaded, found, err := st.GetConnectorByStartPayload(ctx, newConnector.StartPayload)
+	if err != nil || !found {
+		t.Fatalf("get new connector found=%v err=%v", found, err)
+	}
+
+	seedActiveSubscriptionForUser(t, ctx, st, oldLoaded.ID, maxUser.ID, 193465783, "sub-max-regrant-old", now.Add(-time.Minute))
+
+	appCtx := &application{
+		config:    config.Config{Telegram: config.TelegramConfig{BotUsername: "test_bot"}},
+		store:     st,
+		maxSender: &spySender{},
+	}
+	lifecycleSvc := appCtx.subscriptionLifecycleService()
+	removeCalls := 0
+	lifecycleSvc.RemoveMAXChatMember = func(_ context.Context, chatID, userID int64) error {
+		removeCalls++
+		if chatID != -72598909498032 || userID != 193465783 {
+			t.Fatalf("removed chat/user=(%d,%d) want (-72598909498032,193465783)", chatID, userID)
+		}
+		return nil
+	}
+
+	lifecycleSvc.ProcessExpiredSubscriptions(ctx)
+
+	if removeCalls != 1 {
+		t.Fatalf("remove calls=%d want=1", removeCalls)
+	}
+
+	paymentRow := domain.Payment{
+		ID:             9001,
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPending,
+		Token:          "max-regrant-new-payment",
+		UserID:         maxUser.ID,
+		ConnectorID:    newLoaded.ID,
+		AmountRUB:      1,
+		AutoPayEnabled: true,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	if err := st.CreatePayment(ctx, paymentRow); err != nil {
+		t.Fatalf("create payment: %v", err)
+	}
+	paymentRow, found, err = st.GetPaymentByToken(ctx, paymentRow.Token)
+	if err != nil || !found {
+		t.Fatalf("reload payment found=%v err=%v", found, err)
+	}
+
+	addCalls := 0
+	var addedChatID int64
+	var addedUserIDs []int64
+	paymentSvc := &apppayments.Service{
+		Store:                 st,
+		PaymentSuccessMessage: func(domain.Payment, domain.Connector, time.Time) string { return "ok" },
+		ResolveMAXAccount: func(context.Context, int64) (domain.UserMessengerAccount, bool, error) {
+			return domain.UserMessengerAccount{
+				UserID:          maxUser.ID,
+				MessengerKind:   domain.MessengerKindMAX,
+				MessengerUserID: "193465783",
+			}, true, nil
+		},
+		AddMAXChatMembers: func(_ context.Context, chatID int64, userIDs []int64) error {
+			addCalls++
+			addedChatID = chatID
+			addedUserIDs = append([]int64(nil), userIDs...)
+			return nil
+		},
+		ResolvePreferredKind: func(context.Context, int64, string) messenger.Kind { return messenger.KindMAX },
+		SendUserNotification: func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil },
+		BuildTargetAuditEvent: func(_ context.Context, userID int64, _ string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
+			return domain.AuditEvent{TargetUserID: userID, ConnectorID: connectorID, Action: action, Details: details, CreatedAt: createdAt}
+		},
+		OpenChannelActionLabel: "open",
+		MySubscriptionAction:   "sub",
+	}
+
+	paymentSvc.ActivateSuccessfulPayment(ctx, paymentRow, "robokassa:max-regrant-new-payment", now.Add(time.Minute))
+
+	if addCalls != 1 {
+		t.Fatalf("add calls=%d want=1", addCalls)
+	}
+	if addedChatID != -72598909498032 {
+		t.Fatalf("added chat id=%d want=-72598909498032", addedChatID)
+	}
+	if len(addedUserIDs) != 1 || addedUserIDs[0] != 193465783 {
+		t.Fatalf("added user ids=%v want [193465783]", addedUserIDs)
+	}
+
+	sub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, maxUser.ID, newLoaded.ID)
+	if err != nil || !found {
+		t.Fatalf("new latest subscription found=%v err=%v", found, err)
+	}
+	if sub.PaymentID != paymentRow.ID {
+		t.Fatalf("new subscription payment_id=%d want=%d", sub.PaymentID, paymentRow.ID)
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{TargetUserID: maxUser.ID, Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionRevokedFromChat); got != 1 {
+		t.Fatalf("subscription_revoked_from_chat count=%d want=1", got)
+	}
+	if got := countAuditEvents(events, domain.AuditActionPaymentAccessReady); got != 1 {
+		t.Fatalf("payment_access_ready count=%d want=1", got)
+	}
+	if details := findAuditEventDetails(events, domain.AuditActionPaymentAccessReady); !strings.Contains(details, "source=max_chat_member_added") {
+		t.Fatalf("payment_access_ready details=%q want source=max_chat_member_added", details)
+	}
+	if got := countAuditEvents(events, domain.AuditActionAccessDeliveryFailed); got != 0 {
+		t.Fatalf("access_delivery_failed count=%d want=0", got)
+	}
+}
+
+func TestTelegramAccessLifecycle_RegrantsSameChatAccessViaDifferentConnectorAfterExpiry(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	oldConnectorID := seedConnector(t, ctx, st, "tg-regrant-old")
+	newConnectorID := seedConnector(t, ctx, st, "tg-regrant-new")
+	userID := seedTelegramUser(t, ctx, st, 880206)
+
+	seedActiveSubscriptionForUser(t, ctx, st, oldConnectorID, userID, 880206, "sub-tg-regrant-old", now.Add(-time.Minute))
+
+	appCtx := &application{
+		config: config.Config{Telegram: config.TelegramConfig{BotUsername: "test_bot"}},
+		store:  st,
+	}
+	lifecycleSvc := appCtx.subscriptionLifecycleService()
+	removeCalls := 0
+	lifecycleSvc.RemoveTelegramChatMember = func(_ context.Context, chatID, userID int64) error {
+		removeCalls++
+		if chatID != -1003626584986 || userID != 880206 {
+			t.Fatalf("removed chat/user=(%d,%d) want (-1003626584986,880206)", chatID, userID)
+		}
+		return nil
+	}
+	lifecycleSvc.SendUserNotification = func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil }
+
+	lifecycleSvc.ProcessExpiredSubscriptions(ctx)
+
+	if removeCalls != 1 {
+		t.Fatalf("remove calls=%d want=1", removeCalls)
+	}
+
+	paymentRow := domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPending,
+		Token:          "tg-regrant-new-payment",
+		UserID:         userID,
+		ConnectorID:    newConnectorID,
+		AmountRUB:      2322,
+		AutoPayEnabled: true,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	if err := st.CreatePayment(ctx, paymentRow); err != nil {
+		t.Fatalf("create payment: %v", err)
+	}
+	paymentRow, found, err := st.GetPaymentByToken(ctx, paymentRow.Token)
+	if err != nil || !found {
+		t.Fatalf("reload payment found=%v err=%v", found, err)
+	}
+
+	inviteCalls := 0
+	paymentSvc := &apppayments.Service{
+		Store:                 st,
+		PaymentSuccessMessage: func(domain.Payment, domain.Connector, time.Time) string { return "ok" },
+		BuildTelegramAccessLink: func(_ context.Context, deliveryUserID int64, connector domain.Connector) (string, error) {
+			inviteCalls++
+			if deliveryUserID != userID {
+				t.Fatalf("invite user id=%d want=%d", deliveryUserID, userID)
+			}
+			if connector.ID != newConnectorID {
+				t.Fatalf("invite connector id=%d want=%d", connector.ID, newConnectorID)
+			}
+			return "https://t.me/+regrant-invite", nil
+		},
+		SendUserNotification: func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil },
+		BuildTargetAuditEvent: func(_ context.Context, targetUserID int64, _ string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
+			return domain.AuditEvent{TargetUserID: targetUserID, ConnectorID: connectorID, Action: action, Details: details, CreatedAt: createdAt}
+		},
+		OpenChannelActionLabel: "open",
+		MySubscriptionAction:   "sub",
+	}
+
+	paymentSvc.ActivateSuccessfulPayment(ctx, paymentRow, "robokassa:tg-regrant-new-payment", now.Add(time.Minute))
+
+	if inviteCalls != 1 {
+		t.Fatalf("invite calls=%d want=1", inviteCalls)
+	}
+
+	sub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, userID, newConnectorID)
+	if err != nil || !found {
+		t.Fatalf("new latest subscription found=%v err=%v", found, err)
+	}
+	if sub.PaymentID != paymentRow.ID {
+		t.Fatalf("new subscription payment_id=%d want=%d", sub.PaymentID, paymentRow.ID)
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{TargetUserID: userID, Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionRevokedFromChat); got != 1 {
+		t.Fatalf("subscription_revoked_from_chat count=%d want=1", got)
+	}
+	if got := countAuditEvents(events, domain.AuditActionPaymentAccessReady); got != 1 {
+		t.Fatalf("payment_access_ready count=%d want=1", got)
+	}
+	if details := findAuditEventDetails(events, domain.AuditActionPaymentAccessReady); !strings.Contains(details, "source=telegram_invite_link") {
+		t.Fatalf("payment_access_ready details=%q want source=telegram_invite_link", details)
+	}
+	if got := countAuditEvents(events, domain.AuditActionAccessDeliveryFailed); got != 0 {
+		t.Fatalf("access_delivery_failed count=%d want=0", got)
 	}
 }
 

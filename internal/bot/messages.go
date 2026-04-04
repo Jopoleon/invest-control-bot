@@ -35,6 +35,8 @@ const (
 	botMsgSubscriptionLoadFailed                  = "Не удалось загрузить подписку. Попробуйте позже."
 	botMsgNoActiveSubscriptions                   = "У вас нет активных подписок."
 	botMenuSubscriptionHeader                     = "📄 Моя подписка"
+	botMenuSubscriptionNoCurrent                  = "Сейчас активных подписок нет."
+	botMenuSubscriptionNextHeader                 = "⏭ Следующий период"
 	botMenuPaymentsHeader                         = "💳 Последние платежи"
 	botMsgPaymentsLoadFailed                      = "Не удалось загрузить платежи. Попробуйте позже."
 	botMsgNoPayments                              = "У вас пока нет платежей."
@@ -136,6 +138,22 @@ func botSubscriptionOverviewLines(sub domain.Subscription, connector domain.Conn
 	}
 	if channel != "" {
 		lines = append(lines, fmt.Sprintf("  Канал: %s", channel))
+	}
+	return lines
+}
+
+func botUpcomingSubscriptionLines(sub domain.Subscription, connector domain.Connector) []string {
+	lines := []string{
+		fmt.Sprintf("• %s", connector.Name),
+		fmt.Sprintf("  Сумма: %d ₽", connector.PriceRUB),
+		fmt.Sprintf("  Период: %s", botConnectorPeriodLabel(connector)),
+		fmt.Sprintf("  Ожидает начала: %s", sub.StartsAt.In(time.Local).Format("02.01.2006 15:04")),
+		fmt.Sprintf("  Доступ будет до: %s", sub.EndsAt.In(time.Local).Format("02.01.2006 15:04")),
+	}
+	if sub.AutoPayEnabled {
+		lines = append(lines, "  Автоплатеж: включен")
+	} else {
+		lines = append(lines, "  Автоплатеж: выключен")
 	}
 	return lines
 }

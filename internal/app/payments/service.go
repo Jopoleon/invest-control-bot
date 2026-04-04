@@ -2,12 +2,14 @@ package payments
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/max"
 	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 	"github.com/Jopoleon/invest-control-bot/internal/store"
 )
@@ -179,9 +181,24 @@ func (s *Service) ActivateSuccessfulPayment(ctx context.Context, paymentRow doma
 						failureReason = "invalid_max_account_id"
 						deliveryFailureReason = failureReason
 					} else if err := s.AddMAXChatMembers(ctx, chatID, []int64{maxUserID}); err != nil {
-						slog.Error("add max chat member failed", "error", err, "user_id", paymentRow.UserID, "connector_id", connector.ID, "payment_id", paymentRow.ID, "chat_id", chatID, "messenger_user_id", maxUserID)
+						deliveryFailureReason = appendAccessFailureDiagnostics("max_add_member_failed", err)
+						logArgs := []any{
+							"error", err,
+							"user_id", paymentRow.UserID,
+							"connector_id", connector.ID,
+							"payment_id", paymentRow.ID,
+							"chat_id", chatID,
+							"messenger_user_id", maxUserID,
+						}
+						if mutationErr := maxMutationError(err); mutationErr != nil {
+							logArgs = append(logArgs,
+								"max_message", mutationErr.Message,
+								"failed_user_ids", mutationErr.FailedUserIDs,
+								"failed_user_details", mutationErr.FailedUserDetails,
+							)
+						}
+						slog.Error("add max chat member failed", logArgs...)
 						failureReason = "max_add_member_failed"
-						deliveryFailureReason = failureReason
 					} else {
 						accessSource = "max_chat_member_added"
 					}
@@ -319,6 +336,60 @@ func (s *Service) ActivateSuccessfulPayment(ctx context.Context, paymentRow doma
 	)); err != nil {
 		slog.Error("save audit event failed", "error", err, "action", domain.AuditActionPaymentSuccessNotified)
 	}
+}
+
+func maxMutationError(err error) *max.MutationError {
+	var mutationErr *max.MutationError
+	if errors.As(err, &mutationErr) {
+		return mutationErr
+	}
+	return nil
+}
+
+func appendAccessFailureDiagnostics(reason string, err error) string {
+	details := "reason=" + sanitizeAuditDetailValue(reason)
+	if mutationErr := maxMutationError(err); mutationErr != nil {
+		if strings.TrimSpace(mutationErr.Message) != "" {
+			details += ";max_message=" + sanitizeAuditDetailValue(mutationErr.Message)
+		}
+		if len(mutationErr.FailedUserIDs) > 0 {
+			ids := make([]string, 0, len(mutationErr.FailedUserIDs))
+			for _, id := range mutationErr.FailedUserIDs {
+				ids = append(ids, strconv.FormatInt(id, 10))
+			}
+			details += ";failed_user_ids=" + sanitizeAuditDetailValue(strings.Join(ids, ","))
+		}
+		if len(mutationErr.FailedUserDetails) > 0 {
+			parts := make([]string, 0, len(mutationErr.FailedUserDetails))
+			for _, detail := range mutationErr.FailedUserDetails {
+				chunks := make([]string, 0, 3)
+				if detail.UserID > 0 {
+					chunks = append(chunks, "user_id:"+strconv.FormatInt(detail.UserID, 10))
+				}
+				if strings.TrimSpace(detail.Code) != "" {
+					chunks = append(chunks, "code:"+strings.TrimSpace(detail.Code))
+				}
+				if strings.TrimSpace(detail.Message) != "" {
+					chunks = append(chunks, "message:"+strings.TrimSpace(detail.Message))
+				}
+				if len(chunks) > 0 {
+					parts = append(parts, "{"+strings.Join(chunks, ", ")+"}")
+				}
+			}
+			if len(parts) > 0 {
+				details += ";failed_user_details=" + sanitizeAuditDetailValue(strings.Join(parts, ","))
+			}
+		}
+		return details
+	}
+	if err != nil {
+		details += ";error=" + sanitizeAuditDetailValue(err.Error())
+	}
+	return details
+}
+
+func sanitizeAuditDetailValue(value string) string {
+	return strings.NewReplacer(";", ",", "=", ":", "\n", " ", "\r", " ").Replace(strings.TrimSpace(value))
 }
 
 func (s *Service) hasSubscriptionForPayment(ctx context.Context, userID, connectorID, paymentID int64) (bool, error) {

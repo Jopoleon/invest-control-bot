@@ -180,16 +180,10 @@ func (c *Client) AddChatMembers(ctx context.Context, chatID int64, userIDs []int
 		return err
 	}
 	if !resp.Success {
-		if strings.TrimSpace(resp.Message) == "" {
-			return fmt.Errorf("add chat members returned success=false")
-		}
-		return fmt.Errorf("add chat members returned success=false: %s", strings.TrimSpace(resp.Message))
+		return newMutationError("add chat members returned success=false", resp)
 	}
 	if len(resp.FailedUserIDs) > 0 || len(resp.FailedUserDetails) > 0 {
-		if strings.TrimSpace(resp.Message) != "" {
-			return fmt.Errorf("add chat members returned partial failure: %s", strings.TrimSpace(resp.Message))
-		}
-		return fmt.Errorf("add chat members returned partial failure")
+		return newMutationError("add chat members returned partial failure", resp)
 	}
 	return nil
 }
@@ -214,12 +208,18 @@ func (c *Client) RemoveChatMember(ctx context.Context, chatID, userID int64, blo
 		return err
 	}
 	if !resp.Success {
-		if strings.TrimSpace(resp.Message) == "" {
-			return fmt.Errorf("remove chat member returned success=false")
-		}
-		return fmt.Errorf("remove chat member returned success=false: %s", strings.TrimSpace(resp.Message))
+		return newMutationError("remove chat member returned success=false", resp)
 	}
 	return nil
+}
+
+func newMutationError(operation string, resp mutationResponse) error {
+	return &MutationError{
+		Operation:         strings.TrimSpace(operation),
+		Message:           strings.TrimSpace(resp.Message),
+		FailedUserIDs:     append([]int64(nil), resp.FailedUserIDs...),
+		FailedUserDetails: append([]FailedUserDetail(nil), resp.FailedUserDetails...),
+	}
 }
 
 // SendMessage sends one text message to MAX user or group chat.

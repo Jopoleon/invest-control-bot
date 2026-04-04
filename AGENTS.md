@@ -252,6 +252,71 @@ Current payment-mode behavior:
 - bot payment-link text reflects the real provider mode now
 - production Robokassa should explicitly use `ROBOKASSA_IS_TEST_MODE=false`
 
+### Server Investigation Workflow
+
+When debugging prod behavior, prefer a reproducible SSH + `journalctl` + `psql` flow instead of guessing from local state.
+
+SSH entrypoint:
+- use the SSH alias `investcontrol-server`
+- standard shell check:
+```bash
+ssh investcontrol-server
+```
+
+Find the live systemd unit wiring first:
+```bash
+ssh investcontrol-server 'systemctl cat invest-control-bot'
+ssh investcontrol-server 'systemctl show invest-control-bot --property=WorkingDirectory,EnvironmentFile,ExecStart'
+```
+
+Current production layout usually resolves to:
+- working directory: `/home/investcontrol/apps/invest-control-bot/current`
+- env file: `/home/investcontrol/apps/invest-control-bot/shared/invest-control-bot.env`
+- binary: `/home/investcontrol/apps/invest-control-bot/current/invest-control-bot`
+
+Read service logs through journald:
+```bash
+ssh investcontrol-server 'journalctl -u invest-control-bot --since "30 min ago" --no-pager'
+ssh investcontrol-server 'journalctl -u invest-control-bot -f --no-pager'
+```
+
+For recurring incidents, the most useful patterns are:
+- `short-period rebill scheduler decision`
+- `robokassa rebill request`
+- `robokassa rebill response`
+- `stale pending rebill without callback`
+- `payment marked as paid`
+- `/payment/result`
+
+Read production Postgres directly on the server by sourcing the same env file the service uses:
+```bash
+cat <<'REMOTE' | ssh investcontrol-server bash -s
+set -a
+source /home/investcontrol/apps/invest-control-bot/shared/invest-control-bot.env
+set +a
+export PGPASSWORD="$DB_PASSWORD"
+psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USERNAME" -d "$DB_DATABASE" \
+  -c 'select current_database(), current_user, now();'
+REMOTE
+```
+
+Use the same pattern for larger read-only SQL blocks. This avoids relying on guessed DSNs or local tunnel state.
+
+Local prod MCP access is tunnel-based:
+- the repo may expose a local MCP target for production Postgres
+- that MCP usually expects a local SSH tunnel on `127.0.0.1:6543`
+- if the tunnel is down, MCP queries fail with `ECONNREFUSED 127.0.0.1:6543`
+
+Typical local tunnel pattern:
+```bash
+ssh -N -L 6543:<prod-db-host>:<prod-db-port> investcontrol-server
+```
+
+Important practical rule:
+- if MCP stops working, verify the tunnel first
+- if the tunnel is unavailable or suspicious, fall back to direct `ssh` + `psql` from the commands above
+- when investigating payment/subscription incidents, cross-check both journald timestamps and DB timestamps before making timing assumptions
+
 ## Docs To Keep In Sync
 
 When you make meaningful product or architecture changes, update the relevant docs:

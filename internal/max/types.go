@@ -1,6 +1,10 @@
 package max
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strconv"
+	"strings"
+)
 
 // GetUpdatesRequest mirrors MAX long-polling query parameters.
 type GetUpdatesRequest struct {
@@ -42,6 +46,55 @@ type FailedUserDetail struct {
 	UserID  int64  `json:"user_id"`
 	Message string `json:"message,omitempty"`
 	Code    string `json:"code,omitempty"`
+}
+
+// MutationError preserves structured failure details returned by MAX mutation
+// endpoints so callers can log and audit the exact reason instead of only a
+// flattened "success=false" error string.
+type MutationError struct {
+	Operation         string
+	Message           string
+	FailedUserIDs     []int64
+	FailedUserDetails []FailedUserDetail
+}
+
+func (e *MutationError) Error() string {
+	if e == nil {
+		return ""
+	}
+	parts := []string{e.Operation}
+	if strings.TrimSpace(e.Message) != "" {
+		parts = append(parts, strings.TrimSpace(e.Message))
+	}
+	if len(e.FailedUserIDs) > 0 {
+		ids := make([]string, 0, len(e.FailedUserIDs))
+		for _, id := range e.FailedUserIDs {
+			ids = append(ids, strconv.FormatInt(id, 10))
+		}
+		parts = append(parts, "failed_user_ids="+strings.Join(ids, ","))
+	}
+	if len(e.FailedUserDetails) > 0 {
+		details := make([]string, 0, len(e.FailedUserDetails))
+		for _, detail := range e.FailedUserDetails {
+			chunks := make([]string, 0, 3)
+			if detail.UserID > 0 {
+				chunks = append(chunks, "user_id="+strconv.FormatInt(detail.UserID, 10))
+			}
+			if strings.TrimSpace(detail.Code) != "" {
+				chunks = append(chunks, "code="+strings.TrimSpace(detail.Code))
+			}
+			if strings.TrimSpace(detail.Message) != "" {
+				chunks = append(chunks, "message="+strings.TrimSpace(detail.Message))
+			}
+			if len(chunks) > 0 {
+				details = append(details, "{"+strings.Join(chunks, ", ")+"}")
+			}
+		}
+		if len(details) > 0 {
+			parts = append(parts, "failed_user_details="+strings.Join(details, ","))
+		}
+	}
+	return strings.Join(parts, ": ")
 }
 
 // BotInfo is returned by GET /me and is enough for startup health checks.

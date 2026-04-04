@@ -291,6 +291,117 @@ func TestSendSubscriptionOverview_BuildsResolvedChannelText(t *testing.T) {
 	}
 }
 
+func TestSendSubscriptionOverview_SeparatesFutureRenewal(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	sender := &fakeSender{}
+	h := NewHandler(st, sender, nil, true, "https://investcontrol.example", "test-encryption-key-123456789012345")
+
+	connectorID := seedAutopayConnector(t, ctx, st, "future-renewal", "future-renewal")
+	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, "9108", "")
+	if err != nil {
+		t.Fatalf("get or create user by messenger: %v", err)
+	}
+	now := time.Now().UTC().Round(time.Second)
+
+	if err := st.CreatePayment(ctx, domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPaid,
+		Token:          "token-current",
+		UserID:         user.ID,
+		ConnectorID:    connectorID,
+		AmountRUB:      2300,
+		AutoPayEnabled: true,
+		CreatedAt:      now.Add(-2 * time.Hour),
+		UpdatedAt:      now.Add(-2 * time.Hour),
+	}); err != nil {
+		t.Fatalf("create current payment: %v", err)
+	}
+	if err := st.CreatePayment(ctx, domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPaid,
+		Token:          "token-future",
+		UserID:         user.ID,
+		ConnectorID:    connectorID,
+		AmountRUB:      2300,
+		AutoPayEnabled: true,
+		CreatedAt:      now.Add(-1 * time.Hour),
+		UpdatedAt:      now.Add(-1 * time.Hour),
+	}); err != nil {
+		t.Fatalf("create future payment: %v", err)
+	}
+
+	payments, err := st.ListPayments(ctx, domain.PaymentListQuery{UserID: user.ID, ConnectorID: connectorID, Limit: 10})
+	if err != nil {
+		t.Fatalf("list payments: %v", err)
+	}
+	if len(payments) != 2 {
+		t.Fatalf("payments len = %d, want 2", len(payments))
+	}
+
+	var currentPaymentID, futurePaymentID int64
+	for _, payment := range payments {
+		switch payment.Token {
+		case "token-current":
+			currentPaymentID = payment.ID
+		case "token-future":
+			futurePaymentID = payment.ID
+		}
+	}
+	if currentPaymentID == 0 || futurePaymentID == 0 {
+		t.Fatalf("payment IDs not resolved: current=%d future=%d", currentPaymentID, futurePaymentID)
+	}
+
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         user.ID,
+		ConnectorID:    connectorID,
+		PaymentID:      currentPaymentID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       now.Add(-30 * time.Minute),
+		EndsAt:         now.Add(90 * time.Minute),
+		CreatedAt:      now.Add(-30 * time.Minute),
+		UpdatedAt:      now.Add(-30 * time.Minute),
+	}); err != nil {
+		t.Fatalf("upsert current subscription: %v", err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         user.ID,
+		ConnectorID:    connectorID,
+		PaymentID:      futurePaymentID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       now.Add(90 * time.Minute),
+		EndsAt:         now.Add(3*time.Hour + 90*time.Minute),
+		CreatedAt:      now.Add(-15 * time.Minute),
+		UpdatedAt:      now.Add(-15 * time.Minute),
+	}); err != nil {
+		t.Fatalf("upsert future subscription: %v", err)
+	}
+
+	h.sendSubscriptionOverview(ctx, 9108, messenger.UserIdentity{Kind: messenger.KindTelegram, ID: 9108})
+
+	if len(sender.sent) != 1 {
+		t.Fatalf("sent messages = %d, want 1", len(sender.sent))
+	}
+	text := sender.sent[0].msg.Text
+	if !strings.Contains(text, botMenuSubscriptionHeader) {
+		t.Fatalf("text = %q", text)
+	}
+	if strings.Count(text, "• future-renewal") != 2 {
+		t.Fatalf("text = %q, want current and future sections", text)
+	}
+	if !strings.Contains(text, botMenuSubscriptionNextHeader) {
+		t.Fatalf("text = %q", text)
+	}
+	if !strings.Contains(text, "Ожидает начала:") {
+		t.Fatalf("text = %q", text)
+	}
+	if !strings.Contains(text, "Действует до:") {
+		t.Fatalf("text = %q", text)
+	}
+}
+
 func TestSendPaymentHistory_BuildsLatestPaymentsText(t *testing.T) {
 	ctx := context.Background()
 	st := memory.New()
