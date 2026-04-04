@@ -61,6 +61,10 @@ type loginPageData struct {
 type auditEventView struct {
 	CreatedAt             string
 	ActorType             string
+	ActorUserID           string
+	ActorAccount          string
+	ActorSubject          string
+	TargetUserID          string
 	TargetAccount         string
 	TargetMessengerKind   string
 	TargetMessengerUserID string

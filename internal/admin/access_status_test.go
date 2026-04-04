@@ -131,7 +131,7 @@ func TestBillingPage_RendersAccessAndRevokeOperationalStatuses(t *testing.T) {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "Доступ / revoke") {
+	if !strings.Contains(body, "Доступ / отзыв") {
 		t.Fatalf("response does not contain access/revoke column: %q", body)
 	}
 	if !strings.Contains(body, "доступ выдан") {

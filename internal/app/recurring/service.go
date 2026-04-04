@@ -194,27 +194,25 @@ func (s *Service) TriggerRebill(ctx context.Context, subscriptionID int64, sourc
 		if _, markErr := s.Store.UpdatePaymentFailed(ctx, pendingPayment.ID, "rebill_request_failed:"+rootRecurringPayment.Token, time.Now().UTC()); markErr != nil {
 			return RebillResult{}, errors.Join(ErrRebillRequestFailed, markErr)
 		}
-		_ = s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(
-			ctx,
+		s.saveAuditEvent(ctx,
 			subscription.UserID,
 			"",
 			subscription.ConnectorID,
 			domain.AuditActionRebillRequestFailed,
-			"subscription_id="+strconv.FormatInt(subscription.ID, 10)+";invoice_id="+invoiceID+";source="+source+";error="+err.Error(),
+			"subscription_id="+strconv.FormatInt(subscription.ID, 10)+";invoice_id="+invoiceID+";source="+source+";error="+trimRecurringAuditValue(err.Error()),
 			time.Now().UTC(),
-		))
+		)
 		return RebillResult{}, ErrRebillRequestFailed
 	}
 
-	_ = s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(
-		ctx,
+	s.saveAuditEvent(ctx,
 		subscription.UserID,
 		"",
 		subscription.ConnectorID,
 		domain.AuditActionRebillRequested,
 		"subscription_id="+strconv.FormatInt(subscription.ID, 10)+";invoice_id="+invoiceID+";parent="+rootRecurringPayment.Token+";source="+source,
 		now,
-	))
+	)
 
 	return RebillResult{OK: true, InvoiceID: invoiceID}, nil
 }
@@ -348,15 +346,22 @@ func (s *Service) ReportStalePendingRebill(ctx context.Context, sub domain.Subsc
 		"pending_age", now.Sub(pending.CreatedAt),
 		"ended_ago", now.Sub(sub.EndsAt),
 	)
-	_ = s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(
-		ctx,
-		sub.UserID,
-		"",
-		sub.ConnectorID,
-		domain.AuditActionRebillPendingStale,
-		details,
-		now,
-	))
+	s.saveAuditEvent(ctx, sub.UserID, "", sub.ConnectorID, domain.AuditActionRebillPendingStale, details, now)
+}
+
+func (s *Service) saveAuditEvent(ctx context.Context, userID int64, preferredMessengerUserID string, connectorID int64, action, details string, createdAt time.Time) {
+	if err := s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(ctx, userID, preferredMessengerUserID, connectorID, action, details, createdAt)); err != nil {
+		slog.Error("save audit event failed", "error", err, "action", action, "user_id", userID, "connector_id", connectorID)
+	}
+}
+
+func trimRecurringAuditValue(raw string) string {
+	value := strings.TrimSpace(raw)
+	value = strings.NewReplacer(";", ",", "=", ":").Replace(value)
+	if len(value) <= 240 {
+		return value
+	}
+	return value[:237] + "..."
 }
 
 func (s *Service) hasStalePendingAudit(ctx context.Context, sub domain.Subscription, paymentID int64) (bool, error) {

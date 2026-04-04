@@ -109,6 +109,10 @@
     }
     .link-stack a,
     .link-stack code {
+      display: block;
+      max-width: none;
+      overflow: visible;
+      text-overflow: clip;
       white-space: normal;
       word-break: break-all;
     }
@@ -161,7 +165,7 @@
   <article class="section-card">
     <div class="panel-head">
       <h3>{{index .I18N "connectors.create"}}</h3>
-      <span class="panel-kicker">Deeplink Tariffs</span>
+      <span class="panel-kicker">{{index .I18N "connectors.title"}}</span>
     </div>
     <form method="POST" action="/admin/connectors?lang={{.Lang}}" class="connector-form">
       <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
@@ -265,7 +269,7 @@
       <h3>{{index .I18N "connectors.table_title"}} ({{len .Connectors}})</h3>
       <div class="panel-actions">
         <a href="{{.ExportURL}}" role="button" class="secondary">{{index .I18N "common.export_csv"}}</a>
-        <span class="panel-kicker">Catalogue</span>
+        <span class="panel-kicker">{{index .I18N "common.catalogue"}}</span>
       </div>
     </div>
     <div class="table-wrap">

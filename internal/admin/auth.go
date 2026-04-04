@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -58,7 +59,13 @@ func (h *Handler) authorizedSession(w http.ResponseWriter, r *http.Request) (boo
 
 	tokenHash := hashSessionToken(rawToken)
 	session, found, err := h.store.GetAdminSessionByTokenHash(r.Context(), tokenHash)
-	if err != nil || !found {
+	if err != nil {
+		slog.Error("load admin session failed", "error", err)
+		h.clearAdminSessionCookie(w, r)
+		h.clearLegacyAdminTokenCookie(w, r)
+		return false, nil
+	}
+	if !found {
 		h.clearAdminSessionCookie(w, r)
 		h.clearLegacyAdminTokenCookie(w, r)
 		return false, nil
@@ -66,7 +73,9 @@ func (h *Handler) authorizedSession(w http.ResponseWriter, r *http.Request) (boo
 
 	now := time.Now().UTC()
 	if session.RevokedAt != nil || now.After(session.ExpiresAt) || now.After(session.LastSeenAt.Add(adminSessionIdleTTL)) {
-		_ = h.store.RevokeAdminSession(r.Context(), session.ID, now)
+		if err := h.store.RevokeAdminSession(r.Context(), session.ID, now); err != nil {
+			slog.Error("revoke expired admin session failed", "error", err, "session_id", session.ID)
+		}
 		h.logAdminAudit(r, domain.AuditActionAdminSessionRevoked, "session_expired")
 		h.clearAdminSessionCookie(w, r)
 		h.clearLegacyAdminTokenCookie(w, r)
@@ -80,9 +89,13 @@ func (h *Handler) authorizedSession(w http.ResponseWriter, r *http.Request) (boo
 			auth.rotatedTo = newToken
 			auth.rawToken = newToken
 			session.TokenHash = hashSessionToken(newToken)
+		} else {
+			slog.Error("rotate admin session failed", "error", err, "session_id", session.ID)
 		}
 	} else {
-		_ = h.store.TouchAdminSession(r.Context(), session.ID, now)
+		if err := h.store.TouchAdminSession(r.Context(), session.ID, now); err != nil {
+			slog.Error("touch admin session failed", "error", err, "session_id", session.ID)
+		}
 	}
 	if auth.rotatedTo != "" {
 		h.setAdminSessionCookie(w, r, auth.rotatedTo)
@@ -106,7 +119,9 @@ func (h *Handler) authorizedBearerToken(r *http.Request) bool {
 
 func (h *Handler) createAdminSession(w http.ResponseWriter, r *http.Request) error {
 	now := time.Now().UTC()
-	_ = h.store.CleanupAdminSessions(r.Context(), now)
+	if err := h.store.CleanupAdminSessions(r.Context(), now); err != nil {
+		slog.Error("cleanup admin sessions failed", "error", err)
+	}
 	rawToken := generateSessionToken()
 	if err := h.store.CreateAdminSession(r.Context(), domain.AdminSession{
 		TokenHash:  hashSessionToken(rawToken),
@@ -126,7 +141,9 @@ func (h *Handler) createAdminSession(w http.ResponseWriter, r *http.Request) err
 
 func (h *Handler) revokeCurrentAdminSession(w http.ResponseWriter, r *http.Request) {
 	if ok, auth := h.authorizedSession(w, r); ok && auth != nil {
-		_ = h.store.RevokeAdminSession(r.Context(), auth.session.ID, time.Now().UTC())
+		if err := h.store.RevokeAdminSession(r.Context(), auth.session.ID, time.Now().UTC()); err != nil {
+			slog.Error("revoke current admin session failed", "error", err, "session_id", auth.session.ID)
+		}
 		h.logAdminAudit(r, domain.AuditActionAdminSessionRevoked, "session_logout")
 	}
 	h.clearAdminSessionCookie(w, r)

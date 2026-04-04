@@ -145,13 +145,18 @@ func (h *Handler) exportEventsCSV(w http.ResponseWriter, r *http.Request) {
 
 	records := make([][]string, 0, len(rows)+1)
 	records = append(records, []string{
-		"id", "created_at", "actor_type", "target_messenger_kind", "target_messenger_user_id", "target_account", "connector_id", "connector", "action", "details",
+		"id", "created_at", "actor_type", "actor_user_id", "actor_messenger_kind", "actor_messenger_user_id", "actor_subject", "target_user_id", "target_messenger_kind", "target_messenger_user_id", "target_account", "connector_id", "connector", "action", "details",
 	})
 	for _, event := range rows {
 		records = append(records, []string{
 			strconv.FormatInt(event.ID, 10),
 			event.CreatedAt.In(time.Local).Format(time.RFC3339),
 			string(event.ActorType),
+			formatOptionalInt64(event.ActorUserID),
+			string(event.ActorMessengerKind),
+			event.ActorMessengerUserID,
+			event.ActorSubject,
+			formatOptionalInt64(event.TargetUserID),
 			string(event.TargetMessengerKind),
 			event.TargetMessengerUserID,
 			buildMessengerAccountDisplay(messengerKindLabel(h.resolveLang(w, r), event.TargetMessengerKind), event.TargetMessengerUserID, ""),

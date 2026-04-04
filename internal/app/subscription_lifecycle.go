@@ -228,19 +228,13 @@ func normalizeTelegramChatID(chatIDRaw string) (int64, bool) {
 }
 
 func (a *application) subscriptionLifecycleService() *appsubscriptions.Service {
-	return &appsubscriptions.Service{
-		Store:                 a.store,
-		TelegramClient:        a.telegramClient,
-		TelegramBotUsername:   a.config.Telegram.BotUsername,
-		ReminderDaysBeforeEnd: reminderDaysBeforeEnd,
-		ExpiryNoticeWindow:    expiryNoticeWindow,
-		SubscriptionJobLimit:  subscriptionJobLimit,
-		RemoveTelegramChatMember: func(ctx context.Context, chatID, userID int64) error {
-			if a.telegramClient == nil {
-				return nil
-			}
-			return a.telegramClient.RemoveChatMember(ctx, chatID, userID)
-		},
+	service := &appsubscriptions.Service{
+		Store:                       a.store,
+		TelegramClient:              a.telegramClient,
+		TelegramBotUsername:         a.config.Telegram.BotUsername,
+		ReminderDaysBeforeEnd:       reminderDaysBeforeEnd,
+		ExpiryNoticeWindow:          expiryNoticeWindow,
+		SubscriptionJobLimit:        subscriptionJobLimit,
 		SubscriptionReminderMessage: appSubscriptionReminderMessage,
 		SubscriptionExpiryMessage:   appSubscriptionExpiryNoticeMessage,
 		SubscriptionExpiredText:     appSubscriptionExpiredText,
@@ -251,4 +245,10 @@ func (a *application) subscriptionLifecycleService() *appsubscriptions.Service {
 		ResolvePreferredKind:        a.resolvePreferredMessengerKind,
 		ResolveTelegramAccount:      a.resolveTelegramMessengerAccount,
 	}
+	if a.telegramClient != nil {
+		service.RemoveTelegramChatMember = func(ctx context.Context, chatID, userID int64) error {
+			return a.telegramClient.RemoveChatMember(ctx, chatID, userID)
+		}
+	}
+	return service
 }

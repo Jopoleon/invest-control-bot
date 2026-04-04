@@ -47,10 +47,15 @@ func (a *application) sendUserNotification(ctx context.Context, userID int64, pr
 		return nil
 	}
 
-	telegramErr := a.telegramClient.Send(ctx, messenger.UserRef{
-		Kind:   messenger.KindTelegram,
-		ChatID: chatID,
-	}, msg)
+	var telegramErr error
+	if a.telegramClient == nil {
+		telegramErr = fmt.Errorf("telegram sender is not configured")
+	} else {
+		telegramErr = a.telegramClient.Send(ctx, messenger.UserRef{
+			Kind:   messenger.KindTelegram,
+			ChatID: chatID,
+		}, msg)
+	}
 	if telegramErr == nil {
 		return nil
 	}
@@ -172,6 +177,9 @@ func (a *application) sendViaMessengerAccount(ctx context.Context, account domai
 		}
 		return a.maxSender.Send(ctx, messenger.UserRef{Kind: messenger.KindMAX, UserID: externalID}, msg)
 	case domain.MessengerKindTelegram:
+		if a.telegramClient == nil {
+			return fmt.Errorf("telegram sender is not configured")
+		}
 		return a.telegramClient.Send(ctx, messenger.UserRef{Kind: messenger.KindTelegram, ChatID: externalID}, msg)
 	default:
 		return fmt.Errorf("unsupported messenger kind %q", account.MessengerKind)

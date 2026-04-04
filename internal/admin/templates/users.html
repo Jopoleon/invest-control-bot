@@ -82,7 +82,7 @@
   <article class="section-card filter-shell">
     <div class="panel-head">
       <h3>{{index .I18N "common.filters"}}</h3>
-      <span class="panel-kicker">Filters</span>
+      <span class="panel-kicker">{{index .I18N "common.filters"}}</span>
     </div>
     <form method="GET" action="/admin/users" class="filter-form">
       <div class="filter-grid is-two">
@@ -114,7 +114,7 @@
       <h3>{{index .I18N "users.title"}} ({{len .Users}})</h3>
       <div class="panel-actions">
         <a href="{{.ExportURL}}" role="button" class="secondary">{{index .I18N "common.export_csv"}}</a>
-        <span class="panel-kicker">Registry</span>
+        <span class="panel-kicker">{{index .I18N "common.registry"}}</span>
       </div>
     </div>
     <div class="table-wrap">

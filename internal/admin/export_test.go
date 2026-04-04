@@ -72,8 +72,8 @@ func TestExportEventsCSV_IncludesMessengerKindAndAccount(t *testing.T) {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "target_messenger_kind,target_messenger_user_id,target_account") {
-		t.Fatalf("csv header does not contain messenger-neutral target columns: %q", body)
+	if !strings.Contains(body, "actor_user_id,actor_messenger_kind,actor_messenger_user_id,actor_subject,target_user_id,target_messenger_kind,target_messenger_user_id,target_account") {
+		t.Fatalf("csv header does not contain full actor/target audit columns: %q", body)
 	}
 	if !strings.Contains(body, "max,193465776,MAX · 193465776") {
 		t.Fatalf("csv does not contain MAX target account summary: %q", body)

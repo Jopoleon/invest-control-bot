@@ -211,8 +211,67 @@
       overflow: hidden;
       background: rgba(255, 255, 255, .92);
     }
-    .gridjs-wrapper table td, .gridjs-wrapper table th { white-space: nowrap; }
-    .gridjs-wrapper table td:last-child { white-space: normal; }
+    #consentsGrid .gridjs-container,
+    #recurringConsentsGrid .gridjs-container,
+    #subsGrid .gridjs-container,
+    #paymentsGrid .gridjs-container,
+    #eventsGrid .gridjs-container { width: 100%; }
+    #consentsGrid table.gridjs-table,
+    #recurringConsentsGrid table.gridjs-table,
+    #subsGrid table.gridjs-table,
+    #paymentsGrid table.gridjs-table,
+    #eventsGrid table.gridjs-table {
+      width: 100%;
+      table-layout: auto;
+    }
+    #consentsGrid .gridjs-wrapper table th,
+    #consentsGrid .gridjs-wrapper table td,
+    #recurringConsentsGrid .gridjs-wrapper table th,
+    #recurringConsentsGrid .gridjs-wrapper table td,
+    #subsGrid .gridjs-wrapper table th,
+    #subsGrid .gridjs-wrapper table td,
+    #paymentsGrid .gridjs-wrapper table th,
+    #paymentsGrid .gridjs-wrapper table td,
+    #eventsGrid .gridjs-wrapper table th,
+    #eventsGrid .gridjs-wrapper table td {
+      white-space: normal;
+      vertical-align: top;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+    #consentsGrid .gridjs-wrapper table td:nth-child(2),
+    #consentsGrid .gridjs-wrapper table td:nth-child(4),
+    #recurringConsentsGrid .gridjs-wrapper table td:nth-child(2),
+    #subsGrid .gridjs-wrapper table td:nth-child(1),
+    #subsGrid .gridjs-wrapper table td:nth-child(2),
+    #subsGrid .gridjs-wrapper table td:nth-child(3),
+    #subsGrid .gridjs-wrapper table td:nth-child(5),
+    #subsGrid .gridjs-wrapper table td:nth-child(6),
+    #subsGrid .gridjs-wrapper table td:nth-child(7),
+    #subsGrid .gridjs-wrapper table td:nth-child(8),
+    #subsGrid .gridjs-wrapper table td:nth-child(9),
+    #paymentsGrid .gridjs-wrapper table td:nth-child(1),
+    #paymentsGrid .gridjs-wrapper table td:nth-child(3),
+    #paymentsGrid .gridjs-wrapper table td:nth-child(4),
+    #paymentsGrid .gridjs-wrapper table td:nth-child(6),
+    #paymentsGrid .gridjs-wrapper table td:nth-child(7),
+    #paymentsGrid .gridjs-wrapper table td:nth-child(8),
+    #paymentsGrid .gridjs-wrapper table td:nth-child(9),
+    #eventsGrid .gridjs-wrapper table td:nth-child(1) {
+      white-space: nowrap;
+    }
+    #consentsGrid .gridjs-wrapper table td:nth-child(1),
+    #recurringConsentsGrid .gridjs-wrapper table td:nth-child(1),
+    #subsGrid .gridjs-wrapper table td:nth-child(4),
+    #paymentsGrid .gridjs-wrapper table td:nth-child(5),
+    #eventsGrid .gridjs-wrapper table td:nth-child(2),
+    #eventsGrid .gridjs-wrapper table td:nth-child(3),
+    #eventsGrid .gridjs-wrapper table td:nth-child(4) {
+      min-width: 12rem;
+    }
+    #subsGrid .gridjs-wrapper table td:nth-child(10) {
+      min-width: 13rem;
+    }
     .gridjs-head {
       padding: .4rem .2rem .8rem;
     }
@@ -324,7 +383,7 @@
   <article class="section-card">
     <div class="section-head">
       <h3>{{index .I18N "users.detail.profile"}}</h3>
-      <span class="section-kicker">Profile</span>
+      <span class="section-kicker">{{index .I18N "users.detail.profile"}}</span>
     </div>
     <div class="summary-grid">
       <div class="summary-card">
@@ -357,7 +416,7 @@
   <article class="section-card">
     <div class="section-head">
       <h3>{{index .I18N "users.recurring.summary_title"}}</h3>
-      <span class="section-kicker">Recurring</span>
+      <span class="section-kicker">{{index .I18N "users.recurring.summary_title"}}</span>
     </div>
     <div class="profile-grid">
       <div class="profile-card">
@@ -394,7 +453,7 @@
   <article class="section-card">
     <div class="section-head">
       <h3>{{index .I18N "users.actions.title"}}</h3>
-      <span class="section-kicker">Operations</span>
+      <span class="section-kicker">{{index .I18N "users.actions.title"}}</span>
     </div>
     <div class="action-grid">
       <div class="action-card">
@@ -441,7 +500,7 @@
   <article class="section-card">
     <div class="section-head">
       <h3>{{index .I18N "users.detail.consents"}} ({{len .Consents}})</h3>
-      <span class="section-kicker">Legal</span>
+      <span class="section-kicker">{{index .I18N "common.legal"}}</span>
     </div>
     <div class="table-wrap">
       <div id="consentsGrid"></div>
@@ -474,7 +533,7 @@
   <article class="section-card">
     <div class="section-head">
       <h3>{{index .I18N "users.detail.recurring_consents"}} ({{len .RecurringConsents}})</h3>
-      <span class="section-kicker">Autopay</span>
+      <span class="section-kicker">{{index .I18N "common.autopay"}}</span>
     </div>
     <div class="table-wrap">
       <div id="recurringConsentsGrid"></div>
@@ -505,7 +564,7 @@
   <article class="section-card">
     <div class="section-head">
       <h3>{{index .I18N "users.detail.profile"}}</h3>
-      <span class="section-kicker">Contacts</span>
+      <span class="section-kicker">{{index .I18N "common.contacts"}}</span>
     </div>
     <div class="profile-grid">
       <div class="profile-card">
@@ -560,7 +619,7 @@
   <article class="section-card">
     <div class="section-head">
       <h3>{{index .I18N "users.detail.subscriptions"}} ({{len .Subscriptions}})</h3>
-      <span class="section-kicker">Access</span>
+      <span class="section-kicker">{{index .I18N "common.access"}}</span>
     </div>
     <div class="table-wrap">
       <div id="subsGrid"></div>
@@ -628,7 +687,7 @@
   <article class="section-card">
     <div class="section-head">
       <h3>{{index .I18N "users.detail.payments"}} ({{len .Payments}})</h3>
-      <span class="section-kicker">Money</span>
+      <span class="section-kicker">{{index .I18N "common.money"}}</span>
     </div>
     <div class="table-wrap">
       <div id="paymentsGrid"></div>
@@ -669,7 +728,7 @@
   <article class="section-card">
     <div class="section-head">
       <h3>{{index .I18N "users.detail.events"}} ({{len .Events}})</h3>
-      <span class="section-kicker">Audit</span>
+      <span class="section-kicker">{{index .I18N "common.audit"}}</span>
     </div>
     <div class="table-wrap">
       <div id="eventsGrid"></div>

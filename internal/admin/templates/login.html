@@ -18,7 +18,7 @@
 <body>
 <main class="container">
   <article class="section-card">
-    <span class="page-kicker" style="background:#edf4fb;color:#294866;">Admin Access</span>
+    <span class="page-kicker" style="background:#edf4fb;color:#294866;">{{index .I18N "login.title"}}</span>
     <h1 style="margin-top:.8rem;">{{index .I18N "login.title"}}</h1>
     <p>{{index .I18N "login.subtitle"}}</p>
     {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}

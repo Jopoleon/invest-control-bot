@@ -108,6 +108,7 @@ func (h *Handler) handlePay(ctx context.Context, cb messenger.IncomingAction) {
 	}
 	if err := h.sender.Send(ctx, recipientRef(cb.ChatID, cb.User), out); err != nil {
 		slog.Error("send pay link failed", "error", err, "connector_id", connectorID, "messenger_kind", cb.User.Kind, "messenger_user_id", cb.User.ID)
+		h.logAuditEvent(ctx, cb.User, connectorID, domain.AuditActionPayLinkSendFailed, "token="+token+";reason=notification_send_failed")
 		return
 	}
 	details := h.payment.ProviderName()

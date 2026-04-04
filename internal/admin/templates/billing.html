@@ -19,6 +19,52 @@
     .table-wrap { overflow: auto; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: .8rem; }
     #paymentsSource, #subsSource { display: none; }
+    #paymentsGrid .gridjs-container,
+    #subsGrid .gridjs-container { width: 100%; }
+    #paymentsGrid .gridjs-wrapper,
+    #subsGrid .gridjs-wrapper {
+      overflow: auto;
+      border-radius: .95rem;
+    }
+    #paymentsGrid table.gridjs-table,
+    #subsGrid table.gridjs-table {
+      width: 100%;
+      table-layout: auto;
+    }
+    #paymentsGrid .gridjs-wrapper table th,
+    #paymentsGrid .gridjs-wrapper table td,
+    #subsGrid .gridjs-wrapper table th,
+    #subsGrid .gridjs-wrapper table td {
+      white-space: normal;
+      vertical-align: top;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+    #paymentsGrid .gridjs-wrapper table td:nth-child(1),
+    #paymentsGrid .gridjs-wrapper table td:nth-child(2),
+    #paymentsGrid .gridjs-wrapper table td:nth-child(5),
+    #paymentsGrid .gridjs-wrapper table td:nth-child(6),
+    #paymentsGrid .gridjs-wrapper table td:nth-child(8),
+    #paymentsGrid .gridjs-wrapper table td:nth-child(10),
+    #paymentsGrid .gridjs-wrapper table td:nth-child(11),
+    #subsGrid .gridjs-wrapper table td:nth-child(1),
+    #subsGrid .gridjs-wrapper table td:nth-child(2),
+    #subsGrid .gridjs-wrapper table td:nth-child(4),
+    #subsGrid .gridjs-wrapper table td:nth-child(5),
+    #subsGrid .gridjs-wrapper table td:nth-child(7),
+    #subsGrid .gridjs-wrapper table td:nth-child(9),
+    #subsGrid .gridjs-wrapper table td:nth-child(10),
+    #subsGrid .gridjs-wrapper table td:nth-child(11) {
+      white-space: nowrap;
+    }
+    #paymentsGrid .gridjs-wrapper table td:nth-child(3),
+    #subsGrid .gridjs-wrapper table td:nth-child(3) {
+      min-width: 14rem;
+    }
+    #paymentsGrid .gridjs-wrapper table td:nth-child(7),
+    #subsGrid .gridjs-wrapper table td:nth-child(6) {
+      min-width: 12rem;
+    }
   </style>
 </head>
 <body>
@@ -35,7 +81,7 @@
   <article class="section-card filter-shell">
     <div class="panel-head">
       <h3>{{index .I18N "common.filters"}}</h3>
-      <span class="panel-kicker">Filters</span>
+      <span class="panel-kicker">{{index .I18N "common.filters"}}</span>
     </div>
     <form method="GET" action="/admin/billing" class="filter-form">
       <div class="filter-grid">
@@ -87,7 +133,7 @@
   <article class="section-card">
     <div class="panel-head">
       <h3>{{index .I18N "billing.summary.title"}}</h3>
-      <span class="panel-kicker">Summary</span>
+      <span class="panel-kicker">{{index .I18N "common.summary"}}</span>
     </div>
     <div class="metric-grid">
       <div class="metric-card">
@@ -116,7 +162,7 @@
   <article class="section-card">
     <div class="panel-head">
       <h3>{{index .I18N "billing.groups.title"}} ({{len .Groups}})</h3>
-      <span class="panel-kicker">Breakdown</span>
+      <span class="panel-kicker">{{index .I18N "common.breakdown"}}</span>
     </div>
     <div class="table-wrap">
       <table class="stat-table">
@@ -151,7 +197,7 @@
       <h3>{{index .I18N "billing.payments.title"}} ({{len .Payments}})</h3>
       <div class="panel-actions">
         <a href="{{.PaymentsExportURL}}" role="button" class="secondary">{{index .I18N "common.export_csv"}}</a>
-        <span class="panel-kicker">Transactions</span>
+        <span class="panel-kicker">{{index .I18N "billing.payments.title"}}</span>
       </div>
     </div>
     <div class="table-wrap">
@@ -198,7 +244,7 @@
       <h3>{{index .I18N "billing.subscriptions.title"}} ({{len .Subscriptions}})</h3>
       <div class="panel-actions">
         <a href="{{.SubscriptionsExportURL}}" role="button" class="secondary">{{index .I18N "common.export_csv"}}</a>
-        <span class="panel-kicker">Access Periods</span>
+        <span class="panel-kicker">{{index .I18N "billing.subscriptions.title"}}</span>
       </div>
     </div>
     <div class="table-wrap">

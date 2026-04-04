@@ -110,3 +110,13 @@ func trimAuditDetails(raw string, limit int) string {
 	}
 	return text[:limit-3] + "..."
 }
+
+func formatAuditDetail(key, value string, limit int) string {
+	key = strings.TrimSpace(key)
+	value = trimAuditDetails(value, limit)
+	value = strings.NewReplacer(";", ",", "=", ":", "\n", " ", "\r", " ").Replace(strings.TrimSpace(value))
+	if key == "" {
+		return value
+	}
+	return key + "=" + value
+}

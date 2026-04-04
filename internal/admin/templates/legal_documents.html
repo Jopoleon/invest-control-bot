@@ -21,8 +21,23 @@
     .legal-card small { display:block; margin-bottom: .35rem; color: var(--admin-muted); font-size: .74rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
     .legal-card a { word-break: break-all; }
     .table-wrap { overflow: auto; }
-    .legal-table { width: 100%; }
-    .legal-table td, .legal-table th { vertical-align: top; }
+    .legal-table { width: 100%; table-layout: auto; }
+    .legal-table td, .legal-table th {
+      vertical-align: top;
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+    }
+    .legal-table td:nth-child(1),
+    .legal-table td:nth-child(2),
+    .legal-table td:nth-child(3),
+    .legal-table td:nth-child(7),
+    .legal-table td:nth-child(8) {
+      white-space: nowrap;
+    }
+    .legal-table td:nth-child(4) { min-width: 12rem; }
+    .legal-table td:nth-child(6) { min-width: 14rem; }
+    .legal-table td:nth-child(9) { min-width: 13rem; }
     .legal-preview { max-width: 24rem; white-space: normal; color: var(--admin-muted); font-size: .9rem; }
     .legal-link { display: inline-flex; color: var(--admin-link); text-decoration: underline; word-break: break-all; }
     textarea[name="content"] { min-height: 11rem; }
@@ -59,7 +74,7 @@
     <article class="section-card">
       <div class="panel-head">
         <h3>{{if .Editing}}{{index .I18N "legal.edit"}}{{else}}{{index .I18N "legal.create"}}{{end}}</h3>
-        <span class="panel-kicker">Versioning</span>
+        <span class="panel-kicker">{{index .I18N "common.versioning"}}</span>
       </div>
       <form method="POST" action="{{.FormAction}}">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
@@ -105,7 +120,7 @@
         <h3>{{index .I18N "legal.table_title"}} ({{len .Documents}})</h3>
         <div class="panel-actions">
           <a href="{{.ExportURL}}" role="button" class="secondary">{{index .I18N "common.export_csv"}}</a>
-          <span class="panel-kicker">Registry</span>
+          <span class="panel-kicker">{{index .I18N "common.registry"}}</span>
         </div>
       </div>
       <div class="table-wrap">

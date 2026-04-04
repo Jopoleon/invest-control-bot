@@ -171,7 +171,11 @@ func (p *paymentRuntime) handlePaymentSuccess(w http.ResponseWriter, r *http.Req
 				connector = loadedConnector
 				connectorFound = true
 				channelURL = connector.AccessURL(messengerKindToDomain(p.resolvePreferredKindFn(r.Context(), paymentRow.UserID, "")))
+			} else if err != nil {
+				logStoreError("load connector for payment success page failed", err, "payment_id", paymentRow.ID, "connector_id", paymentRow.ConnectorID)
 			}
+		} else if err != nil {
+			logStoreError("load payment for payment success page failed", err, "inv_id", invID)
 		}
 	}
 	actions := []paymentPageAction{
@@ -216,7 +220,7 @@ func (p *paymentRuntime) handlePaymentFail(w http.ResponseWriter, r *http.Reques
 			if updated, err := p.store.UpdatePaymentFailed(r.Context(), paymentRow.ID, "robokassa:"+invID, time.Now().UTC()); err != nil {
 				logStoreError("mark payment failed failed", err, "payment_id", paymentRow.ID)
 			} else if updated {
-				_ = p.store.SaveAuditEvent(r.Context(), p.buildAppTargetAuditEvent(
+				if err := p.store.SaveAuditEvent(r.Context(), p.buildAppTargetAuditEvent(
 					r.Context(),
 					paymentRow.UserID,
 					"",
@@ -224,9 +228,13 @@ func (p *paymentRuntime) handlePaymentFail(w http.ResponseWriter, r *http.Reques
 					domain.AuditActionPaymentFailed,
 					"payment_id="+strconv.FormatInt(paymentRow.ID, 10),
 					time.Now().UTC(),
-				))
+				)); err != nil {
+					logAuditError(domain.AuditActionPaymentFailed, err)
+				}
 				p.notifyFailedRecurringPayment(r.Context(), paymentRow)
 			}
+		} else if err != nil {
+			logStoreError("load payment for payment fail handling failed", err, "inv_id", invID)
 		}
 	}
 	actions := []paymentPageAction{{Label: appPaymentActionReturnToBot, URL: firstNonEmpty(buildBotChatURL(p.telegramBotUsername), "https://t.me")}}
@@ -235,8 +243,12 @@ func (p *paymentRuntime) handlePaymentFail(w http.ResponseWriter, r *http.Reques
 			channelURL := ""
 			if connector, found, err := p.store.GetConnector(r.Context(), paymentRow.ConnectorID); err == nil && found {
 				channelURL = connector.AccessURL(messengerKindToDomain(p.resolvePreferredKindFn(r.Context(), paymentRow.UserID, "")))
+			} else if err != nil {
+				logStoreError("load connector for payment fail page failed", err, "payment_id", paymentRow.ID, "connector_id", paymentRow.ConnectorID)
 			}
 			actions = p.buildPaymentPageActions(r.Context(), paymentRow, channelURL, false)
+		} else if err != nil {
+			logStoreError("load payment for payment fail page failed", err, "inv_id", invID)
 		}
 	}
 	renderPaymentPage(w, paymentPageData{

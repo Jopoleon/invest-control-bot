@@ -2,6 +2,7 @@ package admin
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -56,13 +57,13 @@ func (h *Handler) sendUserMessage(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC()
 	if err := h.sendViaMessengerAccount(r.Context(), account, messenger.OutgoingMessage{Text: text}); err != nil {
-		h.logAdminTargetAuditForAccount(r, user, account, 0, domain.AuditActionAdminMessageSendFailed, err.Error())
+		h.logAdminTargetAuditForAccount(r, user, account, 0, domain.AuditActionAdminMessageSendFailed, formatAuditDetail("reason", err.Error(), 240))
 		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, err.Error())
 		return
 	}
 
 	_ = now
-	h.logAdminTargetAuditForAccount(r, user, account, 0, domain.AuditActionAdminMessageSent, trimAuditDetails(text, 500))
+	h.logAdminTargetAuditForAccount(r, user, account, 0, domain.AuditActionAdminMessageSent, formatAuditDetail("message_preview", text, 500))
 	h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.actions.message_sent"))
 }
 
@@ -133,13 +134,13 @@ func (h *Handler) sendUserPaymentLink(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	if err := h.sendViaMessengerAccount(r.Context(), account, msg); err != nil {
 		_ = now
-		h.logAdminTargetAuditForAccount(r, user, account, connector.ID, domain.AuditActionAdminPaymentLinkSendFailed, err.Error())
+		h.logAdminTargetAuditForAccount(r, user, account, connector.ID, domain.AuditActionAdminPaymentLinkSendFailed, formatAuditDetail("reason", err.Error(), 240))
 		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, err.Error())
 		return
 	}
 
 	_ = now
-	h.logAdminTargetAuditForAccount(r, user, account, connector.ID, domain.AuditActionAdminPaymentLinkSent, "subscription_id="+strconv.FormatInt(subID, 10)+",connector_id="+strconv.FormatInt(connectorID, 10))
+	h.logAdminTargetAuditForAccount(r, user, account, connector.ID, domain.AuditActionAdminPaymentLinkSent, "subscription_id="+strconv.FormatInt(subID, 10)+";connector_id="+strconv.FormatInt(connectorID, 10))
 	h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.actions.paylink_sent"))
 }
 
@@ -207,7 +208,7 @@ func (h *Handler) revokeSubscription(w http.ResponseWriter, r *http.Request) {
 		if chatID, ok := normalizeAdminTelegramChatID(connector.ChatID); ok {
 			if err := h.tg.RemoveChatMember(r.Context(), chatID, telegramID); err != nil {
 				_ = now
-				h.logAdminTargetAudit(r, user, sub.ConnectorID, domain.AuditActionAdminSubscriptionRevokeFailed, fmt.Sprintf("subscription_id=%d", sub.ID))
+				h.logAdminTargetAudit(r, user, sub.ConnectorID, domain.AuditActionAdminSubscriptionRevokeFailed, fmt.Sprintf("subscription_id=%d;reason=remove_chat_member_failed", sub.ID))
 			} else {
 				_ = now
 				h.logAdminTargetAudit(r, user, sub.ConnectorID, domain.AuditActionAdminSubscriptionRevokedChat, fmt.Sprintf("subscription_id=%d", sub.ID))
@@ -227,7 +228,9 @@ func (h *Handler) revokeSubscription(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	_ = h.tg.SendMessage(r.Context(), telegramID, notifyText, keyboard)
+	if err := h.tg.SendMessage(r.Context(), telegramID, notifyText, keyboard); err != nil {
+		slog.Error("send admin revoke notification failed", "error", err, "subscription_id", sub.ID, "user_id", user.ID)
+	}
 	_ = now
 	h.logAdminTargetAudit(r, user, sub.ConnectorID, domain.AuditActionAdminSubscriptionRevoked, fmt.Sprintf("subscription_id=%d", sub.ID))
 

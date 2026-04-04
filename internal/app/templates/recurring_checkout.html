@@ -344,7 +344,7 @@
           <span class="eyebrow">Подписка с автосписанием</span>
           <div>
             <h1>{{.ConnectorName}}</h1>
-            {{if .ConnectorDesc}}<p class="lead">{{.ConnectorDesc}}</p>{{else}}<p class="lead">Оформление регулярной подписки с ежемесячной оплатой и сохранением непрерывного доступа.</p>{{end}}
+            {{if .ConnectorDesc}}<p class="lead">{{.ConnectorDesc}}</p>{{else}}<p class="lead">Оформление подписки с автоматическими списаниями и сохранением непрерывного доступа.</p>{{end}}
           </div>
 
           {{if .HelperNote}}<div class="warning">{{.HelperNote}}</div>{{end}}
@@ -417,8 +417,8 @@
           </div>
 
           <div class="warnings">
-            {{if not .HasRecurringDocs}}<div class="warning">Для полноценного recurring-flow должны быть опубликованы активные версии оферты и пользовательского соглашения.</div>{{end}}
-            {{if .RecurringDisabled}}<div class="warning">Интерфейс автоплатежа подготовлен. Реальное включение recurring зависит от активации услуги магазином Robokassa.</div>{{end}}
+            {{if not .HasRecurringDocs}}<div class="warning">Для полноценного сценария автоплатежа должны быть опубликованы активные версии оферты и пользовательского соглашения.</div>{{end}}
+            {{if .RecurringDisabled}}<div class="warning">Интерфейс автоплатежа подготовлен. Фактическое подключение автоматических списаний зависит от активации услуги магазином Robokassa.</div>{{end}}
           </div>
         </aside>
       </div>

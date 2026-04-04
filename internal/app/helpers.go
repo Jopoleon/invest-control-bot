@@ -15,9 +15,36 @@ import (
 
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		slog.Info("http request", "method", r.Method, "path", r.URL.Path, "remote", r.RemoteAddr)
-		next.ServeHTTP(w, r)
+		start := time.Now()
+		lw := &loggingResponseWriter{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(lw, r)
+		slog.Info("http request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", lw.status,
+			"duration_ms", time.Since(start).Milliseconds(),
+			"remote", r.RemoteAddr,
+			"user_agent", trimLogValue(r.UserAgent(), 256),
+			"request_id", strings.TrimSpace(r.Header.Get("X-Request-Id")),
+		)
 	})
+}
+
+type loggingResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *loggingResponseWriter) WriteHeader(statusCode int) {
+	w.status = statusCode
+	w.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (w *loggingResponseWriter) Write(data []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return w.ResponseWriter.Write(data)
 }
 
 func resolveConnectorChannelURL(channelURL, chatID string) string {
@@ -135,4 +162,15 @@ func logWarn(msg string, args ...any) {
 
 func logDebug(msg string, args ...any) {
 	slog.Debug(msg, args...)
+}
+
+func trimLogValue(raw string, limit int) string {
+	value := strings.TrimSpace(raw)
+	if limit <= 0 || len(value) <= limit {
+		return value
+	}
+	if limit <= 3 {
+		return value[:limit]
+	}
+	return value[:limit-3] + "..."
 }

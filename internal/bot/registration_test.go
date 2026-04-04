@@ -347,6 +347,47 @@ func TestHandlePay_WithExplicitRecurringOptInCreatesRecurringConsent(t *testing.
 	}
 }
 
+func TestHandlePay_SendFailureWritesAudit(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	sender := &failingSender{}
+	robokassa := payment.NewRobokassaService(payment.RobokassaConfig{
+		MerchantLogin: "test-merchant",
+		Password1:     "test-pass1",
+		Password2:     "test-pass2",
+		IsTest:        true,
+		BaseURL:       "https://auth.robokassa.ru/Merchant/Index.aspx",
+	})
+	h := NewHandler(st, sender, robokassa, false, "http://localhost:8080", "test-encryption-key-123456789012345")
+
+	connectorID := seedBotConnector(t, ctx, st, "in-pay-send-fail")
+
+	h.handlePay(ctx, testAction("cb-send-fail", 1015, "", "pay:"+int64ToString(connectorID)))
+
+	user, found, err := st.GetUser(ctx, 1015)
+	if err != nil {
+		t.Fatalf("get user: %v", err)
+	}
+	if !found {
+		t.Fatalf("user not found")
+	}
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{TargetUserID: user.ID, Page: 1, PageSize: 50})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if got := countAuditEvents(events, domain.AuditActionPaymentCreated); got != 1 {
+		t.Fatalf("payment_created count = %d, want 1", got)
+	}
+	if got := countAuditEvents(events, domain.AuditActionPayLinkSendFailed); got != 1 {
+		t.Fatalf("pay_link_send_failed count = %d, want 1", got)
+	}
+	if got := countAuditEvents(events, domain.AuditActionPayLinkSent); got != 0 {
+		t.Fatalf("pay_link_sent count = %d, want 0", got)
+	}
+}
+
 func TestHandlePay_WithExplicitManualModeOverridesStoredAutopay(t *testing.T) {
 	t.Helper()
 
@@ -398,6 +439,16 @@ func TestHandlePay_WithExplicitManualModeOverridesStoredAutopay(t *testing.T) {
 	if len(consents) != 0 {
 		t.Fatalf("recurring consents len = %d, want 0", len(consents))
 	}
+}
+
+func countAuditEvents(events []domain.AuditEvent, action string) int {
+	total := 0
+	for _, event := range events {
+		if event.Action == action {
+			total++
+		}
+	}
+	return total
 }
 
 func seedBotConnector(t *testing.T, ctx context.Context, st *memory.Store, payload string) int64 {

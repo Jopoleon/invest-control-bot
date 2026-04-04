@@ -12,6 +12,7 @@ const (
 	AuditActionPayClicked                    = "pay_clicked"
 	AuditActionPaymentCreated                = "payment_created"
 	AuditActionPayLinkSent                   = "pay_link_sent"
+	AuditActionPayLinkSendFailed             = "pay_link_send_failed"
 	AuditActionMenuSubscriptionOpened        = "menu_subscription_opened"
 	AuditActionMenuPaymentsOpened            = "menu_payments_opened"
 	AuditActionMenuAutoPayOpened             = "menu_autopay_opened"

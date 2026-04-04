@@ -2,6 +2,7 @@ package subscriptions
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
@@ -20,6 +21,8 @@ const (
 	subscriptionRevokeRetryBackoffFirst     = 5 * time.Minute
 	subscriptionRevokeRetryBackoffFollowing = 30 * time.Minute
 )
+
+var errTelegramClientNotConfigured = errors.New("telegram client is not configured")
 
 // Service owns subscription lifecycle use cases at the app layer.
 //
@@ -77,7 +80,7 @@ func (s *Service) ProcessSubscriptionReminders(ctx context.Context) {
 		if err := s.Store.MarkSubscriptionReminderSent(ctx, sub.ID, now); err != nil {
 			slog.Error("mark subscription reminder sent failed", "error", err, "subscription_id", sub.ID)
 		}
-		_ = s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionReminderSent, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
+		s.saveAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionReminderSent, "subscription_id="+strconv.FormatInt(sub.ID, 10), now)
 	}
 }
 
@@ -112,7 +115,7 @@ func (s *Service) ProcessSubscriptionExpiryNotices(ctx context.Context) {
 		if err := s.Store.MarkSubscriptionExpiryNoticeSent(ctx, sub.ID, now); err != nil {
 			slog.Error("mark subscription expiry notice sent failed", "error", err, "subscription_id", sub.ID)
 		}
-		_ = s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionExpiryNoticeSent, "subscription_id="+strconv.FormatInt(sub.ID, 10), now))
+		s.saveAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionExpiryNoticeSent, "subscription_id="+strconv.FormatInt(sub.ID, 10), now)
 	}
 }
 
@@ -145,7 +148,7 @@ func (s *Service) ProcessExpiredSubscriptions(ctx context.Context) {
 			// sending an "access lost" notification or revoking chat access from
 			// the already-renewed user.
 			expiredAuditDetails += ";replacement_active=true"
-			_ = s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(ctx, sub.UserID, "", sub.ConnectorID, domain.AuditActionSubscriptionExpired, expiredAuditDetails, now))
+			s.saveAuditEvent(ctx, sub.UserID, "", sub.ConnectorID, domain.AuditActionSubscriptionExpired, expiredAuditDetails, now)
 			continue
 		}
 
@@ -166,7 +169,7 @@ func (s *Service) ProcessExpiredSubscriptions(ctx context.Context) {
 		if err := s.SendUserNotification(ctx, sub.UserID, preferredMessengerUserID, msg); err != nil {
 			slog.Error("send subscription expired message failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "preferred_messenger_user_id", preferredMessengerUserID)
 		}
-		_ = s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionExpired, expiredAuditDetails, now))
+		s.saveAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionSubscriptionExpired, expiredAuditDetails, now)
 	}
 }
 
@@ -367,7 +370,11 @@ func (s *Service) attemptTelegramRevoke(ctx context.Context, sub domain.Subscrip
 
 	if err := s.removeTelegramChatMember(ctx, chatID, telegramID); err != nil {
 		slog.Error("remove chat member failed", "error", err, "subscription_id", sub.ID, "messenger_user_id", telegramID, "chat_id", chatID)
-		return s.saveSubscriptionRevokeEvent(ctx, sub, preferredMessengerUserID, domain.AuditActionSubscriptionRevokeFailed, buildSubscriptionRevokeFailureDetails(sub.ID, attempt, source, "remove_chat_member_failed"), now), true
+		reason := "remove_chat_member_failed"
+		if errors.Is(err, errTelegramClientNotConfigured) {
+			reason = "telegram_client_not_configured"
+		}
+		return s.saveSubscriptionRevokeEvent(ctx, sub, preferredMessengerUserID, domain.AuditActionSubscriptionRevokeFailed, buildSubscriptionRevokeFailureDetails(sub.ID, attempt, source, reason), now), true
 	}
 	return s.saveSubscriptionRevokeEvent(ctx, sub, preferredMessengerUserID, domain.AuditActionSubscriptionRevokedFromChat, buildSubscriptionRevokeSuccessDetails(sub.ID, attempt, source), now), true
 }
@@ -401,10 +408,16 @@ func (s *Service) removeTelegramChatMember(ctx context.Context, chatID, userID i
 	if s.RemoveTelegramChatMember != nil {
 		return s.RemoveTelegramChatMember(ctx, chatID, userID)
 	}
-	if s.TelegramClient == nil {
-		return nil
+	if s.TelegramClient == nil || !s.TelegramClient.Enabled() {
+		return errTelegramClientNotConfigured
 	}
 	return s.TelegramClient.RemoveChatMember(ctx, chatID, userID)
+}
+
+func (s *Service) saveAuditEvent(ctx context.Context, userID int64, preferredMessengerUserID string, connectorID int64, action, details string, createdAt time.Time) {
+	if err := s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(ctx, userID, preferredMessengerUserID, connectorID, action, details, createdAt)); err != nil {
+		slog.Error("save audit event failed", "error", err, "action", action, "user_id", userID, "connector_id", connectorID)
+	}
 }
 
 func (s *Service) saveSubscriptionRevokeEvent(ctx context.Context, sub domain.Subscription, preferredMessengerUserID, action, details string, createdAt time.Time) domain.AuditEvent {

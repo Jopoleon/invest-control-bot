@@ -255,6 +255,47 @@ func TestProcessExpiredSubscriptions_WritesRetryableRevokeFailureAudit(t *testin
 	}
 }
 
+func TestProcessExpiredSubscriptions_WithoutTelegramClient_WritesRevokeFailureAudit(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+
+	connectorID := seedConnector(t, ctx, st, "in-lifecycle-expire-no-tg-client")
+	subscriptionID := seedActiveSubscription(t, ctx, st, connectorID, 880204, "sub-expire-no-tg-client", time.Now().UTC().Add(-1*time.Minute))
+	appCtx := &application{
+		config: config.Config{Telegram: config.TelegramConfig{BotUsername: "test_bot"}},
+		store:  st,
+	}
+
+	processExpiredSubscriptions(ctx, appCtx)
+
+	sub, found, err := st.GetSubscriptionByID(ctx, subscriptionID)
+	if err != nil {
+		t.Fatalf("get subscription: %v", err)
+	}
+	if !found {
+		t.Fatalf("subscription not found")
+	}
+	if sub.Status != domain.SubscriptionStatusExpired {
+		t.Fatalf("subscription status = %s, want %s", sub.Status, domain.SubscriptionStatusExpired)
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionRevokedFromChat); got != 0 {
+		t.Fatalf("subscription_revoked_from_chat count = %d, want 0", got)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionRevokeFailed); got != 1 {
+		t.Fatalf("subscription_revoke_failed count = %d, want 1", got)
+	}
+	if details := findAuditEventDetails(events, domain.AuditActionSubscriptionRevokeFailed); !strings.Contains(details, "reason=telegram_client_not_configured") {
+		t.Fatalf("subscription_revoke_failed details=%q want telegram_client_not_configured", details)
+	}
+}
+
 func TestProcessSubscriptionRevokeRetries_MarksManualCheckAfterRetryExhaustion(t *testing.T) {
 	t.Helper()
 

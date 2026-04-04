@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -70,7 +71,7 @@ func (h *Handler) buildAutopayCancelURL(telegramID int64) string {
 }
 
 func (h *Handler) logAdminAudit(r *http.Request, action, details string) {
-	_ = h.store.SaveAuditEvent(r.Context(), domain.AuditEvent{
+	h.saveAuditEvent(r.Context(), domain.AuditEvent{
 		ActorType:    domain.AuditActorTypeAdmin,
 		ActorSubject: "admin_panel",
 		Action:       action,
@@ -99,8 +100,22 @@ func (h *Handler) logAdminTargetAuditForAccount(r *http.Request, user domain.Use
 	} else if telegramID, _, found, err := h.resolveTelegramIdentity(r.Context(), user.ID); err == nil && found {
 		event.TargetMessengerKind = domain.MessengerKindTelegram
 		event.TargetMessengerUserID = strconv.FormatInt(telegramID, 10)
+	} else if err != nil {
+		slog.Warn("resolve telegram identity for admin audit failed", "error", err, "target_user_id", user.ID, "action", action)
 	}
-	_ = h.store.SaveAuditEvent(r.Context(), event)
+	h.saveAuditEvent(r.Context(), event)
+}
+
+func (h *Handler) saveAuditEvent(ctx context.Context, event domain.AuditEvent) {
+	if err := h.store.SaveAuditEvent(ctx, event); err != nil {
+		slog.Error("save admin audit event failed",
+			"error", err,
+			"action", event.Action,
+			"actor_type", event.ActorType,
+			"target_user_id", event.TargetUserID,
+			"connector_id", event.ConnectorID,
+		)
+	}
 }
 
 // Register mounts admin routes into the shared application router.

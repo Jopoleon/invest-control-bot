@@ -25,6 +25,11 @@ type Client struct {
 	bot     *tgbot.Bot
 }
 
+// Enabled reports whether the client is configured for real Telegram API calls.
+func (c *Client) Enabled() bool {
+	return c != nil && c.enabled
+}
+
 // NewClient creates Telegram API client; empty token enables dry-run mode for local testing.
 func NewClient(botToken, webhookSecret string) (*Client, error) {
 	if botToken == "" {

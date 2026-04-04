@@ -135,6 +135,10 @@ func (h *Handler) eventsPage(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, auditEventView{
 			CreatedAt:             event.CreatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
 			ActorType:             string(event.ActorType),
+			ActorUserID:           formatOptionalInt64(event.ActorUserID),
+			ActorAccount:          buildMessengerAccountDisplay(messengerKindLabel(lang, event.ActorMessengerKind), event.ActorMessengerUserID, ""),
+			ActorSubject:          event.ActorSubject,
+			TargetUserID:          formatOptionalInt64(event.TargetUserID),
 			TargetAccount:         buildMessengerAccountDisplay(messengerKindLabel(lang, event.TargetMessengerKind), event.TargetMessengerUserID, ""),
 			TargetMessengerKind:   string(event.TargetMessengerKind),
 			TargetMessengerUserID: event.TargetMessengerUserID,
@@ -168,6 +172,13 @@ func (h *Handler) eventsPage(w http.ResponseWriter, r *http.Request) {
 	data.NextURL = buildEventsPageURL(base, data.Page+1)
 
 	h.renderer.render(w, "events.html", data)
+}
+
+func formatOptionalInt64(v int64) string {
+	if v <= 0 {
+		return ""
+	}
+	return strconv.FormatInt(v, 10)
 }
 
 func parseDateAtLocalStart(raw string) (time.Time, bool) {
