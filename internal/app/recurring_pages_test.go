@@ -211,6 +211,78 @@ func TestRecurringCancelPage_SendsConfirmationViaMAX(t *testing.T) {
 	}
 }
 
+func TestRecurringCancelPage_ShowsCurrentAndFutureSubscriptionsSeparately(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	connectorID := seedConnector(t, ctx, st, "in-cancel-current-future")
+	userID := seedTelegramUser(t, ctx, st, 91003)
+	now := time.Now().UTC()
+
+	seedPayment(t, ctx, st, domain.Payment{Provider: "robokassa", Status: domain.PaymentStatusPaid, Token: "cancel-split-1", UserID: userID, ConnectorID: connectorID, AmountRUB: 2322, AutoPayEnabled: true, CreatedAt: now, UpdatedAt: now})
+	parentPayment, found, err := st.GetPaymentByToken(ctx, "cancel-split-1")
+	if err != nil || !found {
+		t.Fatalf("GetPaymentByToken found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         userID,
+		ConnectorID:    connectorID,
+		PaymentID:      parentPayment.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       now.Add(-time.Hour),
+		EndsAt:         now.Add(time.Hour),
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}); err != nil {
+		t.Fatalf("UpsertSubscriptionByPayment current: %v", err)
+	}
+
+	seedPayment(t, ctx, st, domain.Payment{Provider: "robokassa", Status: domain.PaymentStatusPaid, Token: "cancel-split-2", UserID: userID, ConnectorID: connectorID, AmountRUB: 2322, AutoPayEnabled: true, CreatedAt: now, UpdatedAt: now})
+	futurePayment, found, err := st.GetPaymentByToken(ctx, "cancel-split-2")
+	if err != nil || !found {
+		t.Fatalf("GetPaymentByToken future found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:         userID,
+		ConnectorID:    connectorID,
+		PaymentID:      futurePayment.ID,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       now.Add(time.Hour),
+		EndsAt:         now.Add(2 * time.Hour),
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}); err != nil {
+		t.Fatalf("UpsertSubscriptionByPayment future: %v", err)
+	}
+
+	token, err := recurringlink.BuildCancelToken("test-encryption-key-12345678901234567890", 91003, now.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("build cancel token: %v", err)
+	}
+
+	handler := testRecurringPagesHandler(t, st)
+	req := httptest.NewRequest(http.MethodGet, "/unsubscribe/"+token, nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "Следующий период") {
+		t.Fatalf("body does not contain future section: %q", body)
+	}
+	if !strings.Contains(body, "Ожидает начала") {
+		t.Fatalf("body does not contain future start label: %q", body)
+	}
+	if !strings.Contains(body, "<strong>2</strong>") {
+		t.Fatalf("body does not contain autopay count for current+future periods: %q", body)
+	}
+	if !strings.Contains(body, "<small>Активных доступов</small>") || !strings.Contains(body, "<strong>1</strong>") {
+		t.Fatalf("body does not contain active access count for current period only: %q", body)
+	}
+}
+
 func TestRecurringCancelPage_ShowsReturnToMAXBotLink(t *testing.T) {
 	ctx := context.Background()
 	st := memory.New()

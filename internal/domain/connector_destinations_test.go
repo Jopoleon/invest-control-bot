@@ -56,3 +56,42 @@ func TestConnectorDeliveryMessengerKind(t *testing.T) {
 		})
 	}
 }
+
+func TestConnectorResolvedTelegramChatRef(t *testing.T) {
+	tests := []struct {
+		name      string
+		connector Connector
+		want      string
+	}{
+		{
+			name: "prefers explicit numeric chat id",
+			connector: Connector{
+				ChatID:     "1001234567890",
+				ChannelURL: "https://t.me/testtestinvest",
+			},
+			want: "-1001234567890",
+		},
+		{
+			name: "falls back to public telegram url",
+			connector: Connector{
+				ChannelURL: "https://t.me/testtestinvest",
+			},
+			want: "@testtestinvest",
+		},
+		{
+			name: "parses internal c link when only url is set",
+			connector: Connector{
+				ChannelURL: "https://t.me/c/3626584986/12",
+			},
+			want: "-1003626584986",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.connector.ResolvedTelegramChatRef(); got != tt.want {
+				t.Fatalf("ResolvedTelegramChatRef()=%q want=%q", got, tt.want)
+			}
+		})
+	}
+}

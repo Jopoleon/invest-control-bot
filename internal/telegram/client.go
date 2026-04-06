@@ -19,6 +19,14 @@ type BotInfo struct {
 	FirstName string
 }
 
+// ChatInfo is a compact Telegram chat identity returned by getChat lookups.
+type ChatInfo struct {
+	ID       int64
+	Username string
+	Title    string
+	Type     string
+}
+
 // Client wraps go-telegram/bot and provides minimal operations used by business logic.
 type Client struct {
 	enabled bool
@@ -64,6 +72,31 @@ func (c *Client) Ping(ctx context.Context) (BotInfo, error) {
 		ID:        me.ID,
 		Username:  me.Username,
 		FirstName: me.FirstName,
+	}, nil
+}
+
+// ResolveChat looks up Telegram chat metadata by numeric id or public @username.
+func (c *Client) ResolveChat(ctx context.Context, chatRef string) (ChatInfo, error) {
+	if !c.enabled {
+		slog.Debug("telegram client disabled, skip getChat", "chat_ref", chatRef)
+		return ChatInfo{}, nil
+	}
+	ref := strings.TrimSpace(chatRef)
+	if ref == "" {
+		return ChatInfo{}, fmt.Errorf("getChat requires chat_ref")
+	}
+	chat, err := c.bot.GetChat(ctx, &tgbot.GetChatParams{ChatID: ref})
+	if err != nil {
+		return ChatInfo{}, err
+	}
+	if chat == nil {
+		return ChatInfo{}, nil
+	}
+	return ChatInfo{
+		ID:       chat.ID,
+		Username: chat.Username,
+		Title:    chat.Title,
+		Type:     string(chat.Type),
 	}, nil
 }
 
@@ -216,20 +249,24 @@ func (c *Client) EnsureDefaultMenu(ctx context.Context) error {
 }
 
 // RemoveChatMember removes user from chat and immediately unbans them so they can rejoin later.
-func (c *Client) RemoveChatMember(ctx context.Context, chatID, userID int64) error {
+func (c *Client) RemoveChatMember(ctx context.Context, chatRef string, userID int64) error {
 	if !c.enabled {
-		slog.Debug("telegram client disabled, skip removeChatMember", "chat_id", chatID, "user_id", userID)
+		slog.Debug("telegram client disabled, skip removeChatMember", "chat_ref", chatRef, "user_id", userID)
 		return nil
 	}
+	ref := strings.TrimSpace(chatRef)
+	if ref == "" {
+		return fmt.Errorf("removeChatMember requires chat_ref")
+	}
 	_, err := c.bot.BanChatMember(ctx, &tgbot.BanChatMemberParams{
-		ChatID: chatID,
+		ChatID: ref,
 		UserID: userID,
 	})
 	if err != nil {
 		return err
 	}
 	_, err = c.bot.UnbanChatMember(ctx, &tgbot.UnbanChatMemberParams{
-		ChatID:       chatID,
+		ChatID:       ref,
 		UserID:       userID,
 		OnlyIfBanned: true,
 	})
@@ -237,14 +274,18 @@ func (c *Client) RemoveChatMember(ctx context.Context, chatID, userID int64) err
 }
 
 // CreateSingleUseInviteLink returns a one-time Telegram invite link for the target chat.
-func (c *Client) CreateSingleUseInviteLink(ctx context.Context, chatID int64, name string, expireAt time.Time) (string, error) {
+func (c *Client) CreateSingleUseInviteLink(ctx context.Context, chatRef string, name string, expireAt time.Time) (string, error) {
 	if !c.enabled {
-		slog.Debug("telegram client disabled, skip createSingleUseInviteLink", "chat_id", chatID)
+		slog.Debug("telegram client disabled, skip createSingleUseInviteLink", "chat_ref", chatRef)
 		return "", nil
+	}
+	ref := strings.TrimSpace(chatRef)
+	if ref == "" {
+		return "", fmt.Errorf("createSingleUseInviteLink requires chat_ref")
 	}
 
 	params := &tgbot.CreateChatInviteLinkParams{
-		ChatID:      chatID,
+		ChatID:      ref,
 		Name:        strings.TrimSpace(name),
 		MemberLimit: 1,
 	}

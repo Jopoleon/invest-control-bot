@@ -151,6 +151,7 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data.Subscriptions = make([]subscriptionView, 0, len(subs))
+	now := time.Now().UTC()
 	for _, s := range subs {
 		accountPresentation, err := resolveAccountPresentation(s.UserID)
 		if err != nil {
@@ -164,7 +165,7 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 			h.renderer.render(w, "billing.html", data)
 			return
 		}
-		statusLabel, statusClass := subscriptionStatusBadge(lang, s.Status)
+		statusLabel, statusClass := subscriptionStatusBadgeAt(lang, s, now)
 		autoPayLabel, autoPayClass := autoPayBadge(lang, s.AutoPayEnabled, true)
 		accessLabel, accessClass := buildSubscriptionAccessStatus(lang, s, events)
 		data.Subscriptions = append(data.Subscriptions, subscriptionView{
@@ -188,12 +189,12 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	data.Summary, data.Groups = buildBillingSummary(payments, subs, connectorNames)
+	data.Summary, data.Groups = buildBillingSummary(payments, subs, connectorNames, now)
 
 	h.renderer.render(w, "billing.html", data)
 }
 
-func buildBillingSummary(payments []domain.Payment, subs []domain.Subscription, connectorNames map[int64]string) (billingSummaryView, []billingGroupView) {
+func buildBillingSummary(payments []domain.Payment, subs []domain.Subscription, connectorNames map[int64]string, now time.Time) (billingSummaryView, []billingGroupView) {
 	summary := billingSummaryView{
 		TotalPayments: len(payments),
 	}
@@ -217,7 +218,7 @@ func buildBillingSummary(payments []domain.Payment, subs []domain.Subscription, 
 	}
 
 	for _, sub := range subs {
-		if sub.Status != domain.SubscriptionStatusActive {
+		if !sub.IsCurrentActiveAt(now) {
 			continue
 		}
 		summary.ActiveSubscriptions++

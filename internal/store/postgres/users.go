@@ -234,8 +234,8 @@ func (s *Store) ListUsers(ctx context.Context, query domain.UserListQuery) ([]do
 		LEFT JOIN (
 			SELECT
 				user_id,
-				BOOL_OR(auto_pay_enabled) FILTER (WHERE status = 'active') AS auto_pay_enabled,
-				COUNT(*) FILTER (WHERE status = 'active') > 0 AS has_active_subscriptions
+				BOOL_OR(auto_pay_enabled) FILTER (WHERE status = 'active' AND starts_at <= NOW() AND ends_at > NOW()) AS auto_pay_enabled,
+				COUNT(*) FILTER (WHERE status = 'active' AND starts_at <= NOW() AND ends_at > NOW()) > 0 AS has_active_subscriptions
 			FROM subscriptions
 			GROUP BY user_id
 		) sub_summary ON sub_summary.user_id = u.id

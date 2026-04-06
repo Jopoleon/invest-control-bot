@@ -92,6 +92,45 @@ func TestBillingPage_ShowsPrimaryMessengerInsteadOfTelegramID(t *testing.T) {
 	}
 }
 
+func TestBuildBillingSummary_CountsOnlyCurrentActiveSubscriptions(t *testing.T) {
+	now := time.Now().UTC()
+	summary, groups := buildBillingSummary(nil, []domain.Subscription{
+		{
+			ID:          1,
+			ConnectorID: 10,
+			Status:      domain.SubscriptionStatusActive,
+			StartsAt:    now.Add(-time.Hour),
+			EndsAt:      now.Add(time.Hour),
+		},
+		{
+			ID:          2,
+			ConnectorID: 10,
+			Status:      domain.SubscriptionStatusActive,
+			StartsAt:    now.Add(time.Hour),
+			EndsAt:      now.Add(2 * time.Hour),
+		},
+	}, map[int64]string{10: "Test"}, now)
+
+	if summary.ActiveSubscriptions != 1 {
+		t.Fatalf("summary.ActiveSubscriptions = %d, want 1", summary.ActiveSubscriptions)
+	}
+	if len(groups) != 1 || groups[0].ActiveSubscriptions != 1 {
+		t.Fatalf("groups = %+v, want one current active subscription", groups)
+	}
+}
+
+func TestSubscriptionStatusBadgeAt_FutureActiveUsesNextPeriodLabel(t *testing.T) {
+	now := time.Now().UTC()
+	label, className := subscriptionStatusBadgeAt("ru", domain.Subscription{
+		Status:   domain.SubscriptionStatusActive,
+		StartsAt: now.Add(time.Hour),
+		EndsAt:   now.Add(2 * time.Hour),
+	}, now)
+	if label != "следующий период" || className != "is-accent" {
+		t.Fatalf("subscriptionStatusBadgeAt() = (%q,%q), want (следующий период,is-accent)", label, className)
+	}
+}
+
 func TestChurnPage_ShowsMessengerNeutralUserSummary(t *testing.T) {
 	ctx := context.Background()
 	st := memory.New()

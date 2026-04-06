@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
@@ -17,17 +18,17 @@ func (a *application) buildTelegramPaymentAccessLink(ctx context.Context, userID
 		return "", nil
 	}
 
-	chatID, ok := normalizeTelegramChatID(connector.ChatID)
-	if !ok {
+	chatRef := connector.ResolvedTelegramChatRef()
+	if strings.TrimSpace(chatRef) == "" {
 		return "", nil
 	}
 
 	// Single-use links are safer than exposing the chat/channel URL after payment.
 	inviteName := fmt.Sprintf("paid-u%d-c%d", userID, connector.ID)
 	expireAt := time.Now().UTC().Add(24 * time.Hour)
-	link, err := a.telegramClient.CreateSingleUseInviteLink(ctx, chatID, inviteName, expireAt)
+	link, err := a.telegramClient.CreateSingleUseInviteLink(ctx, chatRef, inviteName, expireAt)
 	if err != nil {
-		return "", fmt.Errorf("create single-use invite link for chat_id=%s: %w", connector.ChatID, err)
+		return "", fmt.Errorf("create single-use invite link for chat_ref=%s: %w", chatRef, err)
 	}
 	return link, nil
 }

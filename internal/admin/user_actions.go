@@ -205,8 +205,8 @@ func (h *Handler) revokeSubscription(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if connectorFound {
-		if chatID, ok := normalizeAdminTelegramChatID(connector.ChatID); ok {
-			if err := h.tg.RemoveChatMember(r.Context(), chatID, telegramID); err != nil {
+		if chatRef := connector.ResolvedTelegramChatRef(); chatRef != "" {
+			if err := h.tg.RemoveChatMember(r.Context(), chatRef, telegramID); err != nil {
 				_ = now
 				h.logAdminTargetAudit(r, user, sub.ConnectorID, domain.AuditActionAdminSubscriptionRevokeFailed, fmt.Sprintf("subscription_id=%d;reason=remove_chat_member_failed", sub.ID))
 			} else {

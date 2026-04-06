@@ -121,8 +121,9 @@ func (h *Handler) listAutopayOptions(ctx context.Context, userIdentity messenger
 		slog.Error("list subscriptions for autopay options failed", "error", err, "messenger_kind", userIdentity.Kind, "messenger_user_id", userIdentity.ID)
 		return nil
 	}
-	options := make([]autopayOption, 0, len(subs))
-	for _, sub := range subs {
+	manageableSubs := subscriptionsForAutopayMenu(subs, time.Now().UTC())
+	options := make([]autopayOption, 0, len(manageableSubs))
+	for _, sub := range manageableSubs {
 		connector, found, err := h.store.GetConnector(ctx, sub.ConnectorID)
 		if err != nil || !found {
 			continue
@@ -140,6 +141,14 @@ func (h *Handler) listAutopayOptions(ctx context.Context, userIdentity messenger
 		})
 	}
 	return options
+}
+
+func subscriptionsForAutopayMenu(subs []domain.Subscription, now time.Time) []domain.Subscription {
+	current, future := splitCurrentAndFutureSubscriptions(subs, now)
+	if len(current) > 0 {
+		return current
+	}
+	return future
 }
 
 func (h *Handler) showAutopaySubscriptionChooser(ctx context.Context, cb messenger.IncomingAction) {

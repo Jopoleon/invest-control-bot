@@ -47,7 +47,7 @@ type Service struct {
 	ReminderDaysBeforeEnd       int
 	ExpiryNoticeWindow          time.Duration
 	SubscriptionJobLimit        int
-	RemoveTelegramChatMember    func(context.Context, int64, int64) error
+	RemoveTelegramChatMember    func(context.Context, string, int64) error
 	RemoveMAXChatMember         func(context.Context, int64, int64) error
 	SubscriptionReminderMessage func(time.Time) string
 	SubscriptionExpiryMessage   func(time.Time) string
@@ -162,8 +162,8 @@ func (s *Service) ProcessExpiredSubscriptions(ctx context.Context) {
 			deliveryKind = connector.DeliveryMessengerKind(messengerKindToDomain(preferredKind))
 		}
 		if connectorFound && deliveryKind == domain.MessengerKindTelegram {
-			if chatID, ok := normalizeTelegramChatID(connector.ChatID); ok {
-				sameTelegramChatAccessActive = s.hasOtherActiveTelegramAccessForChat(ctx, sub, chatID, now)
+			if chatRef := connector.ResolvedTelegramChatRef(); chatRef != "" {
+				sameTelegramChatAccessActive = s.hasOtherActiveTelegramAccessForChat(ctx, sub, chatRef, now)
 			}
 		} else if connectorFound && deliveryKind == domain.MessengerKindMAX {
 			if chatID, ok := connector.ResolvedMAXChatID(); ok {
@@ -197,8 +197,8 @@ func (s *Service) ProcessExpiredSubscriptions(ctx context.Context) {
 		if connectorFound {
 			switch deliveryKind {
 			case domain.MessengerKindTelegram:
-				if chatID, ok := normalizeTelegramChatID(connector.ChatID); ok {
-					s.attemptTelegramRevoke(ctx, sub, preferredMessengerUserID, chatID, now, "expiry_job")
+				if chatRef := connector.ResolvedTelegramChatRef(); chatRef != "" {
+					s.attemptTelegramRevoke(ctx, sub, preferredMessengerUserID, chatRef, now, "expiry_job")
 				}
 			case domain.MessengerKindMAX:
 				if chatID, ok := connector.ResolvedMAXChatID(); ok {
@@ -251,11 +251,13 @@ func (s *Service) ProcessFailedSubscriptionRevokes(ctx context.Context) {
 		}
 		chatID := int64(0)
 		chatOK := false
+		telegramChatRef := ""
 		deliveryKind := connector.DeliveryMessengerKind(messengerKindToDomain(preferredKind))
 		switch deliveryKind {
 		case domain.MessengerKindTelegram:
-			chatID, chatOK = normalizeTelegramChatID(connector.ChatID)
-			if chatOK && s.hasOtherActiveTelegramAccessForChat(ctx, sub, chatID, now) {
+			telegramChatRef = connector.ResolvedTelegramChatRef()
+			chatOK = strings.TrimSpace(telegramChatRef) != ""
+			if chatOK && s.hasOtherActiveTelegramAccessForChat(ctx, sub, telegramChatRef, now) {
 				continue
 			}
 		case domain.MessengerKindMAX:
@@ -309,7 +311,7 @@ func (s *Service) ProcessFailedSubscriptionRevokes(ctx context.Context) {
 		)
 		switch deliveryKind {
 		case domain.MessengerKindTelegram:
-			event, attempted = s.attemptTelegramRevoke(ctx, sub, "", chatID, now, "retry_job")
+			event, attempted = s.attemptTelegramRevoke(ctx, sub, "", telegramChatRef, now, "retry_job")
 		case domain.MessengerKindMAX:
 			event, attempted = s.attemptMAXRevoke(ctx, sub, "", chatID, now, "retry_job")
 		}
@@ -419,7 +421,7 @@ func subscriptionRevokeRetryDelay(failureCount int) time.Duration {
 	return subscriptionRevokeRetryBackoffFollowing
 }
 
-func (s *Service) attemptTelegramRevoke(ctx context.Context, sub domain.Subscription, preferredMessengerUserID string, chatID int64, now time.Time, source string) (domain.AuditEvent, bool) {
+func (s *Service) attemptTelegramRevoke(ctx context.Context, sub domain.Subscription, preferredMessengerUserID, chatRef string, now time.Time, source string) (domain.AuditEvent, bool) {
 	attempt := s.nextSubscriptionRevokeAttempt(ctx, sub)
 	account, found, err := s.ResolveTelegramAccount(ctx, sub.UserID)
 	if err != nil {
@@ -437,8 +439,8 @@ func (s *Service) attemptTelegramRevoke(ctx context.Context, sub domain.Subscrip
 		return s.saveSubscriptionRevokeEvent(ctx, sub, preferredMessengerUserID, domain.AuditActionSubscriptionRevokeFailed, buildSubscriptionRevokeFailureDetails(sub.ID, attempt, source, "invalid_telegram_account_id"), now), true
 	}
 
-	if err := s.removeTelegramChatMember(ctx, chatID, telegramID); err != nil {
-		slog.Error("remove chat member failed", "error", err, "subscription_id", sub.ID, "messenger_user_id", telegramID, "chat_id", chatID)
+	if err := s.removeTelegramChatMember(ctx, chatRef, telegramID); err != nil {
+		slog.Error("remove chat member failed", "error", err, "subscription_id", sub.ID, "messenger_user_id", telegramID, "chat_ref", chatRef)
 		reason := "remove_chat_member_failed"
 		if errors.Is(err, errTelegramClientNotConfigured) {
 			reason = "telegram_client_not_configured"
@@ -505,14 +507,14 @@ func (s *Service) nextSubscriptionRevokeAttempt(ctx context.Context, sub domain.
 	return attempt + 1
 }
 
-func (s *Service) removeTelegramChatMember(ctx context.Context, chatID, userID int64) error {
+func (s *Service) removeTelegramChatMember(ctx context.Context, chatRef string, userID int64) error {
 	if s.RemoveTelegramChatMember != nil {
-		return s.RemoveTelegramChatMember(ctx, chatID, userID)
+		return s.RemoveTelegramChatMember(ctx, chatRef, userID)
 	}
 	if s.TelegramClient == nil || !s.TelegramClient.Enabled() {
 		return errTelegramClientNotConfigured
 	}
-	return s.TelegramClient.RemoveChatMember(ctx, chatID, userID)
+	return s.TelegramClient.RemoveChatMember(ctx, chatRef, userID)
 }
 
 func (s *Service) removeMAXChatMember(ctx context.Context, chatID, userID int64) error {
@@ -610,25 +612,25 @@ func (s *Service) hasActiveReplacementSubscription(ctx context.Context, sub doma
 	if !found || latestSub.ID == sub.ID {
 		return false
 	}
-	return latestSub.Status == domain.SubscriptionStatusActive && latestSub.EndsAt.After(now)
+	return latestSub.IsCurrentActiveAt(now)
 }
 
 // hasOtherActiveTelegramAccessForChat reports whether the user already has
 // another active subscription that grants access to the same Telegram chat.
 // This prevents false "access lost" handling when the user renewed access via
 // a different connector that points to the same destination.
-func (s *Service) hasOtherActiveTelegramAccessForChat(ctx context.Context, sub domain.Subscription, chatID int64, now time.Time) bool {
+func (s *Service) hasOtherActiveTelegramAccessForChat(ctx context.Context, sub domain.Subscription, chatRef string, now time.Time) bool {
 	subs, err := s.Store.ListSubscriptions(ctx, domain.SubscriptionListQuery{
 		UserID: sub.UserID,
 		Status: domain.SubscriptionStatusActive,
 		Limit:  200,
 	})
 	if err != nil {
-		slog.Error("list active subscriptions for telegram chat replacement failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "chat_id", chatID)
+		slog.Error("list active subscriptions for telegram chat replacement failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "chat_ref", chatRef)
 		return false
 	}
 	for _, candidate := range subs {
-		if candidate.ID == sub.ID || !candidate.EndsAt.After(now) {
+		if candidate.ID == sub.ID || !candidate.IsCurrentActiveAt(now) {
 			continue
 		}
 		connector, found, err := s.Store.GetConnector(ctx, candidate.ConnectorID)
@@ -639,8 +641,8 @@ func (s *Service) hasOtherActiveTelegramAccessForChat(ctx context.Context, sub d
 		if !found {
 			continue
 		}
-		candidateChatID, ok := normalizeTelegramChatID(connector.ChatID)
-		if ok && candidateChatID == chatID {
+		candidateChatRef := connector.ResolvedTelegramChatRef()
+		if candidateChatRef != "" && candidateChatRef == chatRef {
 			return true
 		}
 	}
@@ -658,7 +660,7 @@ func (s *Service) hasOtherActiveMAXAccessForChat(ctx context.Context, sub domain
 		return false
 	}
 	for _, candidate := range subs {
-		if candidate.ID == sub.ID || !candidate.EndsAt.After(now) {
+		if candidate.ID == sub.ID || !candidate.IsCurrentActiveAt(now) {
 			continue
 		}
 		connector, found, err := s.Store.GetConnector(ctx, candidate.ConnectorID)

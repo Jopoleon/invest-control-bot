@@ -373,6 +373,42 @@
                   <p>Сейчас у вас нет активных подписок, для которых требуется отключение автоплатежа. Если доступ еще действует, значит автосписания по нему уже остановлены.</p>
                 </article>
               {{end}}
+
+              {{if .FutureSubscriptions}}
+                <article class="sub">
+                  <h2>Следующий период</h2>
+                  <p>Эти подписки уже созданы в системе, но еще не начались. Их можно отличить от текущего оплаченного периода по дате начала.</p>
+                </article>
+                {{range .FutureSubscriptions}}
+                  <article class="sub">
+                    <h2>{{.Name}}</h2>
+                    <p>Для этого следующего периода можно заранее остановить новые автосписания. Уже оплаченный текущий доступ сохранится до даты окончания активного периода.</p>
+                    <div class="sub-meta">
+                      <div>
+                        <small>Стоимость</small>
+                        <strong>{{.PriceRUB}} ₽</strong>
+                      </div>
+                      <div>
+                        <small>Период</small>
+                        <strong>{{.PeriodLabel}}</strong>
+                      </div>
+                      <div>
+                        <small>Ожидает начала</small>
+                        <strong>{{.StartsAtLabel}}</strong>
+                      </div>
+                      <div>
+                        <small>Доступ будет до</small>
+                        <strong>{{.EndsAtLabel}}</strong>
+                      </div>
+                    </div>
+                    {{if .ChannelURL}}<p>Канал: <a href="{{.ChannelURL}}" target="_blank" rel="noreferrer">{{.ChannelURL}}</a></p>{{end}}
+                    <form method="post" style="margin-top:10px;">
+                      <input type="hidden" name="subscription_id" value="{{.SubscriptionID}}">
+                      <button type="submit">Остановить автосписания по этому периоду</button>
+                    </form>
+                  </article>
+                {{end}}
+              {{end}}
             </div>
             {{if gt .OtherSubscriptions 0}}<p class="footnote">Другие активные подписки без автоплатежа не показаны на этой странице, потому что отключение на них не влияет.</p>{{end}}
           {{end}}

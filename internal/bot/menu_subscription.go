@@ -83,13 +83,10 @@ func splitCurrentAndFutureSubscriptions(subs []domain.Subscription, now time.Tim
 	current := make([]domain.Subscription, 0, len(subs))
 	future := make([]domain.Subscription, 0, len(subs))
 	for _, sub := range subs {
-		if sub.Status != domain.SubscriptionStatusActive {
-			continue
-		}
 		switch {
-		case sub.StartsAt.After(now):
+		case sub.IsFutureActiveAt(now):
 			future = append(future, sub)
-		case sub.EndsAt.After(now):
+		case sub.IsCurrentActiveAt(now):
 			current = append(current, sub)
 		}
 	}

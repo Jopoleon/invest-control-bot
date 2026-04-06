@@ -79,6 +79,7 @@ type CancelPageData struct {
 	AutoPayCount        int
 	ActiveAccessCount   int
 	ActiveSubscriptions []CancelSubscriptionView
+	FutureSubscriptions []CancelSubscriptionView
 	OtherSubscriptions  int
 }
 
@@ -420,7 +421,7 @@ func (s *Service) BuildCancelPageData(ctx context.Context, token string, messeng
 		return data, 500
 	}
 
-	data.ActiveAccessCount = len(subs)
+	now := time.Now().UTC()
 	account := domain.UserMessengerAccount{}
 	if userName, accountLabel, resolvedAccount := s.resolveRecurringCancelUserIdentity(ctx, subs, messengerUserID); userName != "" || accountLabel != "" {
 		data.UserName = userName
@@ -430,6 +431,7 @@ func (s *Service) BuildCancelPageData(ctx context.Context, token string, messeng
 	}
 
 	data.ActiveSubscriptions = make([]CancelSubscriptionView, 0, len(subs))
+	data.FutureSubscriptions = make([]CancelSubscriptionView, 0, len(subs))
 	for _, sub := range subs {
 		connector, ok, err := s.Store.GetConnector(ctx, sub.ConnectorID)
 		if err != nil || !ok {
@@ -439,7 +441,7 @@ func (s *Service) BuildCancelPageData(ctx context.Context, token string, messeng
 			data.OtherSubscriptions++
 			continue
 		}
-		data.ActiveSubscriptions = append(data.ActiveSubscriptions, CancelSubscriptionView{
+		view := CancelSubscriptionView{
 			SubscriptionID: sub.ID,
 			Name:           connector.Name,
 			PriceRUB:       connector.PriceRUB,
@@ -447,10 +449,19 @@ func (s *Service) BuildCancelPageData(ctx context.Context, token string, messeng
 			StartsAtLabel:  sub.StartsAt.In(time.Local).Format("02.01.2006 15:04"),
 			EndsAtLabel:    sub.EndsAt.In(time.Local).Format("02.01.2006 15:04"),
 			ChannelURL:     connector.AccessURL(account.MessengerKind),
-		})
+		}
+		switch {
+		case sub.IsFutureActiveAt(now):
+			data.FutureSubscriptions = append(data.FutureSubscriptions, view)
+		case sub.IsCurrentActiveAt(now):
+			data.ActiveSubscriptions = append(data.ActiveSubscriptions, view)
+		default:
+			data.OtherSubscriptions++
+		}
 	}
-	data.AutoPayCount = len(data.ActiveSubscriptions)
-	data.AutoPayEnabled = len(data.ActiveSubscriptions) > 0
+	data.ActiveAccessCount = len(data.ActiveSubscriptions)
+	data.AutoPayCount = len(data.ActiveSubscriptions) + len(data.FutureSubscriptions)
+	data.AutoPayEnabled = data.AutoPayCount > 0
 	return data, 200
 }
 

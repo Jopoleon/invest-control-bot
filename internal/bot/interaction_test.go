@@ -133,6 +133,22 @@ func TestDisableAutopayForSubscription_OnlyTouchesTargetSubscription(t *testing.
 	}
 }
 
+func TestSubscriptionsForAutopayMenu_FallsBackToFutureWhenNoCurrentPeriod(t *testing.T) {
+	now := time.Now().UTC()
+	future := domain.Subscription{
+		ID:             23,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       now.Add(30 * time.Minute),
+		EndsAt:         now.Add(3*time.Hour + 30*time.Minute),
+	}
+
+	got := subscriptionsForAutopayMenu([]domain.Subscription{future}, now)
+	if len(got) != 1 || got[0].ID != future.ID {
+		t.Fatalf("subscriptionsForAutopayMenu() = %+v, want future fallback", got)
+	}
+}
+
 func messengerMessage(userID int64, username string, chatID int64, text string) messenger.IncomingMessage {
 	return messenger.IncomingMessage{
 		User:   userIdentity(userID, username),
@@ -399,6 +415,29 @@ func TestSendSubscriptionOverview_SeparatesFutureRenewal(t *testing.T) {
 	}
 	if !strings.Contains(text, "Действует до:") {
 		t.Fatalf("text = %q", text)
+	}
+}
+
+func TestSubscriptionsForAutopayMenu_PrefersCurrentPeriodOverFutureRenewal(t *testing.T) {
+	now := time.Now().UTC()
+	current := domain.Subscription{
+		ID:        1,
+		Status:    domain.SubscriptionStatusActive,
+		StartsAt:  now.Add(-time.Hour),
+		EndsAt:    now.Add(time.Hour),
+		UpdatedAt: now,
+	}
+	future := domain.Subscription{
+		ID:        2,
+		Status:    domain.SubscriptionStatusActive,
+		StartsAt:  now.Add(time.Hour),
+		EndsAt:    now.Add(2 * time.Hour),
+		UpdatedAt: now,
+	}
+
+	got := subscriptionsForAutopayMenu([]domain.Subscription{future, current}, now)
+	if len(got) != 1 || got[0].ID != current.ID {
+		t.Fatalf("subscriptionsForAutopayMenu() = %+v, want current only", got)
 	}
 }
 

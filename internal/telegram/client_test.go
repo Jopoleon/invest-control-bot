@@ -43,10 +43,13 @@ func TestClient_DisabledModeSkipsNetworkCalls(t *testing.T) {
 	if err := client.EnsureDefaultMenu(context.Background()); err != nil {
 		t.Fatalf("EnsureDefaultMenu: %v", err)
 	}
-	if err := client.RemoveChatMember(context.Background(), -1001, 123); err != nil {
+	if _, err := client.ResolveChat(context.Background(), "@test_channel"); err != nil {
+		t.Fatalf("ResolveChat: %v", err)
+	}
+	if err := client.RemoveChatMember(context.Background(), "@test_channel", 123); err != nil {
 		t.Fatalf("RemoveChatMember: %v", err)
 	}
-	link, err := client.CreateSingleUseInviteLink(context.Background(), -1001, "one-shot", time.Now().Add(time.Hour))
+	link, err := client.CreateSingleUseInviteLink(context.Background(), "@test_channel", "one-shot", time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatalf("CreateSingleUseInviteLink: %v", err)
 	}

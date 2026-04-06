@@ -9,6 +9,7 @@ import (
 	"time"
 
 	apppayments "github.com/Jopoleon/invest-control-bot/internal/app/payments"
+	appsubscriptions "github.com/Jopoleon/invest-control-bot/internal/app/subscriptions"
 	"github.com/Jopoleon/invest-control-bot/internal/config"
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
 	"github.com/Jopoleon/invest-control-bot/internal/messenger"
@@ -211,6 +212,67 @@ func TestProcessExpiredSubscriptions_TelegramWritesRevokeAudit(t *testing.T) {
 	}
 }
 
+func TestProcessExpiredSubscriptions_TelegramUsesChannelURLChatRefForRevoke(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-url-only-telegram-revoke",
+		Name:          "telegram-url-only",
+		ChannelURL:    "https://t.me/testtestinvest",
+		PriceRUB:      100,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 300,
+		IsActive:      true,
+		CreatedAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateConnector: %v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-url-only-telegram-revoke")
+	if err != nil || !found {
+		t.Fatalf("GetConnectorByStartPayload found=%v err=%v", found, err)
+	}
+	subscriptionID := seedActiveSubscription(t, ctx, st, connector.ID, 880212, "sub-expire-telegram-url-only", time.Now().UTC().Add(-1*time.Minute))
+	svc := &appsubscriptions.Service{
+		Store:                st,
+		ResolvePreferredKind: func(context.Context, int64, string) messenger.Kind { return messenger.KindTelegram },
+		ResolveTelegramAccount: func(context.Context, int64) (domain.UserMessengerAccount, bool, error) {
+			return domain.UserMessengerAccount{MessengerKind: domain.MessengerKindTelegram, MessengerUserID: "880212"}, true, nil
+		},
+		RemoveTelegramChatMember: func(_ context.Context, chatRef string, userID int64) error {
+			if chatRef != "@testtestinvest" || userID != 880212 {
+				t.Fatalf("remove chat ref/user = (%s,%d), want (@testtestinvest,880212)", chatRef, userID)
+			}
+			return nil
+		},
+		SendUserNotification: func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil },
+		BuildTargetAuditEvent: func(_ context.Context, userID int64, preferredMessengerUserID string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
+			return domain.AuditEvent{
+				ActorType:             domain.AuditActorTypeApp,
+				TargetUserID:          userID,
+				TargetMessengerKind:   domain.MessengerKindTelegram,
+				TargetMessengerUserID: preferredMessengerUserID,
+				ConnectorID:           connectorID,
+				Action:                action,
+				Details:               details,
+				CreatedAt:             createdAt,
+			}
+		},
+	}
+
+	svc.ProcessExpiredSubscriptions(ctx)
+
+	sub, found, err := st.GetSubscriptionByID(ctx, subscriptionID)
+	if err != nil || !found {
+		t.Fatalf("GetSubscriptionByID found=%v err=%v", found, err)
+	}
+	if sub.Status != domain.SubscriptionStatusExpired {
+		t.Fatalf("subscription status = %s, want expired", sub.Status)
+	}
+}
+
 func TestProcessExpiredSubscriptions_SkipsRevokeWhenOtherConnectorKeepsSameTelegramChatAccess(t *testing.T) {
 	t.Helper()
 
@@ -229,7 +291,7 @@ func TestProcessExpiredSubscriptions_SkipsRevokeWhenOtherConnectorKeepsSameTeleg
 	}
 	svc := appCtx.subscriptionLifecycleService()
 	revokeCalls := 0
-	svc.RemoveTelegramChatMember = func(context.Context, int64, int64) error {
+	svc.RemoveTelegramChatMember = func(context.Context, string, int64) error {
 		revokeCalls++
 		return nil
 	}
@@ -273,6 +335,81 @@ func TestProcessExpiredSubscriptions_SkipsRevokeWhenOtherConnectorKeepsSameTeleg
 	}
 }
 
+func TestProcessExpiredSubscriptions_SkipsRevokeWhenOtherURLOnlyConnectorKeepsSameTelegramChatAccess(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Now().UTC()
+
+	for _, payload := range []string{"expire-url-chat-old", "expire-url-chat-new"} {
+		if err := st.CreateConnector(ctx, domain.Connector{
+			StartPayload:  payload,
+			Name:          payload,
+			ChannelURL:    "https://t.me/testtestinvest",
+			PriceRUB:      100,
+			PeriodMode:    domain.ConnectorPeriodModeDuration,
+			PeriodSeconds: 300,
+			IsActive:      true,
+			CreatedAt:     now,
+		}); err != nil {
+			t.Fatalf("CreateConnector(%s): %v", payload, err)
+		}
+	}
+	oldConnector, found, err := st.GetConnectorByStartPayload(ctx, "expire-url-chat-old")
+	if err != nil || !found {
+		t.Fatalf("GetConnectorByStartPayload old found=%v err=%v", found, err)
+	}
+	newConnector, found, err := st.GetConnectorByStartPayload(ctx, "expire-url-chat-new")
+	if err != nil || !found {
+		t.Fatalf("GetConnectorByStartPayload new found=%v err=%v", found, err)
+	}
+
+	userID := seedTelegramUser(t, ctx, st, 880214)
+	oldSubscriptionID := seedActiveSubscriptionForUser(t, ctx, st, oldConnector.ID, userID, 880214, "sub-expire-url-chat-old", now.Add(-time.Minute))
+	seedActiveSubscriptionForUser(t, ctx, st, newConnector.ID, userID, 880214, "sub-expire-url-chat-new", now.Add(29*24*time.Hour))
+
+	appCtx := &application{
+		config: config.Config{Telegram: config.TelegramConfig{BotUsername: "test_bot"}},
+		store:  st,
+	}
+	svc := appCtx.subscriptionLifecycleService()
+	revokeCalls := 0
+	svc.RemoveTelegramChatMember = func(context.Context, string, int64) error {
+		revokeCalls++
+		return nil
+	}
+	notifications := 0
+	svc.SendUserNotification = func(context.Context, int64, string, messenger.OutgoingMessage) error {
+		notifications++
+		return nil
+	}
+
+	svc.ProcessExpiredSubscriptions(ctx)
+
+	sub, found, err := st.GetSubscriptionByID(ctx, oldSubscriptionID)
+	if err != nil || !found {
+		t.Fatalf("GetSubscriptionByID found=%v err=%v", found, err)
+	}
+	if sub.Status != domain.SubscriptionStatusExpired {
+		t.Fatalf("subscription status = %s, want %s", sub.Status, domain.SubscriptionStatusExpired)
+	}
+	if revokeCalls != 0 {
+		t.Fatalf("revoke calls = %d, want 0", revokeCalls)
+	}
+	if notifications != 0 {
+		t.Fatalf("notifications = %d, want 0", notifications)
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("ListAuditEvents: %v", err)
+	}
+	if details := findAuditEventDetails(events, domain.AuditActionSubscriptionExpired); !strings.Contains(details, "same_telegram_chat_active=true") {
+		t.Fatalf("subscription_expired details=%q want same_telegram_chat_active=true", details)
+	}
+}
+
 func TestProcessExpiredSubscriptions_WritesRetryableRevokeFailureAudit(t *testing.T) {
 	t.Helper()
 
@@ -291,7 +428,7 @@ func TestProcessExpiredSubscriptions_WritesRetryableRevokeFailureAudit(t *testin
 		telegramClient: tg,
 	}
 	svc := appCtx.subscriptionLifecycleService()
-	svc.RemoveTelegramChatMember = func(context.Context, int64, int64) error { return errors.New("telegram failed") }
+	svc.RemoveTelegramChatMember = func(context.Context, string, int64) error { return errors.New("telegram failed") }
 
 	svc.ProcessExpiredSubscriptions(ctx)
 
@@ -390,7 +527,7 @@ func TestProcessFailedSubscriptionRevokes_SkipsRetryWhenOtherConnectorKeepsSameT
 	}
 	svc := appCtx.subscriptionLifecycleService()
 	revokeCalls := 0
-	svc.RemoveTelegramChatMember = func(context.Context, int64, int64) error {
+	svc.RemoveTelegramChatMember = func(context.Context, string, int64) error {
 		revokeCalls++
 		return nil
 	}
@@ -448,7 +585,7 @@ func TestProcessSubscriptionRevokeRetries_MarksManualCheckAfterRetryExhaustion(t
 	}
 
 	svc := appCtx.subscriptionLifecycleService()
-	svc.RemoveTelegramChatMember = func(context.Context, int64, int64) error { return errors.New("telegram failed again") }
+	svc.RemoveTelegramChatMember = func(context.Context, string, int64) error { return errors.New("telegram failed again") }
 	svc.ProcessFailedSubscriptionRevokes(ctx)
 
 	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 100})
@@ -1453,10 +1590,10 @@ func TestTelegramAccessLifecycle_RegrantsSameChatAccessViaDifferentConnectorAfte
 	}
 	lifecycleSvc := appCtx.subscriptionLifecycleService()
 	removeCalls := 0
-	lifecycleSvc.RemoveTelegramChatMember = func(_ context.Context, chatID, userID int64) error {
+	lifecycleSvc.RemoveTelegramChatMember = func(_ context.Context, chatRef string, userID int64) error {
 		removeCalls++
-		if chatID != -1003626584986 || userID != 880206 {
-			t.Fatalf("removed chat/user=(%d,%d) want (-1003626584986,880206)", chatID, userID)
+		if chatRef != "-1003626584986" || userID != 880206 {
+			t.Fatalf("removed chat/user=(%s,%d) want (-1003626584986,880206)", chatRef, userID)
 		}
 		return nil
 	}

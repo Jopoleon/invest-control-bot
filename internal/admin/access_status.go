@@ -3,6 +3,7 @@ package admin
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
 )
@@ -26,6 +27,9 @@ func buildPaymentAccessStatus(lang string, payment domain.Payment, events []doma
 }
 
 func buildSubscriptionAccessStatus(lang string, sub domain.Subscription, events []domain.AuditEvent) (string, string) {
+	if sub.IsFutureActiveAt(time.Now().UTC()) {
+		return t(lang, "badge.ops.next_period"), "is-accent"
+	}
 	if sub.Status == domain.SubscriptionStatusActive {
 		if sub.PaymentID <= 0 {
 			return t(lang, "badge.ops.not_checked"), "is-muted"

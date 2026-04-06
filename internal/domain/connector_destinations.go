@@ -5,12 +5,19 @@ import (
 
 	"github.com/Jopoleon/invest-control-bot/internal/channelurl"
 	"github.com/Jopoleon/invest-control-bot/internal/maxchat"
+	"github.com/Jopoleon/invest-control-bot/internal/telegramchat"
 )
 
 // TelegramAccessURL resolves the Telegram destination configured for this
 // connector using the backward-compatible telegram-only fields.
 func (c Connector) TelegramAccessURL() string {
 	return channelurl.Resolve(c.ChannelURL, c.ChatID)
+}
+
+// ResolvedTelegramChatRef returns a Telegram Bot API-compatible chat reference
+// that can be used for invite-link creation and revoke operations.
+func (c Connector) ResolvedTelegramChatRef() string {
+	return telegramchat.ResolveChatRef(c.ChatID, c.ChannelURL)
 }
 
 // MAXAccessURL resolves the MAX destination configured for this connector.

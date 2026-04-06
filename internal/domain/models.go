@@ -338,6 +338,17 @@ type Subscription struct {
 	UpdatedAt          time.Time          `db:"updated_at" json:"updated_at"`
 }
 
+// IsCurrentActiveAt reports whether the subscription grants access right now.
+func (s Subscription) IsCurrentActiveAt(now time.Time) bool {
+	return s.Status == SubscriptionStatusActive && !s.StartsAt.After(now) && s.EndsAt.After(now)
+}
+
+// IsFutureActiveAt reports whether the row is already marked active in storage
+// but represents the next queued period that has not started yet.
+func (s Subscription) IsFutureActiveAt(now time.Time) bool {
+	return s.Status == SubscriptionStatusActive && s.StartsAt.After(now)
+}
+
 // PaymentListQuery describes admin filters for payment list.
 type PaymentListQuery struct {
 	UserID int64 `json:"user_id"`

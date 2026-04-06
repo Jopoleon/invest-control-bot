@@ -247,8 +247,8 @@ func (a *application) subscriptionLifecycleService() *appsubscriptions.Service {
 		ResolveMAXAccount:           a.resolveMAXMessengerAccount,
 	}
 	if a.telegramClient != nil {
-		service.RemoveTelegramChatMember = func(ctx context.Context, chatID, userID int64) error {
-			return a.telegramClient.RemoveChatMember(ctx, chatID, userID)
+		service.RemoveTelegramChatMember = func(ctx context.Context, chatRef string, userID int64) error {
+			return a.telegramClient.RemoveChatMember(ctx, chatRef, userID)
 		}
 	}
 	if a.maxClient != nil {

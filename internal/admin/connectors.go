@@ -14,6 +14,7 @@ import (
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
 	storepkg "github.com/Jopoleon/invest-control-bot/internal/store"
+	"github.com/Jopoleon/invest-control-bot/internal/telegramchat"
 )
 
 var (
@@ -164,6 +165,11 @@ func (h *Handler) createConnector(ctx context.Context, r *http.Request) error {
 	if chatID == "" && channelURL == "" && maxChannelURL == "" && maxChatID == "" {
 		return errCreateConnectorChatOrURL
 	}
+	if resolvedChatID, ok, err := h.resolveTelegramChatID(ctx, chatID, channelURL); err != nil {
+		return err
+	} else if ok {
+		chatID = resolvedChatID
+	}
 	// Keep chat ID in unsigned form to stay consistent with current admin input convention.
 	chatID = strings.TrimPrefix(chatID, "-")
 
@@ -200,6 +206,30 @@ func (h *Handler) createConnector(ctx context.Context, r *http.Request) error {
 	}
 
 	return nil
+}
+
+func (h *Handler) resolveTelegramChatID(ctx context.Context, chatID, channelURL string) (string, bool, error) {
+	if strings.TrimSpace(chatID) != "" {
+		return strings.TrimSpace(chatID), true, nil
+	}
+	chatRef := telegramchat.ResolveChatRef("", channelURL)
+	if chatRef == "" {
+		return "", false, nil
+	}
+	if strings.HasPrefix(chatRef, "-") {
+		return strings.TrimPrefix(chatRef, "-"), true, nil
+	}
+	if h.tg == nil || !h.tg.Enabled() {
+		return "", false, nil
+	}
+	info, err := h.tg.ResolveChat(ctx, chatRef)
+	if err != nil {
+		return "", false, nil
+	}
+	if info.ID == 0 {
+		return "", false, nil
+	}
+	return strings.TrimPrefix(strconv.FormatInt(info.ID, 10), "-"), true, nil
 }
 
 // renderConnectorsPage maps domain models to view models and renders template.

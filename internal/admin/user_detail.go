@@ -110,7 +110,8 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 	}
 
 	connectorNames := h.loadConnectorNames(ctx)
-	autoPayEnabled, hasAutoPaySettings := summarizeAutopayFromSubscriptions(subs)
+	now := time.Now().UTC()
+	autoPayEnabled, hasAutoPaySettings := summarizeAutopayFromSubscriptions(subs, now)
 	data := userDetailPageData{
 		basePageData: basePageData{
 			Lang:       lang,
@@ -200,7 +201,7 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 
 	data.Subscriptions = make([]subscriptionView, 0, len(subs))
 	for _, s := range subs {
-		statusLabel, statusClass := subscriptionStatusBadge(lang, s.Status)
+		statusLabel, statusClass := subscriptionStatusBadgeAt(lang, s, now)
 		autoPayLabel, autoPayClass := autoPayBadge(lang, s.AutoPayEnabled, true)
 		accessLabel, accessClass := buildSubscriptionAccessStatus(lang, s, events)
 		canSendPayLink := false
@@ -227,11 +228,11 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 			StartsAt:         s.StartsAt.In(time.Local).Format("2006-01-02 15:04:05"),
 			EndsAt:           s.EndsAt.In(time.Local).Format("2006-01-02 15:04:05"),
 			CreatedAt:        s.CreatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
-			CanRevoke:        s.Status == domain.SubscriptionStatusActive,
+			CanRevoke:        s.IsCurrentActiveAt(now),
 			RevokeURL:        buildSubscriptionRevokeURL(lang, item.ID, s.ID),
 			CanSendPayLink:   canSendPayLink,
 			PaymentLinkURL:   buildUserPaymentLinkURL(lang, item.ID, s.ID),
-			CanTriggerRebill: h.retriggerRebill != nil && s.Status == domain.SubscriptionStatusActive && s.AutoPayEnabled,
+			CanTriggerRebill: h.retriggerRebill != nil && s.IsCurrentActiveAt(now) && s.AutoPayEnabled,
 			RebillURL:        buildSubscriptionRebillURL(lang, item.ID, s.ID),
 		})
 	}
@@ -336,17 +337,19 @@ func buildRecurringSummary(lang string, autoPayEnabled, hasAutoPaySettings bool,
 	return summary
 }
 
-func summarizeAutopayFromSubscriptions(subs []domain.Subscription) (bool, bool) {
+func summarizeAutopayFromSubscriptions(subs []domain.Subscription, now time.Time) (bool, bool) {
 	hasActive := false
 	enabled := false
 	for _, sub := range subs {
-		if sub.Status != domain.SubscriptionStatusActive {
+		if sub.Status != domain.SubscriptionStatusActive || !sub.EndsAt.After(now) {
 			continue
 		}
-		hasActive = true
+		if sub.IsCurrentActiveAt(now) {
+			hasActive = true
+		}
 		if sub.AutoPayEnabled {
 			enabled = true
 		}
 	}
-	return enabled, hasActive
+	return enabled, hasActive || enabled
 }
