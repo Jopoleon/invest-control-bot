@@ -110,12 +110,14 @@ func TestActivateSuccessfulPayment_UsesTelegramAccessLinkWhenAvailable(t *testin
 	var sent messenger.OutgoingMessage
 	var linkUserID int64
 	var linkConnector domain.Connector
+	var linkSubscription domain.Subscription
 	service := &Service{
 		Store:                 st,
 		PaymentSuccessMessage: func(domain.Payment, domain.Connector, time.Time) string { return "ok" },
-		BuildTelegramAccessLink: func(_ context.Context, userID int64, accessConnector domain.Connector) (string, error) {
+		BuildTelegramAccessLink: func(_ context.Context, userID int64, accessConnector domain.Connector, sub domain.Subscription) (string, error) {
 			linkUserID = userID
 			linkConnector = accessConnector
+			linkSubscription = sub
 			return "https://t.me/+private_one_time_link", nil
 		},
 		SendUserNotification: func(_ context.Context, _ int64, _ string, msg messenger.OutgoingMessage) error {
@@ -140,6 +142,12 @@ func TestActivateSuccessfulPayment_UsesTelegramAccessLinkWhenAvailable(t *testin
 	}
 	if linkConnector.ID != connector.ID || linkConnector.ChatID != connector.ChatID {
 		t.Fatalf("connector passed to access link builder = %+v want id=%d chat_id=%q", linkConnector, connector.ID, connector.ChatID)
+	}
+	if linkSubscription.PaymentID != paymentRow.ID {
+		t.Fatalf("subscription payment_id=%d want=%d", linkSubscription.PaymentID, paymentRow.ID)
+	}
+	if !linkSubscription.EndsAt.After(linkSubscription.StartsAt) {
+		t.Fatalf("subscription period invalid: starts=%s ends=%s", linkSubscription.StartsAt, linkSubscription.EndsAt)
 	}
 	if got := sent.Buttons[0][0].URL; got != "https://t.me/+private_one_time_link" {
 		t.Fatalf("access link url=%q want telegram invite link", got)
@@ -401,7 +409,7 @@ func TestActivateSuccessfulPayment_DualDestinationMAXFlowDoesNotBuildTelegramInv
 	service := &Service{
 		Store:                 st,
 		PaymentSuccessMessage: func(domain.Payment, domain.Connector, time.Time) string { return "ok" },
-		BuildTelegramAccessLink: func(context.Context, int64, domain.Connector) (string, error) {
+		BuildTelegramAccessLink: func(context.Context, int64, domain.Connector, domain.Subscription) (string, error) {
 			telegramInviteCalls++
 			return "https://t.me/+invite-link", nil
 		},
@@ -790,7 +798,7 @@ func TestActivateSuccessfulPayment_WritesInviteLinkFailureAuditWhenFallbackSucce
 	service := &Service{
 		Store:                 st,
 		PaymentSuccessMessage: func(domain.Payment, domain.Connector, time.Time) string { return "ok" },
-		BuildTelegramAccessLink: func(context.Context, int64, domain.Connector) (string, error) {
+		BuildTelegramAccessLink: func(context.Context, int64, domain.Connector, domain.Subscription) (string, error) {
 			return "", errors.New("telegram api failed")
 		},
 		SendUserNotification: func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil },

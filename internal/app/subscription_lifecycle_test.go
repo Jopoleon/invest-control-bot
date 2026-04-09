@@ -212,6 +212,218 @@ func TestProcessExpiredSubscriptions_TelegramWritesRevokeAudit(t *testing.T) {
 	}
 }
 
+func TestProcessExpiredSubscriptions_TelegramRevokesRecentlyExpiredInviteLinkBeforeRemovingMember(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+
+	now := time.Now().UTC()
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-lifecycle-expire-recently-expired-link",
+		Name:          "telegram-recently-expired-link",
+		ChannelURL:    "https://t.me/testtestinvest",
+		PriceRUB:      100,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 300,
+		IsActive:      true,
+		CreatedAt:     now,
+	}); err != nil {
+		t.Fatalf("CreateConnector: %v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-lifecycle-expire-recently-expired-link")
+	if err != nil || !found {
+		t.Fatalf("GetConnectorByStartPayload found=%v err=%v", found, err)
+	}
+	userID := seedTelegramUser(t, ctx, st, 880299)
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:    "robokassa",
+		Status:      domain.PaymentStatusPaid,
+		Token:       "sub-recently-expired-link",
+		UserID:      userID,
+		ConnectorID: connector.ID,
+		AmountRUB:   100,
+		CreatedAt:   now.Add(-6 * time.Minute),
+		UpdatedAt:   now.Add(-6 * time.Minute),
+		PaidAt:      &now,
+	})
+	paymentRow, found, err := st.GetPaymentByToken(ctx, "sub-recently-expired-link")
+	if err != nil || !found {
+		t.Fatalf("GetPaymentByToken found=%v err=%v", found, err)
+	}
+	endsAt := now.Add(-10 * time.Second)
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:      userID,
+		ConnectorID: connector.ID,
+		PaymentID:   paymentRow.ID,
+		Status:      domain.SubscriptionStatusActive,
+		StartsAt:    endsAt.Add(-5 * time.Minute),
+		EndsAt:      endsAt,
+		CreatedAt:   now.Add(-6 * time.Minute),
+		UpdatedAt:   now.Add(-6 * time.Minute),
+	}); err != nil {
+		t.Fatalf("UpsertSubscriptionByPayment: %v", err)
+	}
+	sub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, userID, connector.ID)
+	if err != nil || !found {
+		t.Fatalf("GetLatestSubscriptionByUserConnector found=%v err=%v", found, err)
+	}
+	if err := st.SaveTelegramInviteLink(ctx, domain.TelegramInviteLink{
+		UserID:         userID,
+		ConnectorID:    connector.ID,
+		SubscriptionID: sub.ID,
+		ChatRef:        "@testtestinvest",
+		InviteLink:     "https://t.me/+expired-at-sub-end",
+		ExpiresAt:      &endsAt,
+		CreatedAt:      now.Add(-5 * time.Minute),
+	}); err != nil {
+		t.Fatalf("SaveTelegramInviteLink: %v", err)
+	}
+
+	order := make([]string, 0, 2)
+	svc := &appsubscriptions.Service{
+		Store:                st,
+		ResolvePreferredKind: func(context.Context, int64, string) messenger.Kind { return messenger.KindTelegram },
+		ResolveTelegramAccount: func(context.Context, int64) (domain.UserMessengerAccount, bool, error) {
+			return domain.UserMessengerAccount{MessengerKind: domain.MessengerKindTelegram, MessengerUserID: "880299"}, true, nil
+		},
+		RevokeTelegramInviteLink: func(_ context.Context, chatRef string, inviteLink string) error {
+			order = append(order, "revoke:"+chatRef+":"+inviteLink)
+			return nil
+		},
+		RemoveTelegramChatMember: func(_ context.Context, chatRef string, userID int64) error {
+			order = append(order, "remove:"+chatRef+":"+strconv.FormatInt(userID, 10))
+			return nil
+		},
+		SendUserNotification: func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil },
+		BuildTargetAuditEvent: func(_ context.Context, userID int64, actorMessengerUserID string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
+			return domain.AuditEvent{TargetUserID: userID, ActorMessengerUserID: actorMessengerUserID, ConnectorID: connectorID, Action: action, Details: details, CreatedAt: createdAt}
+		},
+	}
+
+	svc.ProcessExpiredSubscriptions(ctx)
+
+	if len(order) != 2 {
+		t.Fatalf("revoke/remove order=%v want 2 calls", order)
+	}
+	if order[0] != "revoke:@testtestinvest:https://t.me/+expired-at-sub-end" {
+		t.Fatalf("first call=%q want revoke expired-at-sub-end", order[0])
+	}
+	if order[1] != "remove:@testtestinvest:880299" {
+		t.Fatalf("second call=%q want remove member", order[1])
+	}
+
+	revocableLinks, err := st.ListRevocableTelegramInviteLinks(ctx, userID, "@testtestinvest")
+	if err != nil {
+		t.Fatalf("ListRevocableTelegramInviteLinks: %v", err)
+	}
+	if len(revocableLinks) != 0 {
+		t.Fatalf("revocable invite links=%d want 0 after revoke", len(revocableLinks))
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{TargetUserID: userID, Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if got := countAuditEvents(events, domain.AuditActionTelegramInviteLinksRevoked); got != 1 {
+		t.Fatalf("telegram_invite_links_revoked count=%d want=1", got)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionRevokedFromChat); got != 1 {
+		t.Fatalf("subscription_revoked_from_chat count=%d want=1", got)
+	}
+}
+
+func TestProcessExpiredSubscriptions_TelegramRevokesAllOutstandingInviteLinksBeforeRemovingMember(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Now().UTC()
+
+	connectorID := seedConnector(t, ctx, st, "in-lifecycle-expire-revoke-all-links")
+	subscriptionID := seedActiveSubscription(t, ctx, st, connectorID, 880298, "sub-expire-revoke-all-links", now.Add(-time.Minute))
+	sub, found, err := st.GetSubscriptionByID(ctx, subscriptionID)
+	if err != nil || !found {
+		t.Fatalf("GetSubscriptionByID found=%v err=%v", found, err)
+	}
+	firstExpiresAt := now.Add(-30 * time.Second)
+	secondExpiresAt := now.Add(time.Minute)
+	if err := st.SaveTelegramInviteLink(ctx, domain.TelegramInviteLink{
+		UserID:         sub.UserID,
+		ConnectorID:    connectorID,
+		SubscriptionID: sub.ID,
+		ChatRef:        "-1003626584986",
+		InviteLink:     "https://t.me/+older-link",
+		ExpiresAt:      &firstExpiresAt,
+		CreatedAt:      now.Add(-2 * time.Minute),
+	}); err != nil {
+		t.Fatalf("SaveTelegramInviteLink older: %v", err)
+	}
+	if err := st.SaveTelegramInviteLink(ctx, domain.TelegramInviteLink{
+		UserID:         sub.UserID,
+		ConnectorID:    connectorID,
+		SubscriptionID: sub.ID,
+		ChatRef:        "-1003626584986",
+		InviteLink:     "https://t.me/+newer-link",
+		ExpiresAt:      &secondExpiresAt,
+		CreatedAt:      now.Add(-time.Minute),
+	}); err != nil {
+		t.Fatalf("SaveTelegramInviteLink newer: %v", err)
+	}
+
+	order := make([]string, 0, 3)
+	svc := &appsubscriptions.Service{
+		Store:                st,
+		ResolvePreferredKind: func(context.Context, int64, string) messenger.Kind { return messenger.KindTelegram },
+		ResolveTelegramAccount: func(context.Context, int64) (domain.UserMessengerAccount, bool, error) {
+			return domain.UserMessengerAccount{MessengerKind: domain.MessengerKindTelegram, MessengerUserID: "880298"}, true, nil
+		},
+		RevokeTelegramInviteLink: func(_ context.Context, chatRef string, inviteLink string) error {
+			order = append(order, "revoke:"+chatRef+":"+inviteLink)
+			return nil
+		},
+		RemoveTelegramChatMember: func(_ context.Context, chatRef string, userID int64) error {
+			order = append(order, "remove:"+chatRef+":"+strconv.FormatInt(userID, 10))
+			return nil
+		},
+		SendUserNotification: func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil },
+		BuildTargetAuditEvent: func(_ context.Context, userID int64, actorMessengerUserID string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
+			return domain.AuditEvent{TargetUserID: userID, ActorMessengerUserID: actorMessengerUserID, ConnectorID: connectorID, Action: action, Details: details, CreatedAt: createdAt}
+		},
+	}
+
+	svc.ProcessExpiredSubscriptions(ctx)
+
+	if len(order) != 3 {
+		t.Fatalf("revoke/remove order=%v want 3 calls", order)
+	}
+	if !strings.HasPrefix(order[0], "revoke:-1003626584986:https://t.me/+newer-link") {
+		t.Fatalf("first call=%q want newer revoke first", order[0])
+	}
+	if !strings.HasPrefix(order[1], "revoke:-1003626584986:https://t.me/+older-link") {
+		t.Fatalf("second call=%q want older revoke second", order[1])
+	}
+	if order[2] != "remove:-1003626584986:880298" {
+		t.Fatalf("third call=%q want remove member", order[2])
+	}
+
+	revocableLinks, err := st.ListRevocableTelegramInviteLinks(ctx, sub.UserID, "-1003626584986")
+	if err != nil {
+		t.Fatalf("ListRevocableTelegramInviteLinks: %v", err)
+	}
+	if len(revocableLinks) != 0 {
+		t.Fatalf("revocable invite links=%d want 0", len(revocableLinks))
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{TargetUserID: sub.UserID, Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if details := findAuditEventDetails(events, domain.AuditActionTelegramInviteLinksRevoked); !strings.Contains(details, "count=2") {
+		t.Fatalf("telegram_invite_links_revoked details=%q want count=2", details)
+	}
+}
+
 func TestProcessExpiredSubscriptions_TelegramUsesChannelURLChatRefForRevoke(t *testing.T) {
 	t.Helper()
 
@@ -270,6 +482,101 @@ func TestProcessExpiredSubscriptions_TelegramUsesChannelURLChatRefForRevoke(t *t
 	}
 	if sub.Status != domain.SubscriptionStatusExpired {
 		t.Fatalf("subscription status = %s, want expired", sub.Status)
+	}
+}
+
+func TestProcessExpiredSubscriptions_TelegramRevokesInviteLinksBeforeRemovingMember(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-tg-revoke-links-first",
+		Name:          "telegram-revoke-links-first",
+		ChannelURL:    "https://t.me/testtestinvest",
+		PriceRUB:      100,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 300,
+		IsActive:      true,
+		CreatedAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateConnector: %v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-tg-revoke-links-first")
+	if err != nil || !found {
+		t.Fatalf("GetConnectorByStartPayload found=%v err=%v", found, err)
+	}
+	subscriptionID := seedActiveSubscription(t, ctx, st, connector.ID, 880213, "sub-expire-telegram-revoke-links-first", time.Now().UTC().Add(-time.Minute))
+	sub, found, err := st.GetSubscriptionByID(ctx, subscriptionID)
+	if err != nil || !found {
+		t.Fatalf("GetSubscriptionByID found=%v err=%v", found, err)
+	}
+	expiresAt := time.Now().UTC().Add(time.Hour)
+	if err := st.SaveTelegramInviteLink(ctx, domain.TelegramInviteLink{
+		UserID:         sub.UserID,
+		ConnectorID:    connector.ID,
+		SubscriptionID: sub.ID,
+		ChatRef:        "@testtestinvest",
+		InviteLink:     "https://t.me/+still-valid",
+		ExpiresAt:      &expiresAt,
+		CreatedAt:      time.Now().UTC().Add(-time.Minute),
+	}); err != nil {
+		t.Fatalf("SaveTelegramInviteLink: %v", err)
+	}
+
+	order := make([]string, 0, 2)
+	svc := &appsubscriptions.Service{
+		Store:                st,
+		ResolvePreferredKind: func(context.Context, int64, string) messenger.Kind { return messenger.KindTelegram },
+		ResolveTelegramAccount: func(context.Context, int64) (domain.UserMessengerAccount, bool, error) {
+			return domain.UserMessengerAccount{MessengerKind: domain.MessengerKindTelegram, MessengerUserID: "880213"}, true, nil
+		},
+		RevokeTelegramInviteLink: func(_ context.Context, chatRef string, inviteLink string) error {
+			order = append(order, "revoke:"+chatRef+":"+inviteLink)
+			return nil
+		},
+		RemoveTelegramChatMember: func(_ context.Context, chatRef string, userID int64) error {
+			order = append(order, "remove:"+chatRef+":"+strconv.FormatInt(userID, 10))
+			return nil
+		},
+		SendUserNotification: func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil },
+		BuildTargetAuditEvent: func(_ context.Context, userID int64, actorMessengerUserID string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
+			return domain.AuditEvent{TargetUserID: userID, ActorMessengerUserID: actorMessengerUserID, ConnectorID: connectorID, Action: action, Details: details, CreatedAt: createdAt}
+		},
+	}
+
+	svc.ProcessExpiredSubscriptions(ctx)
+
+	if len(order) != 2 {
+		t.Fatalf("revoke/remove order=%v want 2 calls", order)
+	}
+	if !strings.HasPrefix(order[0], "revoke:@testtestinvest:https://t.me/+still-valid") {
+		t.Fatalf("first call=%q want revoke invite link", order[0])
+	}
+	if order[1] != "remove:@testtestinvest:880213" {
+		t.Fatalf("second call=%q want remove member", order[1])
+	}
+
+	activeLinks, err := st.ListActiveTelegramInviteLinks(ctx, sub.UserID, "@testtestinvest", time.Now().UTC())
+	if err != nil {
+		t.Fatalf("ListActiveTelegramInviteLinks: %v", err)
+	}
+	if len(activeLinks) != 0 {
+		t.Fatalf("active invite links=%d want 0 after revoke", len(activeLinks))
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{TargetUserID: sub.UserID, Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if got := countAuditEvents(events, domain.AuditActionTelegramInviteLinksRevoked); got != 1 {
+		t.Fatalf("telegram_invite_links_revoked count=%d want=1", got)
+	}
+	if details := findAuditEventDetails(events, domain.AuditActionTelegramInviteLinksRevoked); !strings.Contains(details, "count=1") {
+		t.Fatalf("telegram_invite_links_revoked details=%q want count=1", details)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionRevokedFromChat); got != 1 {
+		t.Fatalf("subscription_revoked_from_chat count=%d want=1", got)
 	}
 }
 
@@ -455,6 +762,70 @@ func TestProcessExpiredSubscriptions_WritesRetryableRevokeFailureAudit(t *testin
 	}
 }
 
+func TestProcessExpiredSubscriptions_TelegramInviteLinkRevokeFailureStopsChatRemoval(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	connectorID := seedConnector(t, ctx, st, "in-expire-telegram-link-revoke-fail")
+	subscriptionID := seedActiveSubscription(t, ctx, st, connectorID, 880214, "sub-expire-telegram-link-revoke-fail", time.Now().UTC().Add(-time.Minute))
+	sub, found, err := st.GetSubscriptionByID(ctx, subscriptionID)
+	if err != nil || !found {
+		t.Fatalf("GetSubscriptionByID found=%v err=%v", found, err)
+	}
+	expiresAt := time.Now().UTC().Add(time.Hour)
+	if err := st.SaveTelegramInviteLink(ctx, domain.TelegramInviteLink{
+		UserID:         sub.UserID,
+		ConnectorID:    connectorID,
+		SubscriptionID: sub.ID,
+		ChatRef:        "-1003626584986",
+		InviteLink:     "https://t.me/+revoke-me-first",
+		ExpiresAt:      &expiresAt,
+		CreatedAt:      time.Now().UTC().Add(-time.Minute),
+	}); err != nil {
+		t.Fatalf("SaveTelegramInviteLink: %v", err)
+	}
+
+	removeCalls := 0
+	svc := &appsubscriptions.Service{
+		Store:                st,
+		ResolvePreferredKind: func(context.Context, int64, string) messenger.Kind { return messenger.KindTelegram },
+		ResolveTelegramAccount: func(context.Context, int64) (domain.UserMessengerAccount, bool, error) {
+			return domain.UserMessengerAccount{MessengerKind: domain.MessengerKindTelegram, MessengerUserID: "880214"}, true, nil
+		},
+		RevokeTelegramInviteLink: func(context.Context, string, string) error {
+			return errors.New("telegram revoke failed")
+		},
+		RemoveTelegramChatMember: func(context.Context, string, int64) error {
+			removeCalls++
+			return nil
+		},
+		SendUserNotification: func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil },
+		BuildTargetAuditEvent: func(_ context.Context, userID int64, actorMessengerUserID string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
+			return domain.AuditEvent{TargetUserID: userID, ActorMessengerUserID: actorMessengerUserID, ConnectorID: connectorID, Action: action, Details: details, CreatedAt: createdAt}
+		},
+	}
+
+	svc.ProcessExpiredSubscriptions(ctx)
+
+	if removeCalls != 0 {
+		t.Fatalf("remove calls=%d want=0 when invite revoke failed", removeCalls)
+	}
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{TargetUserID: sub.UserID, Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if got := countAuditEvents(events, domain.AuditActionTelegramInviteLinkRevokeFailed); got != 1 {
+		t.Fatalf("telegram_invite_link_revoke_failed count=%d want=1", got)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionRevokeFailed); got != 1 {
+		t.Fatalf("subscription_revoke_failed count=%d want=1", got)
+	}
+	if details := findAuditEventDetails(events, domain.AuditActionSubscriptionRevokeFailed); !strings.Contains(details, "reason=revoke_invite_link_failed") {
+		t.Fatalf("subscription_revoke_failed details=%q want reason=revoke_invite_link_failed", details)
+	}
+}
+
 func TestProcessExpiredSubscriptions_WithoutTelegramClient_WritesRevokeFailureAudit(t *testing.T) {
 	t.Helper()
 
@@ -547,6 +918,90 @@ func TestProcessFailedSubscriptionRevokes_SkipsRetryWhenOtherConnectorKeepsSameT
 	}
 	if got := countAuditEvents(events, domain.AuditActionSubscriptionRevokedFromChat); got != 0 {
 		t.Fatalf("subscription_revoked_from_chat count = %d, want 0", got)
+	}
+}
+
+func TestProcessFailedSubscriptionRevokes_TelegramRetryRevokesRecentlyExpiredInviteLinkBeforeRemovingMember(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Now().UTC()
+
+	connectorID := seedConnector(t, ctx, st, "retry-expired-link-before-remove")
+	subscriptionID := seedActiveSubscription(t, ctx, st, connectorID, 880297, "sub-retry-expired-link-before-remove", now.Add(-2*time.Hour))
+	if err := st.UpdateSubscriptionStatus(ctx, subscriptionID, domain.SubscriptionStatusExpired, now.Add(-2*time.Hour)); err != nil {
+		t.Fatalf("UpdateSubscriptionStatus: %v", err)
+	}
+	sub, found, err := st.GetSubscriptionByID(ctx, subscriptionID)
+	if err != nil || !found {
+		t.Fatalf("GetSubscriptionByID found=%v err=%v", found, err)
+	}
+	expiredAt := now.Add(-2 * time.Hour)
+	if err := st.SaveTelegramInviteLink(ctx, domain.TelegramInviteLink{
+		UserID:         sub.UserID,
+		ConnectorID:    connectorID,
+		SubscriptionID: sub.ID,
+		ChatRef:        "-1003626584986",
+		InviteLink:     "https://t.me/+retry-expired-link",
+		ExpiresAt:      &expiredAt,
+		CreatedAt:      now.Add(-3 * time.Hour),
+	}); err != nil {
+		t.Fatalf("SaveTelegramInviteLink: %v", err)
+	}
+	if err := st.SaveAuditEvent(ctx, domain.AuditEvent{
+		ActorType:    domain.AuditActorTypeApp,
+		TargetUserID: sub.UserID,
+		ConnectorID:  connectorID,
+		Action:       domain.AuditActionSubscriptionRevokeFailed,
+		Details:      "subscription_id=" + strconv.FormatInt(sub.ID, 10) + ";attempt=1;source=expiry_job;reason=remove_chat_member_failed",
+		CreatedAt:    now.Add(-10 * time.Minute),
+	}); err != nil {
+		t.Fatalf("SaveAuditEvent: %v", err)
+	}
+
+	order := make([]string, 0, 2)
+	svc := &appsubscriptions.Service{
+		Store:                st,
+		ResolvePreferredKind: func(context.Context, int64, string) messenger.Kind { return messenger.KindTelegram },
+		ResolveTelegramAccount: func(context.Context, int64) (domain.UserMessengerAccount, bool, error) {
+			return domain.UserMessengerAccount{MessengerKind: domain.MessengerKindTelegram, MessengerUserID: "880297"}, true, nil
+		},
+		RevokeTelegramInviteLink: func(_ context.Context, chatRef string, inviteLink string) error {
+			order = append(order, "revoke:"+chatRef+":"+inviteLink)
+			return nil
+		},
+		RemoveTelegramChatMember: func(_ context.Context, chatRef string, userID int64) error {
+			order = append(order, "remove:"+chatRef+":"+strconv.FormatInt(userID, 10))
+			return nil
+		},
+		SendUserNotification: func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil },
+		BuildTargetAuditEvent: func(_ context.Context, userID int64, actorMessengerUserID string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
+			return domain.AuditEvent{TargetUserID: userID, ActorMessengerUserID: actorMessengerUserID, ConnectorID: connectorID, Action: action, Details: details, CreatedAt: createdAt}
+		},
+	}
+
+	svc.ProcessFailedSubscriptionRevokes(ctx)
+
+	if len(order) != 2 {
+		t.Fatalf("revoke/remove order=%v want 2 calls", order)
+	}
+	if order[0] != "revoke:-1003626584986:https://t.me/+retry-expired-link" {
+		t.Fatalf("first call=%q want retry revoke", order[0])
+	}
+	if order[1] != "remove:-1003626584986:880297" {
+		t.Fatalf("second call=%q want retry remove", order[1])
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{TargetUserID: sub.UserID, Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("list audit events: %v", err)
+	}
+	if got := countAuditEvents(events, domain.AuditActionTelegramInviteLinksRevoked); got != 1 {
+		t.Fatalf("telegram_invite_links_revoked count=%d want=1", got)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionRevokedFromChat); got != 1 {
+		t.Fatalf("subscription_revoked_from_chat count=%d want=1", got)
 	}
 }
 
@@ -1628,13 +2083,16 @@ func TestTelegramAccessLifecycle_RegrantsSameChatAccessViaDifferentConnectorAfte
 	paymentSvc := &apppayments.Service{
 		Store:                 st,
 		PaymentSuccessMessage: func(domain.Payment, domain.Connector, time.Time) string { return "ok" },
-		BuildTelegramAccessLink: func(_ context.Context, deliveryUserID int64, connector domain.Connector) (string, error) {
+		BuildTelegramAccessLink: func(_ context.Context, deliveryUserID int64, connector domain.Connector, sub domain.Subscription) (string, error) {
 			inviteCalls++
 			if deliveryUserID != userID {
 				t.Fatalf("invite user id=%d want=%d", deliveryUserID, userID)
 			}
 			if connector.ID != newConnectorID {
 				t.Fatalf("invite connector id=%d want=%d", connector.ID, newConnectorID)
+			}
+			if sub.PaymentID != paymentRow.ID {
+				t.Fatalf("invite subscription payment_id=%d want=%d", sub.PaymentID, paymentRow.ID)
 			}
 			return "https://t.me/+regrant-invite", nil
 		},
@@ -1675,6 +2133,121 @@ func TestTelegramAccessLifecycle_RegrantsSameChatAccessViaDifferentConnectorAfte
 	}
 	if got := countAuditEvents(events, domain.AuditActionAccessDeliveryFailed); got != 0 {
 		t.Fatalf("access_delivery_failed count=%d want=0", got)
+	}
+}
+
+func TestTelegramInviteLinkLifecycle_PaymentActivationPersistsLinkAndExpiryRevokesIt(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	connectorID := seedShortPeriodConnector(t, ctx, st, "tg-link-lifecycle", 300)
+	userID := seedTelegramUser(t, ctx, st, 880296)
+	paymentRow := domain.Payment{
+		Provider:       "robokassa",
+		Status:         domain.PaymentStatusPending,
+		Token:          "tg-link-lifecycle-payment",
+		UserID:         userID,
+		ConnectorID:    connectorID,
+		AmountRUB:      1,
+		AutoPayEnabled: false,
+		CreatedAt:      now.Add(-10 * time.Minute),
+		UpdatedAt:      now.Add(-10 * time.Minute),
+	}
+	if err := st.CreatePayment(ctx, paymentRow); err != nil {
+		t.Fatalf("CreatePayment: %v", err)
+	}
+	paymentRow, found, err := st.GetPaymentByToken(ctx, paymentRow.Token)
+	if err != nil || !found {
+		t.Fatalf("GetPaymentByToken found=%v err=%v", found, err)
+	}
+
+	paymentSvc := &apppayments.Service{
+		Store:                 st,
+		PaymentSuccessMessage: func(domain.Payment, domain.Connector, time.Time) string { return "ok" },
+		BuildTelegramAccessLink: func(_ context.Context, deliveryUserID int64, connector domain.Connector, sub domain.Subscription) (string, error) {
+			if err := st.SaveTelegramInviteLink(ctx, domain.TelegramInviteLink{
+				UserID:         deliveryUserID,
+				ConnectorID:    connector.ID,
+				SubscriptionID: sub.ID,
+				ChatRef:        "-1003626584986",
+				InviteLink:     "https://t.me/+flow-lifecycle",
+				ExpiresAt:      ptrTime(sub.EndsAt),
+				CreatedAt:      now.Add(-10 * time.Minute),
+			}); err != nil {
+				t.Fatalf("SaveTelegramInviteLink: %v", err)
+			}
+			return "https://t.me/+flow-lifecycle", nil
+		},
+		SendUserNotification: func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil },
+		BuildTargetAuditEvent: func(_ context.Context, targetUserID int64, _ string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
+			return domain.AuditEvent{TargetUserID: targetUserID, ConnectorID: connectorID, Action: action, Details: details, CreatedAt: createdAt}
+		},
+		OpenChannelActionLabel: "open",
+		MySubscriptionAction:   "sub",
+	}
+
+	paidAt := now.Add(-6 * time.Minute)
+	paymentSvc.ActivateSuccessfulPayment(ctx, paymentRow, "robokassa:tg-link-lifecycle", paidAt)
+
+	revocableBefore, err := st.ListRevocableTelegramInviteLinks(ctx, userID, "-1003626584986")
+	if err != nil {
+		t.Fatalf("ListRevocableTelegramInviteLinks before=%v", err)
+	}
+	if len(revocableBefore) != 1 {
+		t.Fatalf("revocable links before expiry=%d want=1", len(revocableBefore))
+	}
+
+	appCtx := &application{
+		config: config.Config{Telegram: config.TelegramConfig{BotUsername: "test_bot"}},
+		store:  st,
+	}
+	lifecycleSvc := appCtx.subscriptionLifecycleService()
+	order := make([]string, 0, 2)
+	lifecycleSvc.RevokeTelegramInviteLink = func(_ context.Context, chatRef string, inviteLink string) error {
+		order = append(order, "revoke:"+chatRef+":"+inviteLink)
+		return nil
+	}
+	lifecycleSvc.RemoveTelegramChatMember = func(_ context.Context, chatRef string, userID int64) error {
+		order = append(order, "remove:"+chatRef+":"+strconv.FormatInt(userID, 10))
+		return nil
+	}
+	lifecycleSvc.SendUserNotification = func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil }
+
+	lifecycleSvc.ProcessExpiredSubscriptions(ctx)
+
+	if len(order) != 2 {
+		t.Fatalf("revoke/remove order=%v want 2 calls", order)
+	}
+	if order[0] != "revoke:-1003626584986:https://t.me/+flow-lifecycle" {
+		t.Fatalf("first call=%q want revoke flow link", order[0])
+	}
+	if order[1] != "remove:-1003626584986:880296" {
+		t.Fatalf("second call=%q want remove member", order[1])
+	}
+
+	revocableAfter, err := st.ListRevocableTelegramInviteLinks(ctx, userID, "-1003626584986")
+	if err != nil {
+		t.Fatalf("ListRevocableTelegramInviteLinks after=%v", err)
+	}
+	if len(revocableAfter) != 0 {
+		t.Fatalf("revocable links after expiry=%d want=0", len(revocableAfter))
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{TargetUserID: userID, Page: 1, PageSize: 100})
+	if err != nil {
+		t.Fatalf("ListAuditEvents: %v", err)
+	}
+	if got := countAuditEvents(events, domain.AuditActionPaymentAccessReady); got != 1 {
+		t.Fatalf("payment_access_ready count=%d want=1", got)
+	}
+	if got := countAuditEvents(events, domain.AuditActionTelegramInviteLinksRevoked); got != 1 {
+		t.Fatalf("telegram_invite_links_revoked count=%d want=1", got)
+	}
+	if got := countAuditEvents(events, domain.AuditActionSubscriptionRevokedFromChat); got != 1 {
+		t.Fatalf("subscription_revoked_from_chat count=%d want=1", got)
 	}
 }
 

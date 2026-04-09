@@ -109,11 +109,17 @@ func TestRecurringCancelPage_DisablesAutopay(t *testing.T) {
 		t.Fatalf("get status=%d body=%q", getRR.Code, string(body))
 	}
 	getBody, _ := io.ReadAll(getRR.Body)
-	if !strings.Contains(string(getBody), "Остановить автосписания по этой подписке") {
-		t.Fatalf("cancel page does not contain per-subscription disable action: %q", string(getBody))
+	if !strings.Contains(string(getBody), "Остановить автосписания по этому тарифу") {
+		t.Fatalf("cancel page does not contain tariff-wide disable action: %q", string(getBody))
+	}
+	if strings.Count(string(getBody), "Остановить автосписания по этому тарифу") != 1 {
+		t.Fatalf("cancel page should render exactly one tariff-wide disable action: %q", string(getBody))
 	}
 	if !strings.Contains(string(getBody), "Уже оплаченный доступ") {
 		t.Fatalf("cancel page does not explain paid access retention: %q", string(getBody))
+	}
+	if !strings.Contains(string(getBody), "следующему периоду, если он уже создан") {
+		t.Fatalf("cancel page does not explain chain-wide disable semantics: %q", string(getBody))
 	}
 	if !strings.Contains(string(getBody), "Пользователь") {
 		t.Fatalf("cancel page does not contain enriched user meta: %q", string(getBody))
@@ -275,11 +281,14 @@ func TestRecurringCancelPage_ShowsCurrentAndFutureSubscriptionsSeparately(t *tes
 	if !strings.Contains(body, "Ожидает начала") {
 		t.Fatalf("body does not contain future start label: %q", body)
 	}
-	if !strings.Contains(body, "<strong>2</strong>") {
+	if !strings.Contains(body, "<small>Периодов с автоплатежом</small>") || !strings.Contains(body, "<strong>2</strong>") {
 		t.Fatalf("body does not contain autopay count for current+future periods: %q", body)
 	}
 	if !strings.Contains(body, "<small>Активных доступов</small>") || !strings.Contains(body, "<strong>1</strong>") {
 		t.Fatalf("body does not contain active access count for current period only: %q", body)
+	}
+	if strings.Count(body, "Остановить автосписания по этому тарифу") != 1 {
+		t.Fatalf("body should contain exactly one tariff-wide disable action: %q", body)
 	}
 }
 

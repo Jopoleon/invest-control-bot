@@ -56,6 +56,9 @@ func TestClient_DisabledModeSkipsNetworkCalls(t *testing.T) {
 	if link != "" {
 		t.Fatalf("invite link=%q want empty for disabled client", link)
 	}
+	if err := client.RevokeInviteLink(context.Background(), "@test_channel", "https://t.me/+test"); err != nil {
+		t.Fatalf("RevokeInviteLink: %v", err)
+	}
 }
 
 func TestToTelegramKeyboard(t *testing.T) {

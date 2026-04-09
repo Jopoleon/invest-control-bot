@@ -39,6 +39,8 @@ type Store struct {
 	nextPaymentID          int64
 	subsByPayID            map[int64]domain.Subscription
 	nextSubscrID           int64
+	telegramInviteLinks    map[int64]domain.TelegramInviteLink
+	nextTelegramInviteID   int64
 	nextRecurringConsentID int64
 }
 
@@ -67,6 +69,8 @@ func New() *Store {
 		nextPaymentID:          1,
 		subsByPayID:            make(map[int64]domain.Subscription),
 		nextSubscrID:           1,
+		telegramInviteLinks:    make(map[int64]domain.TelegramInviteLink),
+		nextTelegramInviteID:   1,
 		nextRecurringConsentID: 1,
 	}
 }

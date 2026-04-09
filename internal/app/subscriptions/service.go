@@ -48,6 +48,7 @@ type Service struct {
 	ExpiryNoticeWindow          time.Duration
 	SubscriptionJobLimit        int
 	RemoveTelegramChatMember    func(context.Context, string, int64) error
+	RevokeTelegramInviteLink    func(context.Context, string, string) error
 	RemoveMAXChatMember         func(context.Context, int64, int64) error
 	SubscriptionReminderMessage func(time.Time) string
 	SubscriptionExpiryMessage   func(time.Time) string
@@ -423,6 +424,10 @@ func subscriptionRevokeRetryDelay(failureCount int) time.Duration {
 
 func (s *Service) attemptTelegramRevoke(ctx context.Context, sub domain.Subscription, preferredMessengerUserID, chatRef string, now time.Time, source string) (domain.AuditEvent, bool) {
 	attempt := s.nextSubscriptionRevokeAttempt(ctx, sub)
+	if reason, err := s.revokeTelegramInviteLinks(ctx, sub, preferredMessengerUserID, chatRef, now, source); err != nil {
+		slog.Error("revoke telegram invite links failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "chat_ref", chatRef)
+		return s.saveSubscriptionRevokeEvent(ctx, sub, preferredMessengerUserID, domain.AuditActionSubscriptionRevokeFailed, buildSubscriptionRevokeFailureDetails(sub.ID, attempt, source, reason), now), true
+	}
 	account, found, err := s.ResolveTelegramAccount(ctx, sub.UserID)
 	if err != nil {
 		slog.Error("resolve telegram account for revoke failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID)
@@ -448,6 +453,38 @@ func (s *Service) attemptTelegramRevoke(ctx context.Context, sub domain.Subscrip
 		return s.saveSubscriptionRevokeEvent(ctx, sub, preferredMessengerUserID, domain.AuditActionSubscriptionRevokeFailed, buildSubscriptionRevokeFailureDetails(sub.ID, attempt, source, reason), now), true
 	}
 	return s.saveSubscriptionRevokeEvent(ctx, sub, preferredMessengerUserID, domain.AuditActionSubscriptionRevokedFromChat, buildSubscriptionRevokeSuccessDetails(sub.ID, attempt, source), now), true
+}
+
+func (s *Service) revokeTelegramInviteLinks(ctx context.Context, sub domain.Subscription, preferredMessengerUserID, chatRef string, now time.Time, source string) (string, error) {
+	// Revoke every still-unrevoked link for this user/chat, even if the link's
+	// nominal expiry is equal to the subscription end and the expiry job runs a
+	// few seconds later. Otherwise old invite links can survive the final revoke
+	// path simply because they already fell out of "active by expires_at" query
+	// semantics.
+	links, err := s.Store.ListRevocableTelegramInviteLinks(ctx, sub.UserID, chatRef)
+	if err != nil {
+		s.saveAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionTelegramInviteLinkRevokeFailed, "subscription_id="+strconv.FormatInt(sub.ID, 10)+";source="+source+";reason=list_active_invite_links_failed", now)
+		return "list_active_invite_links_failed", err
+	}
+	if len(links) == 0 {
+		return "", nil
+	}
+	for _, link := range links {
+		if err := s.revokeTelegramInviteLink(ctx, chatRef, link.InviteLink); err != nil {
+			reason := "revoke_invite_link_failed"
+			if errors.Is(err, errTelegramClientNotConfigured) {
+				reason = "telegram_client_not_configured"
+			}
+			s.saveAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionTelegramInviteLinkRevokeFailed, "subscription_id="+strconv.FormatInt(sub.ID, 10)+";invite_link_id="+strconv.FormatInt(link.ID, 10)+";source="+source+";reason="+reason, now)
+			return reason, err
+		}
+		if err := s.Store.MarkTelegramInviteLinkRevoked(ctx, link.ID, now); err != nil {
+			s.saveAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionTelegramInviteLinkRevokeFailed, "subscription_id="+strconv.FormatInt(sub.ID, 10)+";invite_link_id="+strconv.FormatInt(link.ID, 10)+";source="+source+";reason=mark_invite_link_revoked_failed", now)
+			return "mark_invite_link_revoked_failed", err
+		}
+	}
+	s.saveAuditEvent(ctx, sub.UserID, preferredMessengerUserID, sub.ConnectorID, domain.AuditActionTelegramInviteLinksRevoked, "subscription_id="+strconv.FormatInt(sub.ID, 10)+";source="+source+";count="+strconv.Itoa(len(links)), now)
+	return "", nil
 }
 
 func (s *Service) attemptMAXRevoke(ctx context.Context, sub domain.Subscription, preferredMessengerUserID string, chatID int64, now time.Time, source string) (domain.AuditEvent, bool) {
@@ -515,6 +552,16 @@ func (s *Service) removeTelegramChatMember(ctx context.Context, chatRef string, 
 		return errTelegramClientNotConfigured
 	}
 	return s.TelegramClient.RemoveChatMember(ctx, chatRef, userID)
+}
+
+func (s *Service) revokeTelegramInviteLink(ctx context.Context, chatRef, inviteLink string) error {
+	if s.RevokeTelegramInviteLink != nil {
+		return s.RevokeTelegramInviteLink(ctx, chatRef, inviteLink)
+	}
+	if s.TelegramClient == nil || !s.TelegramClient.Enabled() {
+		return errTelegramClientNotConfigured
+	}
+	return s.TelegramClient.RevokeInviteLink(ctx, chatRef, inviteLink)
 }
 
 func (s *Service) removeMAXChatMember(ctx context.Context, chatID, userID int64) error {

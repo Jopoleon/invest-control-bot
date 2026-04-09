@@ -314,7 +314,7 @@
                 <strong><span class="status {{if .AutoPayEnabled}}on{{else}}off{{end}}">{{if .AutoPayEnabled}}включен{{else}}выключен{{end}}</span></strong>
               </div>
               <div class="meta">
-                <small>Подписок с автоплатежом</small>
+                <small>Периодов с автоплатежом</small>
                 <strong>{{.AutoPayCount}}</strong>
               </div>
               <div class="meta">
@@ -330,18 +330,33 @@
             <div class="panel">
               <h3>Что изменится после отключения</h3>
               <ul class="checklist">
-                <li>Отключатся только будущие автоматические списания по выбранной подписке.</li>
+                <li>Отключатся только будущие автоматические списания по этому тарифу и следующему периоду, если он уже создан.</li>
                 <li>Уже оплаченный доступ сохранится до даты окончания текущего периода.</li>
-                <li>Если у вас несколько подписок, автоплатеж отключается отдельно для каждой из них.</li>
+                <li>Другие тарифы и другие подписки пользователя эта операция не затрагивает.</li>
               </ul>
             </div>
+
+            {{if .AutoPayEnabled}}
+              <div class="panel">
+                <h3>Отключить автоплатеж по тарифу</h3>
+                <p>Это действие выключит будущие списания сразу для всей текущей цепочки этого тарифа. Уже оплаченный период останется активным до даты окончания.</p>
+                <form method="post" style="margin-top:10px;">
+                  {{if .ActiveSubscriptions}}
+                    <input type="hidden" name="subscription_id" value="{{(index .ActiveSubscriptions 0).SubscriptionID}}">
+                  {{else if .FutureSubscriptions}}
+                    <input type="hidden" name="subscription_id" value="{{(index .FutureSubscriptions 0).SubscriptionID}}">
+                  {{end}}
+                  <button type="submit">Остановить автосписания по этому тарифу</button>
+                </form>
+              </div>
+            {{end}}
 
             <div class="subs">
               {{if .ActiveSubscriptions}}
                 {{range .ActiveSubscriptions}}
                   <article class="sub">
                     <h2>{{.Name}}</h2>
-                    <p>Для этой подписки можно остановить только новые автосписания. Доступ по уже оплаченному периоду сохранится до даты окончания ниже.</p>
+                    <p>Для этого тарифа можно остановить только новые автосписания. Доступ по уже оплаченному периоду сохранится до даты окончания ниже.</p>
                     <div class="sub-meta">
                       <div>
                         <small>Стоимость</small>
@@ -361,10 +376,6 @@
                       </div>
                     </div>
                     {{if .ChannelURL}}<p>Канал: <a href="{{.ChannelURL}}" target="_blank" rel="noreferrer">{{.ChannelURL}}</a></p>{{end}}
-                    <form method="post" style="margin-top:10px;">
-                      <input type="hidden" name="subscription_id" value="{{.SubscriptionID}}">
-                      <button type="submit">Остановить автосписания по этой подписке</button>
-                    </form>
                   </article>
                 {{end}}
               {{else}}
@@ -382,7 +393,7 @@
                 {{range .FutureSubscriptions}}
                   <article class="sub">
                     <h2>{{.Name}}</h2>
-                    <p>Для этого следующего периода можно заранее остановить новые автосписания. Уже оплаченный текущий доступ сохранится до даты окончания активного периода.</p>
+                    <p>Этот следующий период тоже будет отключен вместе с автосписаниями по текущему тарифу. Уже оплаченный текущий доступ сохранится до даты окончания активного периода.</p>
                     <div class="sub-meta">
                       <div>
                         <small>Стоимость</small>
@@ -402,10 +413,6 @@
                       </div>
                     </div>
                     {{if .ChannelURL}}<p>Канал: <a href="{{.ChannelURL}}" target="_blank" rel="noreferrer">{{.ChannelURL}}</a></p>{{end}}
-                    <form method="post" style="margin-top:10px;">
-                      <input type="hidden" name="subscription_id" value="{{.SubscriptionID}}">
-                      <button type="submit">Остановить автосписания по этому периоду</button>
-                    </form>
                   </article>
                 {{end}}
               {{end}}

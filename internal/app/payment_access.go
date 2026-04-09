@@ -11,6 +11,10 @@ import (
 )
 
 func (a *application) buildTelegramPaymentAccessLink(ctx context.Context, userID int64, connector domain.Connector) (string, error) {
+	return a.buildTelegramPaymentAccessLinkForSubscription(ctx, userID, connector, domain.Subscription{})
+}
+
+func (a *application) buildTelegramPaymentAccessLinkForSubscription(ctx context.Context, userID int64, connector domain.Connector, sub domain.Subscription) (string, error) {
 	if a.telegramClient == nil {
 		return "", nil
 	}
@@ -26,9 +30,27 @@ func (a *application) buildTelegramPaymentAccessLink(ctx context.Context, userID
 	// Single-use links are safer than exposing the chat/channel URL after payment.
 	inviteName := fmt.Sprintf("paid-u%d-c%d", userID, connector.ID)
 	expireAt := time.Now().UTC().Add(24 * time.Hour)
+	if sub.ID > 0 && !sub.EndsAt.IsZero() && sub.EndsAt.After(time.Now().UTC()) {
+		expireAt = sub.EndsAt.UTC()
+	}
 	link, err := a.telegramClient.CreateSingleUseInviteLink(ctx, chatRef, inviteName, expireAt)
 	if err != nil {
 		return "", fmt.Errorf("create single-use invite link for chat_ref=%s: %w", chatRef, err)
+	}
+	if strings.TrimSpace(link) == "" || sub.ID <= 0 {
+		return link, nil
+	}
+	expiresAt := expireAt.UTC()
+	if err := a.store.SaveTelegramInviteLink(ctx, domain.TelegramInviteLink{
+		UserID:         userID,
+		ConnectorID:    connector.ID,
+		SubscriptionID: sub.ID,
+		ChatRef:        chatRef,
+		InviteLink:     strings.TrimSpace(link),
+		ExpiresAt:      &expiresAt,
+		CreatedAt:      time.Now().UTC(),
+	}); err != nil {
+		return "", fmt.Errorf("persist telegram invite link for subscription_id=%d: %w", sub.ID, err)
 	}
 	return link, nil
 }

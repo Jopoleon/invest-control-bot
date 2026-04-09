@@ -76,6 +76,25 @@ func scanSubscription(scanner rowScanner) (domain.Subscription, error) {
 	return item, nil
 }
 
+func scanTelegramInviteLink(scanner rowScanner) (domain.TelegramInviteLink, error) {
+	var item domain.TelegramInviteLink
+	err := scanner.Scan(
+		&item.ID,
+		&item.UserID,
+		&item.ConnectorID,
+		&item.SubscriptionID,
+		&item.ChatRef,
+		&item.InviteLink,
+		&item.ExpiresAt,
+		&item.RevokedAt,
+		&item.CreatedAt,
+	)
+	if err != nil {
+		return domain.TelegramInviteLink{}, err
+	}
+	return item, nil
+}
+
 func scanLegalDocument(scanner rowScanner) (domain.LegalDocument, error) {
 	var (
 		item    domain.LegalDocument

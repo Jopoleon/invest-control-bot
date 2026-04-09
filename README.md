@@ -342,6 +342,7 @@ GOCACHE=/tmp/go-build go test ./...
 ## Логирование
 - Используется `log/slog` со structured logs.
 - Можно включать file logging через `LOG_FILE_PATH`.
+- File logging ротируется по суткам: путь из `LOG_FILE_PATH` используется как базовый шаблон, а реальные файлы создаются как `logs/app-YYYY-MM-DD.log`.
 - В `debug` режиме пишутся подробные Telegram webhook payload логи. Это удобно локально, но перед `stage/prod` нужно проверять политику по ПДн.
 
 ## Документация

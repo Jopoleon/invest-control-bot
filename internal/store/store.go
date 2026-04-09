@@ -107,6 +107,14 @@ type SubscriptionStore interface {
 	UpdateSubscriptionStatus(ctx context.Context, subscriptionID int64, status domain.SubscriptionStatus, updatedAt time.Time) error
 }
 
+// TelegramInviteLinkStore manages Telegram invite links issued for paid access.
+type TelegramInviteLinkStore interface {
+	SaveTelegramInviteLink(ctx context.Context, link domain.TelegramInviteLink) error
+	ListActiveTelegramInviteLinks(ctx context.Context, userID int64, chatRef string, now time.Time) ([]domain.TelegramInviteLink, error)
+	ListRevocableTelegramInviteLinks(ctx context.Context, userID int64, chatRef string) ([]domain.TelegramInviteLink, error)
+	MarkTelegramInviteLinkRevoked(ctx context.Context, inviteLinkID int64, revokedAt time.Time) error
+}
+
 // Store describes persistence operations required by bot/admin flows.
 type Store interface {
 	ConnectorStore
@@ -118,4 +126,5 @@ type Store interface {
 	AuditEventStore
 	PaymentStore
 	SubscriptionStore
+	TelegramInviteLinkStore
 }

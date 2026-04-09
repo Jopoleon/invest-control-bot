@@ -250,6 +250,9 @@ func (a *application) subscriptionLifecycleService() *appsubscriptions.Service {
 		service.RemoveTelegramChatMember = func(ctx context.Context, chatRef string, userID int64) error {
 			return a.telegramClient.RemoveChatMember(ctx, chatRef, userID)
 		}
+		service.RevokeTelegramInviteLink = func(ctx context.Context, chatRef string, inviteLink string) error {
+			return a.telegramClient.RevokeInviteLink(ctx, chatRef, inviteLink)
+		}
 	}
 	if a.maxClient != nil {
 		service.RemoveMAXChatMember = func(ctx context.Context, chatID, userID int64) error {

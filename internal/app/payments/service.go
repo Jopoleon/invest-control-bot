@@ -39,7 +39,7 @@ type Service struct {
 	FailedRecurringText     string
 	FailedRecurringButton   string
 	PaymentSuccessMessage   func(domain.Payment, domain.Connector, time.Time) string
-	BuildTelegramAccessLink func(context.Context, int64, domain.Connector) (string, error)
+	BuildTelegramAccessLink func(context.Context, int64, domain.Connector, domain.Subscription) (string, error)
 	ResolveMAXAccount       func(context.Context, int64) (domain.UserMessengerAccount, bool, error)
 	AddMAXChatMembers       func(context.Context, int64, []int64) error
 	ResolvePreferredKind    func(context.Context, int64, string) messenger.Kind
@@ -116,6 +116,23 @@ func (s *Service) ActivateSuccessfulPayment(ctx context.Context, paymentRow doma
 		slog.Error("upsert subscription failed", "error", err, "payment_id", paymentRow.ID)
 		return
 	}
+	activatedSub, found, err := s.loadSubscriptionForPayment(ctx, paymentRow.UserID, paymentRow.ConnectorID, paymentRow.ID)
+	if err != nil {
+		slog.Error("load activated subscription failed", "error", err, "payment_id", paymentRow.ID, "user_id", paymentRow.UserID, "connector_id", paymentRow.ConnectorID)
+	}
+	if !found {
+		activatedSub = domain.Subscription{
+			UserID:         paymentRow.UserID,
+			ConnectorID:    paymentRow.ConnectorID,
+			PaymentID:      paymentRow.ID,
+			Status:         domain.SubscriptionStatusActive,
+			AutoPayEnabled: paymentRow.AutoPayEnabled,
+			StartsAt:       startAt,
+			EndsAt:         endsAt,
+			CreatedAt:      startAt,
+			UpdatedAt:      now,
+		}
+	}
 
 	if err := s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(
 		ctx,
@@ -143,7 +160,7 @@ func (s *Service) ActivateSuccessfulPayment(ctx context.Context, paymentRow doma
 		}
 		deliveryKind := connector.DeliveryMessengerKind(preferredMessengerKindToDomain(preferredKind))
 		if deliveryKind == domain.MessengerKindTelegram && s.BuildTelegramAccessLink != nil {
-			accessLink, err := s.BuildTelegramAccessLink(ctx, paymentRow.UserID, connector)
+			accessLink, err := s.BuildTelegramAccessLink(ctx, paymentRow.UserID, connector, activatedSub)
 			if err != nil {
 				slog.Error("build telegram access link failed", "error", err, "user_id", paymentRow.UserID, "connector_id", connector.ID, "payment_id", paymentRow.ID)
 				if saveErr := s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(
@@ -393,20 +410,28 @@ func sanitizeAuditDetailValue(value string) string {
 }
 
 func (s *Service) hasSubscriptionForPayment(ctx context.Context, userID, connectorID, paymentID int64) (bool, error) {
+	sub, found, err := s.loadSubscriptionForPayment(ctx, userID, connectorID, paymentID)
+	if err != nil {
+		return false, err
+	}
+	return found && sub.PaymentID == paymentID, nil
+}
+
+func (s *Service) loadSubscriptionForPayment(ctx context.Context, userID, connectorID, paymentID int64) (domain.Subscription, bool, error) {
 	subs, err := s.Store.ListSubscriptions(ctx, domain.SubscriptionListQuery{
 		UserID:      userID,
 		ConnectorID: connectorID,
 		Limit:       200,
 	})
 	if err != nil {
-		return false, err
+		return domain.Subscription{}, false, err
 	}
 	for _, sub := range subs {
 		if sub.PaymentID == paymentID {
-			return true, nil
+			return sub, true, nil
 		}
 	}
-	return false, nil
+	return domain.Subscription{}, false, nil
 }
 
 func (s *Service) NotifyFailedRecurringPayment(ctx context.Context, paymentRow domain.Payment) {

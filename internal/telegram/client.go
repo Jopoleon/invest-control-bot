@@ -303,6 +303,27 @@ func (c *Client) CreateSingleUseInviteLink(ctx context.Context, chatRef string, 
 	return strings.TrimSpace(link.InviteLink), nil
 }
 
+// RevokeInviteLink invalidates a previously created Telegram invite link.
+func (c *Client) RevokeInviteLink(ctx context.Context, chatRef string, inviteLink string) error {
+	if !c.enabled {
+		slog.Debug("telegram client disabled, skip revokeInviteLink", "chat_ref", chatRef)
+		return nil
+	}
+	ref := strings.TrimSpace(chatRef)
+	if ref == "" {
+		return fmt.Errorf("revokeInviteLink requires chat_ref")
+	}
+	link := strings.TrimSpace(inviteLink)
+	if link == "" {
+		return fmt.Errorf("revokeInviteLink requires invite_link")
+	}
+	_, err := c.bot.RevokeChatInviteLink(ctx, &tgbot.RevokeChatInviteLinkParams{
+		ChatID:     ref,
+		InviteLink: link,
+	})
+	return err
+}
+
 func toTelegramKeyboard(rows [][]messenger.ActionButton) *models.InlineKeyboardMarkup {
 	if len(rows) == 0 {
 		return nil

@@ -73,6 +73,15 @@
       min-width: 940px;
       table-layout: auto;
     }
+    .table-wrap col.id-col { width: 3.5rem; }
+    .table-wrap col.name-col { width: 16%; }
+    .table-wrap col.price-col { width: 5.5rem; }
+    .table-wrap col.period-col { width: 6rem; }
+    .table-wrap col.channel-col { width: 16%; }
+    .table-wrap col.legal-col { width: 11%; }
+    .table-wrap col.launch-col { width: 21%; }
+    .table-wrap col.status-col { width: 8%; }
+    .table-wrap col.action-col { width: 13%; }
     td.mono, th.mono {
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
       font-size: .8rem;
@@ -103,9 +112,48 @@
     .table-wrap td.channel-cell a {
       max-width: 14rem;
     }
+    .table-wrap td.launch-cell,
+    .table-wrap th.launch-cell {
+      min-width: 18rem;
+    }
+    .table-wrap td.launch-cell a,
+    .table-wrap td.launch-cell code {
+      display: block !important;
+      max-width: none !important;
+      overflow: visible !important;
+      text-overflow: clip !important;
+      white-space: normal !important;
+      word-break: break-word !important;
+      overflow-wrap: anywhere !important;
+    }
+    .table-wrap td.channel-cell,
+    .table-wrap th.channel-cell {
+      min-width: 11rem;
+    }
+    .table-wrap td.legal-cell,
+    .table-wrap th.legal-cell {
+      min-width: 8rem;
+    }
     .link-stack {
       display: grid;
       gap: .45rem;
+    }
+    .launch-cell .link-group {
+      min-width: 16rem;
+      width: 100%;
+    }
+    .launch-cell .link-stack a,
+    .launch-cell .link-stack code {
+      max-width: none !important;
+      overflow: visible !important;
+      text-overflow: clip !important;
+      word-break: break-word !important;
+      overflow-wrap: anywhere !important;
+      white-space: normal !important;
+    }
+    .channel-cell .link-group,
+    .legal-cell .link-group {
+      min-width: 9rem;
     }
     .link-stack a,
     .link-stack code {
@@ -279,15 +327,26 @@
     </div>
     <div class="table-wrap">
       <table>
+        <colgroup>
+          <col class="id-col">
+          <col class="name-col">
+          <col class="price-col">
+          <col class="period-col">
+          <col class="channel-col">
+          <col class="legal-col">
+          <col class="launch-col">
+          <col class="status-col">
+          <col class="action-col">
+        </colgroup>
         <thead>
           <tr>
             <th class="mono">{{index .I18N "connectors.table.id"}}</th>
             <th>{{index .I18N "connectors.table.name"}}</th>
             <th>{{index .I18N "connectors.table.price"}}</th>
             <th>{{index .I18N "connectors.table.period"}}</th>
-            <th>{{index .I18N "connectors.table.channel"}}</th>
-            <th>{{index .I18N "connectors.table.legal"}}</th>
-            <th>{{index .I18N "connectors.table.launch"}}</th>
+            <th class="channel-cell">{{index .I18N "connectors.table.channel"}}</th>
+            <th class="legal-cell">{{index .I18N "connectors.table.legal"}}</th>
+            <th class="launch-cell">{{index .I18N "connectors.table.launch"}}</th>
             <th>{{index .I18N "connectors.table.active"}}</th>
             <th>{{index .I18N "connectors.table.action"}}</th>
           </tr>
@@ -312,7 +371,7 @@
               </details>
               {{else}}—{{end}}
             </td>
-            <td class="link-cell">
+            <td class="link-cell legal-cell">
               {{if or .OfferURL .PrivacyURL}}
               <details class="link-group">
                 <summary class="link-summary">{{index $.I18N "connectors.table.open_link"}}</summary>
@@ -323,7 +382,7 @@
               </details>
               {{else}}—{{end}}
             </td>
-            <td class="link-cell">
+            <td class="link-cell launch-cell">
               {{if or .TelegramBotLink .MAXBotLink .MAXStartCommand}}
               <details class="link-group">
                 <summary class="link-summary">{{index $.I18N "connectors.table.bot_open"}}</summary>

@@ -490,10 +490,30 @@ func (s *Service) ProcessCancelRequest(ctx context.Context, token string, messen
 		data, status := s.BuildCancelPageData(ctx, token, messengerUserID, expiresAt, "", state)
 		return "", "", withCancelError(data, msg), status
 	}
-	if err := s.Store.SetSubscriptionAutoPayEnabled(ctx, cancelSub.ID, false, now); err != nil {
-		slog.Error("disable subscription autopay via public page failed", "error", err, "messenger_user_id", messengerUserID, "subscription_id", cancelSub.ID)
+	cancelableSubs, err := s.listCancelableChainSubscriptions(ctx, cancelSub, messengerUserID)
+	if err != nil {
+		slog.Error("list cancelable subscription chain via public page failed", "error", err, "messenger_user_id", messengerUserID, "subscription_id", cancelSub.ID, "connector_id", cancelSub.ConnectorID)
 		data, status := s.BuildCancelPageData(ctx, token, messengerUserID, expiresAt, "", cancelPageStateError)
 		return "", "", withCancelError(data, s.RecurringCancelPersistFailed), status
+	}
+	if len(cancelableSubs) == 0 {
+		state := cancelPageStateAlreadyOff
+		msg := s.RecurringCancelAlreadyOff
+		if cancelSub.ID != sub.ID {
+			state = cancelPageStateStaleSubmit
+			msg = s.RecurringCancelStaleSubmit
+		}
+		data, status := s.BuildCancelPageData(ctx, token, messengerUserID, expiresAt, "", state)
+		return "", "", withCancelError(data, msg), status
+	}
+	disabledIDs := make([]string, 0, len(cancelableSubs))
+	for _, item := range cancelableSubs {
+		if err := s.Store.SetSubscriptionAutoPayEnabled(ctx, item.ID, false, now); err != nil {
+			slog.Error("disable subscription autopay via public page failed", "error", err, "messenger_user_id", messengerUserID, "subscription_id", item.ID)
+			data, status := s.BuildCancelPageData(ctx, token, messengerUserID, expiresAt, "", cancelPageStateError)
+			return "", "", withCancelError(data, s.RecurringCancelPersistFailed), status
+		}
+		disabledIDs = append(disabledIDs, strconv.FormatInt(item.ID, 10))
 	}
 
 	connectorName := ""
@@ -504,6 +524,7 @@ func (s *Service) ProcessCancelRequest(ctx context.Context, token string, messen
 	if cancelSub.ID != sub.ID {
 		details += ";requested_subscription_id=" + strconv.FormatInt(sub.ID, 10)
 	}
+	details += ";disabled_subscription_ids=" + strings.Join(disabledIDs, ",")
 	if err := s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(
 		ctx,
 		cancelSub.UserID,
@@ -526,6 +547,30 @@ func (s *Service) ProcessCancelRequest(ctx context.Context, token string, messen
 		resultState = cancelPageStateStaleSuccess
 	}
 	return connectorName, resultState, CancelPageData{}, 0
+}
+
+func (s *Service) listCancelableChainSubscriptions(ctx context.Context, activeSub domain.Subscription, messengerUserID int64) ([]domain.Subscription, error) {
+	subs, err := s.Store.ListSubscriptions(ctx, domain.SubscriptionListQuery{
+		UserID:      activeSub.UserID,
+		ConnectorID: activeSub.ConnectorID,
+		Status:      domain.SubscriptionStatusActive,
+		Limit:       50,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]domain.Subscription, 0, len(subs))
+	for _, sub := range subs {
+		if !sub.AutoPayEnabled {
+			continue
+		}
+		if !s.subscriptionMatchesMessengerUserID(ctx, sub, messengerUserID) {
+			continue
+		}
+		out = append(out, sub)
+	}
+	return out, nil
 }
 
 // resolveActiveCancelableSubscription keeps public cancel links usable for

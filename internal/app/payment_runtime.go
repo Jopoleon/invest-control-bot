@@ -38,7 +38,7 @@ type paymentRuntime struct {
 	maxClient                *max.Client
 	sendUserNotificationFn   func(context.Context, int64, string, messenger.OutgoingMessage) error
 	buildAppTargetAuditEvent func(context.Context, int64, string, int64, string, string, time.Time) domain.AuditEvent
-	buildTelegramAccessLink  func(context.Context, int64, domain.Connector) (string, error)
+	buildTelegramAccessLink  func(context.Context, int64, domain.Connector, domain.Subscription) (string, error)
 	resolvePreferredKindFn   func(context.Context, int64, string) messenger.Kind
 	resolveMAXAccountFn      func(context.Context, int64) (domain.UserMessengerAccount, bool, error)
 	triggerRebillFn          func(context.Context, int64, string) (rebillResponse, error)
@@ -54,7 +54,7 @@ func (a *application) payments() *paymentRuntime {
 		maxClient:                a.maxClient,
 		sendUserNotificationFn:   a.sendUserNotification,
 		buildAppTargetAuditEvent: a.buildAppTargetAuditEvent,
-		buildTelegramAccessLink:  a.buildTelegramPaymentAccessLink,
+		buildTelegramAccessLink:  a.buildTelegramPaymentAccessLinkForSubscription,
 		resolvePreferredKindFn:   a.resolvePreferredMessengerKind,
 		resolveMAXAccountFn:      a.resolveMAXMessengerAccount,
 		triggerRebillFn:          a.triggerRebill,

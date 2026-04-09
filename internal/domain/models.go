@@ -338,6 +338,20 @@ type Subscription struct {
 	UpdatedAt          time.Time          `db:"updated_at" json:"updated_at"`
 }
 
+// TelegramInviteLink tracks one Telegram invite link issued for paid access so
+// it can be revoked later when access to the chat ends.
+type TelegramInviteLink struct {
+	ID             int64      `db:"id" json:"id"`
+	UserID         int64      `db:"user_id" json:"user_id"`
+	ConnectorID    int64      `db:"connector_id" json:"connector_id"`
+	SubscriptionID int64      `db:"subscription_id" json:"subscription_id"`
+	ChatRef        string     `db:"chat_ref" json:"chat_ref"`
+	InviteLink     string     `db:"invite_link" json:"invite_link"`
+	ExpiresAt      *time.Time `db:"expires_at" json:"expires_at,omitempty"`
+	RevokedAt      *time.Time `db:"revoked_at" json:"revoked_at,omitempty"`
+	CreatedAt      time.Time  `db:"created_at" json:"created_at"`
+}
+
 // IsCurrentActiveAt reports whether the subscription grants access right now.
 func (s Subscription) IsCurrentActiveAt(now time.Time) bool {
 	return s.Status == SubscriptionStatusActive && !s.StartsAt.After(now) && s.EndsAt.After(now)
