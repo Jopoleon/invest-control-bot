@@ -64,10 +64,18 @@ type PostgresConfig struct {
 }
 
 // TelegramConfig stores bot credentials and webhook settings.
+//
+// APIBaseURL and HTTPProxyURL exist as operational escape hatches for networks
+// where the application server can reach the public internet but direct access
+// to api.telegram.org is selectively broken. The business logic should stay
+// unaware of this and continue talking to a single Telegram client, while ops
+// can switch routing through a relay/proxy only by changing env.
 type TelegramConfig struct {
-	BotToken    string
-	BotUsername string
-	Webhook     WebhookConfig
+	BotToken     string
+	BotUsername  string
+	APIBaseURL   string
+	HTTPProxyURL string
+	Webhook      WebhookConfig
 }
 
 // MAXConfig stores MAX bot credentials, webhook metadata and local polling settings.
@@ -166,8 +174,10 @@ func Load() (Config, error) {
 			WithMigration: getBoolEnv("DB_WITH_MIGRATION", true),
 		},
 		Telegram: TelegramConfig{
-			BotToken:    os.Getenv("TELEGRAM_BOT_TOKEN"),
-			BotUsername: os.Getenv("TELEGRAM_BOT_USERNAME"),
+			BotToken:     os.Getenv("TELEGRAM_BOT_TOKEN"),
+			BotUsername:  os.Getenv("TELEGRAM_BOT_USERNAME"),
+			APIBaseURL:   strings.TrimSpace(os.Getenv("TELEGRAM_API_BASE_URL")),
+			HTTPProxyURL: strings.TrimSpace(os.Getenv("TELEGRAM_HTTP_PROXY_URL")),
 			Webhook: WebhookConfig{
 				SecretToken: os.Getenv("TELEGRAM_WEBHOOK_SECRET"),
 				PublicURL:   os.Getenv("TELEGRAM_WEBHOOK_PUBLIC_URL"),
@@ -301,6 +311,18 @@ func (c Config) Validate() error {
 		}
 		if c.Security.AdminToken == "" {
 			errs = append(errs, "ADMIN_AUTH_TOKEN is required for non-local environments")
+		}
+	}
+
+	if raw := strings.TrimSpace(c.Telegram.APIBaseURL); raw != "" {
+		if _, err := url.ParseRequestURI(raw); err != nil {
+			errs = append(errs, "TELEGRAM_API_BASE_URL must be a valid absolute URL")
+		}
+	}
+	if raw := strings.TrimSpace(c.Telegram.HTTPProxyURL); raw != "" {
+		u, err := url.Parse(raw)
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			errs = append(errs, "TELEGRAM_HTTP_PROXY_URL must be a valid absolute proxy URL")
 		}
 	}
 

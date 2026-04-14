@@ -384,6 +384,17 @@ func (s *Service) hasStalePendingAudit(ctx context.Context, sub domain.Subscript
 
 // BuildCancelPageData materializes the current cancel-page state for the
 // validated messenger identity behind the signed public token.
+//
+// The page is intentionally chain-aware rather than row-aware: for short
+// recurring periods a user may temporarily have both the current period and the
+// already-created next period in `status=active`. The page must present those
+// rows as "current access" and "next period", not as two independent active
+// subscriptions.
+//
+// TODO: Introduce an explicit recurring-chain projection instead of rebuilding
+// current/future buckets ad hoc from raw subscription rows on every page load.
+// The same distinction is needed in bot menus, admin summaries, and recurring
+// cancel UX.
 func (s *Service) BuildCancelPageData(ctx context.Context, token string, messengerUserID int64, expiresAt time.Time, done, pageState string) (CancelPageData, int) {
 	data := CancelPageData{
 		PageState:       cancelPageStateDefault,
@@ -490,6 +501,10 @@ func (s *Service) ProcessCancelRequest(ctx context.Context, token string, messen
 		data, status := s.BuildCancelPageData(ctx, token, messengerUserID, expiresAt, "", state)
 		return "", "", withCancelError(data, msg), status
 	}
+	// Public cancel is product-level "disable this tariff's autopay", not
+	// "disable just this exact row". That is why we fan out over the whole active
+	// recurring chain for the same user+connector after resolving the currently
+	// cancelable subscription.
 	cancelableSubs, err := s.listCancelableChainSubscriptions(ctx, cancelSub, messengerUserID)
 	if err != nil {
 		slog.Error("list cancelable subscription chain via public page failed", "error", err, "messenger_user_id", messengerUserID, "subscription_id", cancelSub.ID, "connector_id", cancelSub.ConnectorID)
@@ -550,6 +565,12 @@ func (s *Service) ProcessCancelRequest(ctx context.Context, token string, messen
 }
 
 func (s *Service) listCancelableChainSubscriptions(ctx context.Context, activeSub domain.Subscription, messengerUserID int64) ([]domain.Subscription, error) {
+	// This helper currently groups a recurring chain by user + connector only.
+	//
+	// TODO: Consider promoting "recurring chain" to an explicit concept keyed by
+	// the recurring-capable parent payment or a dedicated chain id. Today user +
+	// connector is good enough, but it keeps public cancel semantics coupled to
+	// current storage shape instead of a first-class business identifier.
 	subs, err := s.Store.ListSubscriptions(ctx, domain.SubscriptionListQuery{
 		UserID:      activeSub.UserID,
 		ConnectorID: activeSub.ConnectorID,
@@ -577,6 +598,10 @@ func (s *Service) listCancelableChainSubscriptions(ctx context.Context, activeSu
 // short-period recurring flows where the active subscription may rotate between
 // page render and form submit.
 func (s *Service) resolveActiveCancelableSubscription(ctx context.Context, requested domain.Subscription, messengerUserID int64) (domain.Subscription, string, bool, error) {
+	// The signed page token still points at the original messenger identity, but
+	// the concrete active row may have rotated to the next paid period by the
+	// time the user clicks "disable". This resolver preserves the page contract
+	// without forcing the user to reopen the bot for every short-period renewal.
 	if requested.Status == domain.SubscriptionStatusActive && requested.AutoPayEnabled {
 		return requested, cancelResolutionExact, true, nil
 	}
@@ -648,6 +673,12 @@ func (s *Service) subscriptionMatchesMessengerUserID(ctx context.Context, sub do
 }
 
 func (s *Service) resolveRecurringCancelUserIdentity(ctx context.Context, subs []domain.Subscription, messengerUserID int64) (string, string, domain.UserMessengerAccount) {
+	// This resolver still carries mixed-mode compatibility logic because public
+	// cancel links are keyed by messenger identity while the rest of the system
+	// is moving toward user_id-first identity resolution.
+	//
+	// TODO: Collapse these fallbacks behind one shared user-identity projection
+	// once public/provider flows stop depending on telegram-first bridge lookups.
 	for _, sub := range subs {
 		if sub.UserID <= 0 {
 			continue

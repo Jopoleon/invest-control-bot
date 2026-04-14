@@ -101,6 +101,9 @@ func (p *paymentRuntime) handlePaymentResult(w http.ResponseWriter, r *http.Requ
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+	// ResultURL is the only callback that is allowed to confirm a successful
+	// payment. Redirect pages may be opened later or not opened at all, so this
+	// handler must remain self-sufficient and idempotent.
 	outSum := firstNonEmpty(r.FormValue("OutSum"), r.FormValue("out_summ"))
 	invID := firstNonEmpty(r.FormValue("InvId"), r.FormValue("InvID"), r.FormValue("InvoiceID"), r.FormValue("invoice_id"))
 	signature := firstNonEmpty(r.FormValue("SignatureValue"), r.FormValue("signaturevalue"))
@@ -153,6 +156,12 @@ func (p *paymentRuntime) handlePaymentResult(w http.ResponseWriter, r *http.Requ
 	_, _ = w.Write([]byte("OK" + invID))
 }
 
+// handlePaymentSuccess renders a user-facing status page only. It must never
+// mutate payment state because provider redirects are not a trustworthy source
+// of truth: the user can refresh, arrive late, or never arrive at all.
+//
+// TODO: Split redirect-page loading and page-action assembly into a smaller
+// dedicated package once payment/public pages are fully moved out of root app.
 func (p *paymentRuntime) handlePaymentSuccess(w http.ResponseWriter, r *http.Request) {
 	if p.robokassaService == nil {
 		w.WriteHeader(http.StatusNotFound)
@@ -212,6 +221,10 @@ func (p *paymentRuntime) handlePaymentSuccess(w http.ResponseWriter, r *http.Req
 	})
 }
 
+// handlePaymentFail mirrors handlePaymentSuccess in the opposite direction:
+// user-facing redirect first, best-effort state mutation second. The state
+// change is safe because UpdatePaymentFailed is idempotent and refuses to
+// overwrite already-paid rows.
 func (p *paymentRuntime) handlePaymentFail(w http.ResponseWriter, r *http.Request) {
 	if p.robokassaService == nil {
 		w.WriteHeader(http.StatusNotFound)
@@ -272,6 +285,9 @@ func (p *paymentRuntime) handlePaymentFail(w http.ResponseWriter, r *http.Reques
 	})
 }
 
+// handlePaymentRebill is an admin/debug endpoint for forcing one recurring
+// attempt on a selected subscription. Normal recurring flows should come
+// through the lifecycle scheduler instead of this handler.
 func (p *paymentRuntime) handlePaymentRebill(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -389,6 +405,14 @@ func (p *paymentRuntime) handleMockPaySuccess(w http.ResponseWriter, r *http.Req
 func (p *paymentRuntime) buildPaymentPageActions(ctx context.Context, paymentRow domain.Payment, channelURL string, success bool) []paymentPageAction {
 	displayKind := p.resolvePreferredKindFn(ctx, paymentRow.UserID, "")
 	botURL := firstNonEmpty(buildBotChatURL(p.telegramBotUsername), "https://t.me")
+	// Payment status pages intentionally choose actions by connector delivery
+	// kind, not only by the user's preferred account. Otherwise a Telegram-only
+	// connector for a mixed-account user could incorrectly point at MAX, or vice
+	// versa, even though the actual paid access destination is single-messenger.
+	//
+	// TODO: Move connector lookup + messenger-resolution + action assembly into a
+	// dedicated page-model helper. The runtime handler currently mixes HTTP
+	// concerns and cross-messenger UI policy in one function.
 	if connector, found, err := p.store.GetConnector(ctx, paymentRow.ConnectorID); err == nil && found {
 		switch connector.DeliveryMessengerKind(messengerKindToDomain(displayKind)) {
 		case domain.MessengerKindMAX:
@@ -457,6 +481,9 @@ func (p *paymentRuntime) buildPaymentSuccessDetails(ctx context.Context, payment
 	if paymentRow.PaidAt != nil && !paymentRow.PaidAt.IsZero() {
 		details = append(details, paymentPageDetail{Label: "Оплачено", Value: paymentRow.PaidAt.In(time.Local).Format("02.01.2006 15:04")})
 	}
+	// "Access until" is shown only when we can prove that the latest
+	// subscription row belongs to this exact payment. This avoids showing a
+	// misleading later period from a different renewal in long recurring chains.
 	if latestSub, found, err := p.store.GetLatestSubscriptionByUserConnector(ctx, paymentRow.UserID, paymentRow.ConnectorID); err == nil && found && latestSub.PaymentID == paymentRow.ID {
 		details = append(details, paymentPageDetail{Label: "Доступ до", Value: latestSub.EndsAt.In(time.Local).Format("02.01.2006 15:04")})
 	}

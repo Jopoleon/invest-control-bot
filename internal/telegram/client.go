@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
+	neturl "net/url"
 	"strings"
 	"time"
 
@@ -33,6 +35,23 @@ type Client struct {
 	bot     *tgbot.Bot
 }
 
+// ClientOptions allows routing Telegram Bot API traffic through a relay or proxy
+// without changing the rest of the business logic.
+//
+// Two deployment modes are intentionally supported:
+//  1. ServerURL points the SDK at an alternate Bot API endpoint, for example a
+//     Cloudflare Worker relay or a self-hosted telegram-bot-api instance.
+//  2. HTTPProxyURL keeps Telegram API as the upstream but tunnels requests
+//     through a trusted outbound proxy.
+//
+// The rest of the app should not know which mode is active. Startup checks,
+// webhook setup, invite-link management and messaging should continue using the
+// same Client methods regardless of the network workaround chosen by ops.
+type ClientOptions struct {
+	ServerURL    string
+	HTTPProxyURL string
+}
+
 // Enabled reports whether the client is configured for real Telegram API calls.
 func (c *Client) Enabled() bool {
 	return c != nil && c.enabled
@@ -40,13 +59,54 @@ func (c *Client) Enabled() bool {
 
 // NewClient creates Telegram API client; empty token enables dry-run mode for local testing.
 func NewClient(botToken, webhookSecret string) (*Client, error) {
+	return NewClientWithOptions(botToken, webhookSecret, ClientOptions{})
+}
+
+// NewClientWithOptions creates Telegram API client with optional custom Bot API
+// endpoint and HTTP(S) proxy routing.
+//
+// This is primarily an operations safety valve. If the VPS cannot reach
+// api.telegram.org directly, we still want the same transport-neutral business
+// logic to run by swapping only the outbound network path. Validation stays
+// here so startup fails fast on malformed relay/proxy configuration instead of
+// surfacing obscure HTTP errors later.
+func NewClientWithOptions(botToken, webhookSecret string, options ClientOptions) (*Client, error) {
 	if botToken == "" {
 		return &Client{enabled: false}, nil
 	}
 
-	opts := []tgbot.Option{}
+	// Telegram transport health is checked explicitly by the app startup layer.
+	// Skipping eager GetMe here prevents transport reachability issues from
+	// crashing client construction before startup policy can decide whether to
+	// degrade or fail hard.
+	opts := []tgbot.Option{tgbot.WithSkipGetMe()}
 	if webhookSecret != "" {
 		opts = append(opts, tgbot.WithWebhookSecretToken(webhookSecret))
+	}
+	if raw := strings.TrimSpace(options.ServerURL); raw != "" {
+		if _, err := neturl.ParseRequestURI(raw); err != nil {
+			return nil, fmt.Errorf("invalid telegram server url: %w", err)
+		}
+		// The SDK appends /bot<TOKEN>/... itself, so config must contain only the
+		// base Bot API endpoint (relay root or local bot api server root).
+		opts = append(opts, tgbot.WithServerURL(strings.TrimRight(raw, "/")))
+	}
+	if raw := strings.TrimSpace(options.HTTPProxyURL); raw != "" {
+		proxyURL, err := neturl.Parse(raw)
+		if err != nil || proxyURL.Scheme == "" || proxyURL.Host == "" {
+			if err == nil {
+				err = fmt.Errorf("missing scheme or host")
+			}
+			return nil, fmt.Errorf("invalid telegram http proxy url: %w", err)
+		}
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.Proxy = http.ProxyURL(proxyURL)
+		// Match the library default timeout so switching to a proxy does not
+		// silently change transport behavior outside of routing.
+		opts = append(opts, tgbot.WithHTTPClient(time.Minute, &http.Client{
+			Timeout:   time.Minute,
+			Transport: transport,
+		}))
 	}
 
 	b, err := tgbot.New(botToken, opts...)

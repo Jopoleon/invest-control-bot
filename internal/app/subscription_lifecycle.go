@@ -228,6 +228,13 @@ func normalizeTelegramChatID(chatIDRaw string) (int64, bool) {
 }
 
 func (a *application) subscriptionLifecycleService() *appsubscriptions.Service {
+	// The root app package still owns transport/client wiring, while the
+	// subscriptions package owns lifecycle rules. Keeping this constructor here
+	// prevents Telegram/MAX clients from leaking into app/subscriptions tests.
+	//
+	// TODO: Unify payment, recurring, and subscription service wiring behind a
+	// slimmer application composition layer. Right now root app still hand-wires
+	// several service objects with overlapping dependencies.
 	service := &appsubscriptions.Service{
 		Store:                       a.store,
 		TelegramClient:              a.telegramClient,

@@ -89,3 +89,28 @@ func TestDefaultBotCommands(t *testing.T) {
 		t.Fatalf("commands=%+v unexpected order", commands)
 	}
 }
+
+func TestNewClientWithOptions_RejectsInvalidServerURL(t *testing.T) {
+	if _, err := NewClientWithOptions("token", "", ClientOptions{ServerURL: "://bad"}); err == nil {
+		t.Fatal("expected invalid server url error")
+	}
+}
+
+func TestNewClientWithOptions_RejectsInvalidHTTPProxyURL(t *testing.T) {
+	if _, err := NewClientWithOptions("token", "", ClientOptions{HTTPProxyURL: "bad-proxy"}); err == nil {
+		t.Fatal("expected invalid proxy url error")
+	}
+}
+
+func TestNewClientWithOptions_DisabledModeIgnoresRelaySettings(t *testing.T) {
+	client, err := NewClientWithOptions("", "", ClientOptions{
+		ServerURL:    "https://telegram-relay.example.com",
+		HTTPProxyURL: "http://proxy.example.com:8080",
+	})
+	if err != nil {
+		t.Fatalf("NewClientWithOptions: %v", err)
+	}
+	if client == nil || client.Enabled() {
+		t.Fatalf("disabled client expected")
+	}
+}

@@ -14,6 +14,17 @@ func (a *application) buildTelegramPaymentAccessLink(ctx context.Context, userID
 	return a.buildTelegramPaymentAccessLinkForSubscription(ctx, userID, connector, domain.Subscription{})
 }
 
+// buildTelegramPaymentAccessLinkForSubscription creates a Telegram-native
+// invite link for a paid subscription and persists that exact link when the
+// subscription row is already known.
+//
+// Persistence matters because later expiry/revoke flows need the concrete
+// invite-link string to revoke it via Telegram Bot API. The link itself lives
+// on Telegram's side, not on our domain.
+//
+// TODO: Add a small cleanup/reconciliation job for stale invite-link rows that
+// are already expired and revoked in Telegram but still not marked in DB due to
+// transient API/database failures.
 func (a *application) buildTelegramPaymentAccessLinkForSubscription(ctx context.Context, userID int64, connector domain.Connector, sub domain.Subscription) (string, error) {
 	if a.telegramClient == nil {
 		return "", nil
@@ -27,7 +38,10 @@ func (a *application) buildTelegramPaymentAccessLinkForSubscription(ctx context.
 		return "", nil
 	}
 
-	// Single-use links are safer than exposing the chat/channel URL after payment.
+	// Single-use links are safer than exposing the chat/channel URL after
+	// payment. Their TTL is capped by the paid period when we already know the
+	// subscription row, so the button in chat history cannot stay valid much
+	// longer than the access itself.
 	inviteName := fmt.Sprintf("paid-u%d-c%d", userID, connector.ID)
 	expireAt := time.Now().UTC().Add(24 * time.Hour)
 	if sub.ID > 0 && !sub.EndsAt.IsZero() && sub.EndsAt.After(time.Now().UTC()) {

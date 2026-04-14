@@ -47,7 +47,27 @@ type Service struct {
 	BuildTargetAuditEvent   func(context.Context, int64, string, int64, string, string, time.Time) domain.AuditEvent
 }
 
+// ActivateSuccessfulPayment is the write-side heart of payment success
+// handling.
+//
+// The function intentionally performs several phases in order:
+//  1. mark the payment as paid, idempotently;
+//  2. compute the subscription period and upsert the subscription row;
+//  3. write subscription activation audit;
+//  4. stop early on duplicate callbacks before any user-facing side effects;
+//  5. resolve access delivery and notify the user.
+//
+// Keeping duplicate-callback protection between phases 3 and 4 is important:
+// we still want activation state in storage to converge correctly, but we must
+// not send duplicate success notifications or shift already-created periods.
+//
+// TODO: Wrap payment status update + subscription upsert + activation audit in
+// a dedicated transactional store path. Today this orchestration is correct but
+// spans several store calls, which makes the flow harder to reason about under
+// partial DB failures.
 func (s *Service) ActivateSuccessfulPayment(ctx context.Context, paymentRow domain.Payment, providerPaymentID string, now time.Time) {
+	// Phase 1: converge payment state to paid and determine the effective paid
+	// timestamp that should anchor the subscription period.
 	paymentMarkedNow := false
 	effectivePaidAt := now
 	if paymentRow.Status != domain.PaymentStatusPaid {
@@ -83,6 +103,8 @@ func (s *Service) ActivateSuccessfulPayment(ctx context.Context, paymentRow doma
 		}
 	}
 
+	// Phase 2: derive the subscription window. Renewal periods extend from the
+	// later of "payment succeeded now" and "current active period end".
 	endsAt := effectivePaidAt.AddDate(0, 0, 30)
 	connector, connectorExists, err := s.Store.GetConnector(ctx, paymentRow.ConnectorID)
 	if err != nil {
@@ -134,6 +156,8 @@ func (s *Service) ActivateSuccessfulPayment(ctx context.Context, paymentRow doma
 		}
 	}
 
+	// Phase 3: subscription activation is an auditable state transition even if
+	// the user-facing notification later fails.
 	if err := s.Store.SaveAuditEvent(ctx, s.BuildTargetAuditEvent(
 		ctx,
 		paymentRow.UserID,
@@ -146,9 +170,16 @@ func (s *Service) ActivateSuccessfulPayment(ctx context.Context, paymentRow doma
 		slog.Error("save audit event failed", "error", err, "action", domain.AuditActionSubscriptionActivated)
 	}
 
+	// Phase 4: duplicate provider callbacks must stop here. By this point the
+	// paid payment and its subscription row already converge to the right state,
+	// but no delivery side effects should happen twice.
 	if !paymentMarkedNow {
 		return
 	}
+
+	// Phase 5: resolve destination delivery. This phase is intentionally
+	// messenger-aware and connector-aware: single-destination connectors must not
+	// depend on a user's globally preferred account.
 	channelURL := ""
 	accessSource := ""
 	failureReason := "missing_access_destination"
@@ -229,6 +260,9 @@ func (s *Service) ActivateSuccessfulPayment(ctx context.Context, paymentRow doma
 				deliveryFailureReason = failureReason
 			}
 		}
+		// Delivery prefers the transport-native path first (Telegram invite link,
+		// MAX add-member), then falls back to a connector-level access URL only if
+		// that still represents a valid destination for the chosen messenger.
 		if channelURL == "" {
 			fallbackURL := connector.AccessURL(deliveryKind)
 			if strings.TrimSpace(fallbackURL) != "" {
@@ -418,6 +452,13 @@ func (s *Service) hasSubscriptionForPayment(ctx context.Context, userID, connect
 }
 
 func (s *Service) loadSubscriptionForPayment(ctx context.Context, userID, connectorID, paymentID int64) (domain.Subscription, bool, error) {
+	// The store interface does not yet expose a direct "get subscription by
+	// payment id" method, so payment success currently scans the user's
+	// connector-local subscription rows.
+	//
+	// TODO: Add a direct store method keyed by payment_id. This will simplify
+	// payment activation, avoid broad list scans, and make the duplicate-callback
+	// path cheaper and easier to read.
 	subs, err := s.Store.ListSubscriptions(ctx, domain.SubscriptionListQuery{
 		UserID:      userID,
 		ConnectorID: connectorID,

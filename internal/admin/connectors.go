@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -149,7 +150,10 @@ func (h *Handler) createConnector(ctx context.Context, r *http.Request) error {
 	priceRaw := strings.TrimSpace(r.FormValue("price_rub"))
 	periodModeRaw := strings.TrimSpace(r.FormValue("period_mode"))
 	durationRaw := strings.TrimSpace(r.FormValue("period_value"))
+	durationPresetRaw := strings.TrimSpace(r.FormValue("period_duration_preset"))
+	customDurationRaw := strings.TrimSpace(r.FormValue("custom_period_value"))
 	monthsRaw := strings.TrimSpace(r.FormValue("period_months"))
+	monthsPresetRaw := strings.TrimSpace(r.FormValue("period_months_preset"))
 	fixedEndsAtRaw := strings.TrimSpace(r.FormValue("fixed_ends_at"))
 	offerURL := strings.TrimSpace(r.FormValue("offer_url"))
 	privacyURL := strings.TrimSpace(r.FormValue("privacy_url"))
@@ -176,6 +180,14 @@ func (h *Handler) createConnector(ctx context.Context, r *http.Request) error {
 	price, err := strconv.ParseInt(priceRaw, 10, 64)
 	if err != nil || price <= 0 {
 		return errCreateConnectorPrice
+	}
+	if customDurationRaw != "" {
+		durationRaw = customDurationRaw
+	} else if durationPresetRaw != "" {
+		durationRaw = durationPresetRaw
+	}
+	if monthsPresetRaw != "" {
+		monthsRaw = monthsPresetRaw
 	}
 	periodMode, periodSeconds, periodMonths, fixedEndsAt, err := parseConnectorPeriodModel(periodModeRaw, durationRaw, monthsRaw, fixedEndsAtRaw, time.Now().UTC())
 	if err != nil {
@@ -235,6 +247,12 @@ func (h *Handler) resolveTelegramChatID(ctx context.Context, chatID, channelURL 
 // renderConnectorsPage maps domain models to view models and renders template.
 func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWriter, r *http.Request, lang, notice string) {
 	connectors, _ := h.store.ListConnectors(ctx)
+	payments, _ := h.store.ListPayments(ctx, domain.PaymentListQuery{Limit: 5000})
+	subs, _ := h.store.ListSubscriptions(ctx, domain.SubscriptionListQuery{Limit: 5000})
+	search := strings.TrimSpace(r.URL.Query().Get("search"))
+	statusFilter := normalizeConnectorStatusFilter(r.URL.Query().Get("status"))
+	destinationFilter := normalizeConnectorDestinationFilter(r.URL.Query().Get("destination"))
+	sortMode := normalizeConnectorSort(r.URL.Query().Get("sort"))
 
 	botUsername := h.botUsername
 	if botUsername == "" {
@@ -244,37 +262,77 @@ func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWrite
 	if maxBotUsername == "" {
 		maxBotUsername = "<max_bot_username>"
 	}
+	now := time.Now().UTC()
+	resolveAccountPresentation := h.buildMessengerAccountPresentationLookup(ctx, lang)
+	usageByConnector := buildConnectorUsageViews(ctx, connectors, payments, subs, now, resolveAccountPresentation)
 
+	totalConnectors := len(connectors)
+	activeConnectors := 0
+	telegramOnlyCount := 0
+	maxOnlyCount := 0
+	dualCount := 0
 	rows := make([]connectorView, 0, len(connectors))
 	for _, c := range connectors {
+		hasTelegram := c.HasAccessFor(domain.MessengerKindTelegram)
+		hasMAX := c.HasAccessFor(domain.MessengerKindMAX)
+		if c.IsActive {
+			activeConnectors++
+		}
+		switch {
+		case hasTelegram && hasMAX:
+			dualCount++
+		case hasTelegram:
+			telegramOnlyCount++
+		case hasMAX:
+			maxOnlyCount++
+		}
+		if !connectorMatchesFilters(c, search, statusFilter, destinationFilter) {
+			continue
+		}
 		toggleTo := !c.IsActive
 		toggleLabel := t(lang, "connectors.table.enable")
 		if c.IsActive {
 			toggleLabel = t(lang, "connectors.table.disable")
 		}
 		activeLabel, activeClass := connectorActiveBadge(lang, c.IsActive)
+		destinationLabel, destinationClass := connectorDestinationBadge(lang, hasTelegram, hasMAX)
+		usage := usageByConnector[c.ID]
 		rows = append(rows, connectorView{
-			ID:              c.ID,
-			StartPayload:    c.StartPayload,
-			Name:            c.Name,
-			ChatID:          c.ChatID,
-			TelegramURL:     c.TelegramAccessURL(),
-			MAXChatID:       c.MAXChatID,
-			MAXChannelURL:   c.MAXChannelURL,
-			PriceRUB:        c.PriceRUB,
-			PeriodLabel:     adminConnectorPeriodLabel(c),
-			OfferURL:        c.OfferURL,
-			PrivacyURL:      c.PrivacyURL,
-			TelegramBotLink: buildAdminBotStartURL(botUsername, c.StartPayload),
-			MAXBotLink:      buildAdminMAXStartURL(maxBotUsername, c.StartPayload),
-			MAXStartCommand: buildAdminStartCommand(c.StartPayload),
-			IsActive:        c.IsActive,
-			ActiveLabel:     activeLabel,
-			ActiveClass:     activeClass,
-			ToggleTo:        toggleTo,
-			ToggleLabel:     toggleLabel,
+			ID:               c.ID,
+			StartPayload:     c.StartPayload,
+			Name:             c.Name,
+			ChatID:           c.ChatID,
+			TelegramURL:      c.TelegramAccessURL(),
+			MAXChatID:        c.MAXChatID,
+			MAXChannelURL:    c.MAXChannelURL,
+			PriceRUB:         c.PriceRUB,
+			PeriodLabel:      adminConnectorPeriodLabel(c),
+			PeriodSortValue:  adminConnectorPeriodSortValue(c),
+			OfferURL:         c.OfferURL,
+			PrivacyURL:       c.PrivacyURL,
+			TelegramBotLink:  buildAdminBotStartURL(botUsername, c.StartPayload),
+			MAXBotLink:       buildAdminMAXStartURL(maxBotUsername, c.StartPayload),
+			MAXStartCommand:  buildAdminStartCommand(c.StartPayload),
+			DestinationLabel: destinationLabel,
+			DestinationClass: destinationClass,
+			HasTelegram:      hasTelegram,
+			HasMAX:           hasMAX,
+			HasLegalDocs:     c.OfferURL != "" || c.PrivacyURL != "",
+			DistinctUsers:    usage.DistinctUsers,
+			PaidPayments:     usage.PaidPayments,
+			CurrentPeriods:   usage.CurrentPeriods,
+			NextPeriods:      usage.NextPeriods,
+			AutoPayPeriods:   usage.AutoPayPeriods,
+			CurrentUsers:     usage.CurrentUsers,
+			NextUsers:        usage.NextUsers,
+			IsActive:         c.IsActive,
+			ActiveLabel:      activeLabel,
+			ActiveClass:      activeClass,
+			ToggleTo:         toggleTo,
+			ToggleLabel:      toggleLabel,
 		})
 	}
+	sortConnectorViews(rows, sortMode)
 
 	h.renderer.render(w, "connectors.html", connectorsPageData{
 		basePageData: basePageData{
@@ -289,8 +347,266 @@ func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWrite
 		ExportURL:           buildExportURL("/admin/connectors/export.csv", r.URL.Query(), lang),
 		TelegramBotUsername: botUsername,
 		MAXBotUsername:      maxBotUsername,
+		Search:              search,
+		StatusFilter:        statusFilter,
+		DestinationFilter:   destinationFilter,
+		Sort:                sortMode,
+		TotalConnectors:     totalConnectors,
+		ActiveConnectors:    activeConnectors,
+		TelegramOnlyCount:   telegramOnlyCount,
+		MAXOnlyCount:        maxOnlyCount,
+		DualCount:           dualCount,
 		Connectors:          rows,
 	})
+}
+
+type connectorUsageView struct {
+	DistinctUsers  int
+	PaidPayments   int
+	CurrentPeriods int
+	NextPeriods    int
+	AutoPayPeriods int
+	CurrentUsers   []string
+	NextUsers      []string
+}
+
+func normalizeConnectorStatusFilter(raw string) string {
+	switch strings.TrimSpace(raw) {
+	case "active", "inactive":
+		return strings.TrimSpace(raw)
+	default:
+		return "all"
+	}
+}
+
+func normalizeConnectorDestinationFilter(raw string) string {
+	switch strings.TrimSpace(raw) {
+	case "telegram", "max", "dual":
+		return strings.TrimSpace(raw)
+	default:
+		return "all"
+	}
+}
+
+func normalizeConnectorSort(raw string) string {
+	switch strings.TrimSpace(raw) {
+	case "newest", "oldest", "name_asc", "name_desc", "price_desc", "price_asc", "period_desc", "period_asc":
+		return strings.TrimSpace(raw)
+	default:
+		return "active_newest"
+	}
+}
+
+func connectorMatchesFilters(c domain.Connector, search, statusFilter, destinationFilter string) bool {
+	if statusFilter == "active" && !c.IsActive {
+		return false
+	}
+	if statusFilter == "inactive" && c.IsActive {
+		return false
+	}
+	hasTelegram := c.HasAccessFor(domain.MessengerKindTelegram)
+	hasMAX := c.HasAccessFor(domain.MessengerKindMAX)
+	switch destinationFilter {
+	case "telegram":
+		if !hasTelegram || hasMAX {
+			return false
+		}
+	case "max":
+		if !hasMAX || hasTelegram {
+			return false
+		}
+	case "dual":
+		if !(hasTelegram && hasMAX) {
+			return false
+		}
+	}
+	search = strings.ToLower(strings.TrimSpace(search))
+	if search == "" {
+		return true
+	}
+	fields := []string{
+		c.Name,
+		c.StartPayload,
+		c.ChatID,
+		c.ChannelURL,
+		c.MAXChatID,
+		c.MAXChannelURL,
+		c.OfferURL,
+		c.PrivacyURL,
+	}
+	for _, field := range fields {
+		if strings.Contains(strings.ToLower(field), search) {
+			return true
+		}
+	}
+	return false
+}
+
+func sortConnectorViews(rows []connectorView, sortMode string) {
+	sort.SliceStable(rows, func(i, j int) bool {
+		left := rows[i]
+		right := rows[j]
+		switch sortMode {
+		case "newest":
+			return left.ID > right.ID
+		case "oldest":
+			return left.ID < right.ID
+		case "name_asc":
+			if !strings.EqualFold(left.Name, right.Name) {
+				return strings.ToLower(left.Name) < strings.ToLower(right.Name)
+			}
+			return left.ID > right.ID
+		case "name_desc":
+			if !strings.EqualFold(left.Name, right.Name) {
+				return strings.ToLower(left.Name) > strings.ToLower(right.Name)
+			}
+			return left.ID > right.ID
+		case "price_desc":
+			if left.PriceRUB != right.PriceRUB {
+				return left.PriceRUB > right.PriceRUB
+			}
+			return left.ID > right.ID
+		case "price_asc":
+			if left.PriceRUB != right.PriceRUB {
+				return left.PriceRUB < right.PriceRUB
+			}
+			return left.ID > right.ID
+		case "period_desc":
+			if left.PeriodSortValue != right.PeriodSortValue {
+				return left.PeriodSortValue > right.PeriodSortValue
+			}
+			return left.ID > right.ID
+		case "period_asc":
+			if left.PeriodSortValue != right.PeriodSortValue {
+				return left.PeriodSortValue < right.PeriodSortValue
+			}
+			return left.ID > right.ID
+		default:
+			if left.IsActive != right.IsActive {
+				return left.IsActive
+			}
+			return left.ID > right.ID
+		}
+	})
+}
+
+func connectorDestinationBadge(lang string, hasTelegram, hasMAX bool) (string, string) {
+	switch {
+	case hasTelegram && hasMAX:
+		return t(lang, "connectors.badge.dual"), "is-accent"
+	case hasTelegram:
+		return t(lang, "connectors.badge.telegram"), "is-success"
+	case hasMAX:
+		return t(lang, "connectors.badge.max"), "is-accent"
+	default:
+		return t(lang, "connectors.badge.missing"), "is-warning"
+	}
+}
+
+func adminConnectorPeriodSortValue(c domain.Connector) int64 {
+	switch c.ResolvedPeriodMode() {
+	case domain.ConnectorPeriodModeDuration:
+		return c.PeriodSeconds
+	case domain.ConnectorPeriodModeCalendarMonths:
+		if months, ok := c.CalendarMonthsPeriod(); ok {
+			return int64(months) * 31 * 24 * 60 * 60
+		}
+		return 0
+	case domain.ConnectorPeriodModeFixedDeadline:
+		if fixedEndsAt, ok := c.FixedDeadline(); ok {
+			return fixedEndsAt.Unix()
+		}
+	}
+	return 0
+}
+
+func buildConnectorUsageViews(
+	ctx context.Context,
+	connectors []domain.Connector,
+	payments []domain.Payment,
+	subs []domain.Subscription,
+	now time.Time,
+	resolveAccountPresentation func(userID int64) (messengerAccountPresentation, error),
+) map[int64]connectorUsageView {
+	usage := make(map[int64]connectorUsageView, len(connectors))
+	distinctUsersByConnector := make(map[int64]map[int64]struct{}, len(connectors))
+	currentUsersByConnector := make(map[int64]map[int64]string, len(connectors))
+	nextUsersByConnector := make(map[int64]map[int64]string, len(connectors))
+
+	resolveUserLabel := func(userID int64) string {
+		accountPresentation, err := resolveAccountPresentation(userID)
+		if err != nil {
+			return "user #" + strconv.FormatInt(userID, 10)
+		}
+		if strings.TrimSpace(accountPresentation.PrimaryAccount) != "" {
+			return accountPresentation.PrimaryAccount
+		}
+		return "user #" + strconv.FormatInt(userID, 10)
+	}
+
+	for _, payment := range payments {
+		item := usage[payment.ConnectorID]
+		if payment.Status == domain.PaymentStatusPaid {
+			item.PaidPayments++
+		}
+		if _, ok := distinctUsersByConnector[payment.ConnectorID]; !ok {
+			distinctUsersByConnector[payment.ConnectorID] = make(map[int64]struct{})
+		}
+		distinctUsersByConnector[payment.ConnectorID][payment.UserID] = struct{}{}
+		usage[payment.ConnectorID] = item
+	}
+
+	for _, sub := range subs {
+		item := usage[sub.ConnectorID]
+		if _, ok := distinctUsersByConnector[sub.ConnectorID]; !ok {
+			distinctUsersByConnector[sub.ConnectorID] = make(map[int64]struct{})
+		}
+		distinctUsersByConnector[sub.ConnectorID][sub.UserID] = struct{}{}
+		switch {
+		case sub.IsCurrentActiveAt(now):
+			item.CurrentPeriods++
+			if sub.AutoPayEnabled {
+				item.AutoPayPeriods++
+			}
+			if _, ok := currentUsersByConnector[sub.ConnectorID]; !ok {
+				currentUsersByConnector[sub.ConnectorID] = make(map[int64]string)
+			}
+			currentUsersByConnector[sub.ConnectorID][sub.UserID] = resolveUserLabel(sub.UserID)
+		case sub.IsFutureActiveAt(now):
+			item.NextPeriods++
+			if sub.AutoPayEnabled {
+				item.AutoPayPeriods++
+			}
+			if _, ok := nextUsersByConnector[sub.ConnectorID]; !ok {
+				nextUsersByConnector[sub.ConnectorID] = make(map[int64]string)
+			}
+			nextUsersByConnector[sub.ConnectorID][sub.UserID] = resolveUserLabel(sub.UserID)
+		}
+		usage[sub.ConnectorID] = item
+	}
+
+	for _, connector := range connectors {
+		item := usage[connector.ID]
+		item.DistinctUsers = len(distinctUsersByConnector[connector.ID])
+		item.CurrentUsers = flattenConnectorUserLabels(currentUsersByConnector[connector.ID])
+		item.NextUsers = flattenConnectorUserLabels(nextUsersByConnector[connector.ID])
+		usage[connector.ID] = item
+	}
+
+	_ = ctx
+	return usage
+}
+
+func flattenConnectorUserLabels(rows map[int64]string) []string {
+	if len(rows) == 0 {
+		return nil
+	}
+	labels := make([]string, 0, len(rows))
+	for _, label := range rows {
+		labels = append(labels, label)
+	}
+	sort.Strings(labels)
+	return labels
 }
 
 func (h *Handler) redirectConnectors(w http.ResponseWriter, r *http.Request, lang, notice string) {

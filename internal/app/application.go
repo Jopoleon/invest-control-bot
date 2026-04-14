@@ -46,6 +46,12 @@ type startupRetryPolicy struct {
 	backoff  time.Duration
 }
 
+type telegramStartupClient interface {
+	Ping(context.Context) (telegram.BotInfo, error)
+	EnsureWebhook(context.Context, string, string) error
+	EnsureDefaultMenu(context.Context) error
+}
+
 const (
 	startupRetryAttempts = 3
 	startupRetryTimeout  = 10 * time.Second
@@ -53,35 +59,19 @@ const (
 )
 
 func newApplication(cfg config.Config, st store.Store, opts appInitOptions) (*application, error) {
-	tgClient, err := telegram.NewClient(cfg.Telegram.BotToken, cfg.Telegram.Webhook.SecretToken)
+	// Telegram transport is built with operational routing options first and
+	// only then passed through startup health/setup policy. This keeps relay /
+	// proxy concerns localized to client construction instead of leaking
+	// transport workarounds into the rest of the app wiring.
+	tgClient, err := telegram.NewClientWithOptions(cfg.Telegram.BotToken, cfg.Telegram.Webhook.SecretToken, telegram.ClientOptions{
+		ServerURL:    cfg.Telegram.APIBaseURL,
+		HTTPProxyURL: cfg.Telegram.HTTPProxyURL,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("create telegram client: %w", err)
 	}
-	if opts.checkTransportHealth {
-		var info telegram.BotInfo
-		err := runStartupStepWithRetry(context.Background(), "telegram ping", defaultStartupRetryPolicy(), func(ctx context.Context) error {
-			var pingErr error
-			info, pingErr = tgClient.Ping(ctx)
-			return pingErr
-		})
-		if err != nil {
-			return nil, fmt.Errorf("ping telegram api: %w", err)
-		}
-		if strings.TrimSpace(cfg.Telegram.BotToken) != "" {
-			slog.Info("telegram api ping ok", "bot_id", info.ID, "bot_username", info.Username, "bot_name", info.FirstName)
-		}
-	}
-	if opts.ensureTelegramSetup {
-		if err := runStartupStepWithRetry(context.Background(), "telegram webhook setup", defaultStartupRetryPolicy(), func(ctx context.Context) error {
-			return tgClient.EnsureWebhook(ctx, cfg.Telegram.Webhook.PublicURL, cfg.Telegram.Webhook.SecretToken)
-		}); err != nil {
-			return nil, fmt.Errorf("ensure telegram webhook: %w", err)
-		}
-		if err := runStartupStepWithRetry(context.Background(), "telegram menu setup", defaultStartupRetryPolicy(), func(ctx context.Context) error {
-			return tgClient.EnsureDefaultMenu(ctx)
-		}); err != nil {
-			return nil, fmt.Errorf("ensure telegram menu button: %w", err)
-		}
+	if err := ensureTelegramStartup(context.Background(), cfg, tgClient, opts); err != nil {
+		return nil, err
 	}
 	maxClient := max.NewClient(cfg.MAX.BotToken, nil)
 	maxLaunchUsername := strings.TrimSpace(cfg.MAX.BotUsername)
@@ -144,6 +134,91 @@ func newApplication(cfg config.Config, st store.Store, opts appInitOptions) (*ap
 		return admin.RebillResult{InvoiceID: payload.InvoiceID, Existing: payload.Existing}, nil
 	})
 	return appCtx, nil
+}
+
+func ensureTelegramStartup(ctx context.Context, cfg config.Config, client telegramStartupClient, opts appInitOptions) error {
+	if client == nil {
+		return nil
+	}
+
+	token := strings.TrimSpace(cfg.Telegram.BotToken)
+	if token == "" {
+		return nil
+	}
+
+	transportHealthy := true
+	if opts.checkTransportHealth {
+		var info telegram.BotInfo
+		err := runStartupStepWithRetry(ctx, "telegram ping", defaultStartupRetryPolicy(), func(stepCtx context.Context) error {
+			var pingErr error
+			info, pingErr = client.Ping(stepCtx)
+			return pingErr
+		})
+		if err != nil {
+			if isRetryableStartupError(err) {
+				transportHealthy = false
+				// Retryable transport failures (timeouts, TLS handshake stalls, etc.)
+				// are treated as network degradation, not configuration bugs. We keep
+				// the process alive so admin/public/payment paths stay available even
+				// when Telegram is temporarily unreachable from the hosting network.
+				slog.Warn("telegram startup degraded, continuing without confirmed transport health",
+					"step", "ping",
+					"error", err,
+				)
+			} else {
+				return fmt.Errorf("ping telegram api: %w", err)
+			}
+		} else {
+			slog.Info("telegram api ping ok", "bot_id", info.ID, "bot_username", info.Username, "bot_name", info.FirstName)
+		}
+	}
+
+	if !opts.ensureTelegramSetup {
+		return nil
+	}
+	if !transportHealthy {
+		// Webhook/menu setup would just fail for the same network reason and would
+		// only turn a degraded Telegram transport into a full process outage.
+		slog.Warn("skip telegram webhook/menu setup because transport is degraded at startup")
+		return nil
+	}
+
+	if err := runOptionalTelegramStartupStep(ctx, "webhook setup", func(stepCtx context.Context) error {
+		return client.EnsureWebhook(stepCtx, cfg.Telegram.Webhook.PublicURL, cfg.Telegram.Webhook.SecretToken)
+	}); err != nil {
+		return err
+	}
+	if err := runOptionalTelegramStartupStep(ctx, "menu setup", client.EnsureDefaultMenu); err != nil {
+		return err
+	}
+	return nil
+}
+
+func runOptionalTelegramStartupStep(ctx context.Context, step string, fn func(context.Context) error) error {
+	err := runStartupStepWithRetry(ctx, "telegram "+step, defaultStartupRetryPolicy(), fn)
+	if err == nil {
+		return nil
+	}
+	if isRetryableStartupError(err) {
+		// Setup failures after a healthy client build are still allowed to degrade
+		// the process if they look network-related. This keeps startup semantics
+		// consistent: retryable transport problems should not take down MAX/admin /
+		// payment flows, while non-retryable API/configuration errors still must
+		// fail loudly.
+		slog.Warn("telegram startup degraded, continuing after retryable setup failure",
+			"step", step,
+			"error", err,
+		)
+		return nil
+	}
+	switch step {
+	case "webhook setup":
+		return fmt.Errorf("ensure telegram webhook: %w", err)
+	case "menu setup":
+		return fmt.Errorf("ensure telegram menu button: %w", err)
+	default:
+		return fmt.Errorf("ensure telegram %s: %w", step, err)
+	}
 }
 
 func defaultStartupRetryPolicy() startupRetryPolicy {

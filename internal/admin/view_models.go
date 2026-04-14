@@ -11,25 +11,38 @@ type basePageData struct {
 
 // connectorView is a template-friendly representation of connector row.
 type connectorView struct {
-	ID              int64
-	StartPayload    string
-	Name            string
-	ChatID          string
-	TelegramURL     string
-	MAXChatID       string
-	MAXChannelURL   string
-	PriceRUB        int64
-	PeriodLabel     string
-	OfferURL        string
-	PrivacyURL      string
-	TelegramBotLink string
-	MAXBotLink      string
-	MAXStartCommand string
-	IsActive        bool
-	ActiveLabel     string
-	ActiveClass     string
-	ToggleTo        bool
-	ToggleLabel     string
+	ID               int64
+	StartPayload     string
+	Name             string
+	ChatID           string
+	TelegramURL      string
+	MAXChatID        string
+	MAXChannelURL    string
+	PriceRUB         int64
+	PeriodLabel      string
+	PeriodSortValue  int64
+	OfferURL         string
+	PrivacyURL       string
+	TelegramBotLink  string
+	MAXBotLink       string
+	MAXStartCommand  string
+	DestinationLabel string
+	DestinationClass string
+	HasTelegram      bool
+	HasMAX           bool
+	HasLegalDocs     bool
+	DistinctUsers    int
+	PaidPayments     int
+	CurrentPeriods   int
+	NextPeriods      int
+	AutoPayPeriods   int
+	CurrentUsers     []string
+	NextUsers        []string
+	IsActive         bool
+	ActiveLabel      string
+	ActiveClass      string
+	ToggleTo         bool
+	ToggleLabel      string
 }
 
 // connectorsPageData is context passed into connectors.html template.
@@ -41,6 +54,15 @@ type connectorsPageData struct {
 	ExportURL           string
 	TelegramBotUsername string
 	MAXBotUsername      string
+	Search              string
+	StatusFilter        string
+	DestinationFilter   string
+	Sort                string
+	TotalConnectors     int
+	ActiveConnectors    int
+	TelegramOnlyCount   int
+	MAXOnlyCount        int
+	DualCount           int
 	Connectors          []connectorView
 }
 

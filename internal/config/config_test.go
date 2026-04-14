@@ -90,3 +90,47 @@ func TestEnvHelpersAndBuildPostgresDSN(t *testing.T) {
 		t.Fatalf("buildPostgresDSN=%q want %q", dsn, want)
 	}
 }
+
+func TestValidate_AcceptsOptionalTelegramRelayURLs(t *testing.T) {
+	cfg := Config{
+		Environment: EnvLocal,
+		Runtime:     RuntimeServer,
+		HTTP:        HTTPConfig{Address: ":8080"},
+		Payment:     PaymentConfig{Provider: "mock"},
+		Logging:     LoggingConfig{Level: "info"},
+		Telegram: TelegramConfig{
+			APIBaseURL:   "https://telegram-relay.example.com",
+			HTTPProxyURL: "http://proxy.example.com:8080",
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+}
+
+func TestValidate_RejectsInvalidTelegramRelayURLs(t *testing.T) {
+	cfg := Config{
+		Environment: EnvLocal,
+		Runtime:     RuntimeServer,
+		HTTP:        HTTPConfig{Address: ":8080"},
+		Payment:     PaymentConfig{Provider: "mock"},
+		Logging:     LoggingConfig{Level: "info"},
+		Telegram: TelegramConfig{
+			APIBaseURL:   "://bad-base",
+			HTTPProxyURL: "bad-proxy",
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("expected invalid relay url validation error")
+	}
+	msg := err.Error()
+	for _, want := range []string{
+		"TELEGRAM_API_BASE_URL must be a valid absolute URL",
+		"TELEGRAM_HTTP_PROXY_URL must be a valid absolute proxy URL",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("Validate error=%q missing %q", msg, want)
+		}
+	}
+}
