@@ -46,6 +46,15 @@ func (h *Handler) usersPage(w http.ResponseWriter, r *http.Request) {
 		h.renderer.render(w, "users.html", data)
 		return
 	}
+	subs, err := h.store.ListSubscriptions(r.Context(), domain.SubscriptionListQuery{Limit: 5000})
+	if err != nil {
+		data.Notice = t(lang, "users.load_error")
+		h.renderer.render(w, "users.html", data)
+		return
+	}
+	now := time.Now().UTC()
+	periodCountsByUser := buildUserPeriodCounts(subs, now)
+	autopayStatesByUser := buildUserAutopayStates(subs, now)
 
 	data.Users = make([]userView, 0, len(users))
 	for _, user := range users {
@@ -58,7 +67,15 @@ func (h *Handler) usersPage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		accountPresentation := buildMessengerAccountPresentation(lang, accounts)
-		autoPayLabel, autoPayClass := autoPayBadge(lang, user.AutoPayEnabled, user.HasAutoPaySettings)
+		autopayState, ok := autopayStatesByUser[user.UserID]
+		if !ok {
+			autopayState = userAutopayState{
+				Enabled:    user.AutoPayEnabled,
+				Configured: user.HasAutoPaySettings,
+			}
+		}
+		autoPayLabel, autoPayClass := autoPayBadge(lang, autopayState.Enabled, autopayState.Configured)
+		counts := periodCountsByUser[user.UserID]
 		data.Users = append(data.Users, userView{
 			UserID:              user.UserID,
 			DisplayName:         coalesceUserDisplayName(user.FullName, accountPresentation.DisplayName, user.UserID),
@@ -68,12 +85,15 @@ func (h *Handler) usersPage(w http.ResponseWriter, r *http.Request) {
 			FullName:            user.FullName,
 			Phone:               user.Phone,
 			Email:               user.Email,
+			CurrentPeriods:      counts.Current,
+			NextPeriods:         counts.Next,
 			AutoPay:             autoPayLabel,
 			AutoPayClass:        autoPayClass,
 			UpdatedAt:           user.UpdatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
 			DetailURL:           buildUserDetailURL(lang, user.UserID),
 		})
 	}
+	sortUsersForOperationalView(data.Users)
 
 	h.renderer.render(w, "users.html", data)
 }

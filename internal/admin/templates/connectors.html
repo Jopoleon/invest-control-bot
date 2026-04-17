@@ -568,7 +568,8 @@
                 <div class="usage-stat"><small>{{index $.I18N "connectors.usage.next"}}</small><strong>{{.NextPeriods}}</strong></div>
               </div>
               <div class="connector-meta" style="margin-top:.45rem;">
-                <span class="badge {{if gt .AutoPayPeriods 0}}is-success{{else}}is-muted{{end}}">{{index $.I18N "connectors.usage.autopay"}}: {{.AutoPayPeriods}}</span>
+                <span class="badge {{if gt .CurrentAutoPay 0}}is-success{{else}}is-muted{{end}}">{{index $.I18N "connectors.usage.autopay_current"}}: {{.CurrentAutoPay}}</span>
+                <span class="badge {{if gt .NextAutoPay 0}}is-accent{{else}}is-muted{{end}}">{{index $.I18N "connectors.usage.autopay_next"}}: {{.NextAutoPay}}</span>
               </div>
               {{if or .CurrentUsers .NextUsers}}
               <details class="usage-users">

@@ -156,6 +156,10 @@
         <small>{{index .I18N "billing.summary.active_subscriptions"}}</small>
         <strong>{{.Summary.ActiveSubscriptions}}</strong>
       </div>
+      <div class="metric-card">
+        <small>{{index .I18N "billing.summary.next_subscriptions"}}</small>
+        <strong>{{.Summary.NextSubscriptions}}</strong>
+      </div>
     </div>
   </article>
 
@@ -174,6 +178,7 @@
             <th>{{index .I18N "billing.groups.pending_count"}}</th>
             <th>{{index .I18N "billing.groups.failed_count"}}</th>
             <th>{{index .I18N "billing.groups.active_subscriptions"}}</th>
+            <th>{{index .I18N "billing.groups.next_subscriptions"}}</th>
           </tr>
         </thead>
         <tbody>
@@ -185,6 +190,7 @@
             <td>{{.PendingPayments}}</td>
             <td>{{.FailedPayments}}</td>
             <td>{{.ActiveSubscriptions}}</td>
+            <td>{{.NextSubscriptions}}</td>
           </tr>
         {{end}}
         </tbody>

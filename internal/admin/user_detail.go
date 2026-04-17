@@ -124,6 +124,8 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 		BackURL:          "/admin/users?lang=" + lang,
 		MessageActionURL: "/admin/users/message?lang=" + lang,
 		AutopayCancelURL: h.buildAutopayCancelURL(telegramID),
+		CurrentPeriods:   countCurrentActiveSubscriptions(subs, now),
+		NextPeriods:      countFutureActiveSubscriptions(subs, now),
 		User: userView{
 			UserID:              item.ID,
 			DisplayName:         coalesceUserDisplayName(item.FullName, accountPresentation.DisplayName, item.ID),
@@ -146,7 +148,7 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 			UpdatedAt: item.UpdatedAt.In(time.Local).Format("2006-01-02 15:04:05"),
 		},
 	}
-	data.RecurringSummary = buildRecurringSummary(lang, autoPayEnabled, hasAutoPaySettings, recurringConsents, connectorNames, payments, subs)
+	data.RecurringSummary = buildRecurringSummary(lang, autoPayEnabled, hasAutoPaySettings, recurringConsents, connectorNames, payments, subs, now)
 
 	data.Consents = make([]consentView, 0, len(consents))
 	for _, consent := range consents {
@@ -200,6 +202,7 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 	}
 
 	data.Subscriptions = make([]subscriptionView, 0, len(subs))
+	sortSubscriptionsForOperationalView(subs, now)
 	for _, s := range subs {
 		statusLabel, statusClass := subscriptionStatusBadgeAt(lang, s, now)
 		autoPayLabel, autoPayClass := autoPayBadge(lang, s.AutoPayEnabled, true)
@@ -277,7 +280,7 @@ func consentDocumentLabel(lang string, documentID int64, version int) string {
 	return t(lang, "users.consents.version_prefix") + " " + strconv.Itoa(version) + " · ID " + strconv.FormatInt(documentID, 10)
 }
 
-func buildRecurringSummary(lang string, autoPayEnabled, hasAutoPaySettings bool, recurringConsents []domain.RecurringConsent, connectorNames map[int64]string, payments []domain.Payment, subs []domain.Subscription) recurringSummaryView {
+func buildRecurringSummary(lang string, autoPayEnabled, hasAutoPaySettings bool, recurringConsents []domain.RecurringConsent, connectorNames map[int64]string, payments []domain.Payment, subs []domain.Subscription, now time.Time) recurringSummaryView {
 	statusLabel, statusClass := autoPayBadge(lang, autoPayEnabled, hasAutoPaySettings)
 	summary := recurringSummaryView{
 		StatusLabel:          statusLabel,
@@ -306,7 +309,7 @@ func buildRecurringSummary(lang string, autoPayEnabled, hasAutoPaySettings bool,
 		summary.HealthClass = "is-muted"
 	}
 
-	for _, sub := range subs {
+	for _, sub := range selectAutopayScopeSubscriptions(subs, now) {
 		if !sub.AutoPayEnabled {
 			continue
 		}
@@ -338,18 +341,14 @@ func buildRecurringSummary(lang string, autoPayEnabled, hasAutoPaySettings bool,
 }
 
 func summarizeAutopayFromSubscriptions(subs []domain.Subscription, now time.Time) (bool, bool) {
-	hasActive := false
-	enabled := false
-	for _, sub := range subs {
-		if sub.Status != domain.SubscriptionStatusActive || !sub.EndsAt.After(now) {
-			continue
-		}
-		if sub.IsCurrentActiveAt(now) {
-			hasActive = true
-		}
+	relevant := selectAutopayScopeSubscriptions(subs, now)
+	if len(relevant) == 0 {
+		return false, false
+	}
+	for _, sub := range relevant {
 		if sub.AutoPayEnabled {
-			enabled = true
+			return true, true
 		}
 	}
-	return enabled, hasActive || enabled
+	return false, true
 }

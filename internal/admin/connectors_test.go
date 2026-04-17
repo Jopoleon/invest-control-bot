@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -398,12 +399,84 @@ func TestConnectorsPage_RendersOperationalUsageForConnector(t *testing.T) {
 		"Оплачено",
 		"Текущие периоды",
 		"Следующие периоды",
-		"Автоплатеж: 2",
+		"Автоплатеж сейчас: 1",
+		"Автоплатеж следующий: 1",
 		"@alice",
 		"@bob",
 	} {
 		if !strings.Contains(body, needle) {
 			t.Fatalf("response does not contain %q: %q", needle, body)
 		}
+	}
+}
+
+func TestBuildConnectorUsageViews_SplitsAutopayBetweenCurrentAndNextPeriods(t *testing.T) {
+	now := time.Now().UTC()
+	usage := buildConnectorUsageViews(
+		context.Background(),
+		[]domain.Connector{{ID: 77, Name: "Test"}},
+		[]domain.Payment{
+			{ID: 1, UserID: 10, ConnectorID: 77, Status: domain.PaymentStatusPaid},
+			{ID: 2, UserID: 20, ConnectorID: 77, Status: domain.PaymentStatusPaid},
+		},
+		[]domain.Subscription{
+			{
+				ID:             11,
+				UserID:         10,
+				ConnectorID:    77,
+				Status:         domain.SubscriptionStatusActive,
+				AutoPayEnabled: true,
+				StartsAt:       now.Add(-time.Hour),
+				EndsAt:         now.Add(time.Hour),
+			},
+			{
+				ID:             12,
+				UserID:         20,
+				ConnectorID:    77,
+				Status:         domain.SubscriptionStatusActive,
+				AutoPayEnabled: true,
+				StartsAt:       now.Add(time.Hour),
+				EndsAt:         now.Add(2 * time.Hour),
+			},
+			{
+				ID:             13,
+				UserID:         30,
+				ConnectorID:    77,
+				Status:         domain.SubscriptionStatusExpired,
+				AutoPayEnabled: true,
+				StartsAt:       now.Add(-3 * time.Hour),
+				EndsAt:         now.Add(-2 * time.Hour),
+			},
+		},
+		now,
+		func(userID int64) (messengerAccountPresentation, error) {
+			return messengerAccountPresentation{PrimaryAccount: "user #" + strconv.FormatInt(userID, 10)}, nil
+		},
+	)
+
+	item := usage[77]
+	if item.DistinctUsers != 3 {
+		t.Fatalf("DistinctUsers = %d, want 3", item.DistinctUsers)
+	}
+	if item.PaidPayments != 2 {
+		t.Fatalf("PaidPayments = %d, want 2", item.PaidPayments)
+	}
+	if item.CurrentPeriods != 1 {
+		t.Fatalf("CurrentPeriods = %d, want 1", item.CurrentPeriods)
+	}
+	if item.NextPeriods != 1 {
+		t.Fatalf("NextPeriods = %d, want 1", item.NextPeriods)
+	}
+	if item.CurrentAutoPay != 1 {
+		t.Fatalf("CurrentAutoPay = %d, want 1", item.CurrentAutoPay)
+	}
+	if item.NextAutoPay != 1 {
+		t.Fatalf("NextAutoPay = %d, want 1", item.NextAutoPay)
+	}
+	if got := len(item.CurrentUsers); got != 1 {
+		t.Fatalf("CurrentUsers len = %d, want 1", got)
+	}
+	if got := len(item.NextUsers); got != 1 {
+		t.Fatalf("NextUsers len = %d, want 1", got)
 	}
 }

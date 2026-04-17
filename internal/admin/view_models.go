@@ -35,7 +35,8 @@ type connectorView struct {
 	PaidPayments     int
 	CurrentPeriods   int
 	NextPeriods      int
-	AutoPayPeriods   int
+	CurrentAutoPay   int
+	NextAutoPay      int
 	CurrentUsers     []string
 	NextUsers        []string
 	IsActive         bool
@@ -203,6 +204,7 @@ type billingSummaryView struct {
 	PaidPayments        int
 	FailedPayments      int
 	ActiveSubscriptions int
+	NextSubscriptions   int
 	PaidAmountRUB       int64
 	PendingAmountRUB    int64
 }
@@ -215,6 +217,7 @@ type billingGroupView struct {
 	PendingPayments     int
 	FailedPayments      int
 	ActiveSubscriptions int
+	NextSubscriptions   int
 }
 
 type messengerAccountView struct {
@@ -238,6 +241,8 @@ type userView struct {
 	FullName            string
 	Phone               string
 	Email               string
+	CurrentPeriods      int
+	NextPeriods         int
 	AutoPay             string
 	AutoPayClass        string
 	UpdatedAt           string
@@ -262,6 +267,8 @@ type userDetailPageData struct {
 	BackURL           string
 	MessageActionURL  string
 	AutopayCancelURL  string
+	CurrentPeriods    int
+	NextPeriods       int
 	User              userView
 	RecurringSummary  recurringSummaryView
 	Consents          []consentView

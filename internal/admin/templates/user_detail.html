@@ -387,8 +387,16 @@
     </div>
     <div class="summary-grid">
       <div class="summary-card">
-        <small>{{index .I18N "users.detail.subscriptions"}}</small>
+        <small>{{index .I18N "users.detail.subscriptions_total"}}</small>
         <strong>{{len .Subscriptions}}</strong>
+      </div>
+      <div class="summary-card">
+        <small>{{index .I18N "users.detail.current_periods"}}</small>
+        <strong>{{.CurrentPeriods}}</strong>
+      </div>
+      <div class="summary-card">
+        <small>{{index .I18N "users.detail.next_periods"}}</small>
+        <strong>{{.NextPeriods}}</strong>
       </div>
       <div class="summary-card">
         <small>{{index .I18N "users.detail.payments"}}</small>

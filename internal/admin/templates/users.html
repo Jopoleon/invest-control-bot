@@ -40,10 +40,10 @@
     }
     #usersGrid .gridjs-wrapper table th:nth-child(1),
     #usersGrid .gridjs-wrapper table td:nth-child(1),
-    #usersGrid .gridjs-wrapper table th:nth-child(8),
-    #usersGrid .gridjs-wrapper table td:nth-child(8),
     #usersGrid .gridjs-wrapper table th:nth-child(9),
-    #usersGrid .gridjs-wrapper table td:nth-child(9) {
+    #usersGrid .gridjs-wrapper table td:nth-child(9),
+    #usersGrid .gridjs-wrapper table th:nth-child(10),
+    #usersGrid .gridjs-wrapper table td:nth-child(10) {
       white-space: nowrap;
     }
     #usersGrid .gridjs-wrapper table th:nth-child(2),
@@ -63,7 +63,10 @@
       word-break: break-word;
       overflow-wrap: anywhere;
     }
-    #usersGrid .gridjs-wrapper table td:nth-child(8) .badge {
+    #usersGrid .gridjs-wrapper table td:nth-child(8) {
+      min-width: 10rem;
+    }
+    #usersGrid .gridjs-wrapper table td:nth-child(9) .badge {
       white-space: nowrap;
     }
   </style>
@@ -129,6 +132,7 @@
             <th>{{index .I18N "users.table.full_name"}}</th>
             <th>{{index .I18N "users.table.phone"}}</th>
             <th>{{index .I18N "users.table.email"}}</th>
+            <th>{{index .I18N "users.table.periods"}}</th>
             <th>{{index .I18N "users.table.autopay"}}</th>
             <th>{{index .I18N "users.table.updated"}}</th>
           </tr>
@@ -147,6 +151,10 @@
             <td>{{.FullName}}</td>
             <td>{{.Phone}}</td>
             <td>{{.Email}}</td>
+            <td>
+              <div>{{index $.I18N "users.table.current_periods"}}: <strong>{{.CurrentPeriods}}</strong></div>
+              <div>{{index $.I18N "users.table.next_periods"}}: <strong>{{.NextPeriods}}</strong></div>
+            </td>
             <td><span class="badge {{.AutoPayClass}}">{{.AutoPay}}</span></td>
             <td class="mono">{{.UpdatedAt}}</td>
           </tr>

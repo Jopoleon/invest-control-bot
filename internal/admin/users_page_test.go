@@ -65,3 +65,63 @@ func TestUsersPage_ShowsMessengerNeutralAccountSummary(t *testing.T) {
 		t.Fatalf("response does not contain MAX account summary: %q", body)
 	}
 }
+
+func TestUsersPage_UsesCurrentPeriodAutopayStatusInsteadOfFutureRenewal(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil, nil)
+	now := time.Now().UTC()
+
+	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, "264704580", "egor")
+	if err != nil {
+		t.Fatalf("GetOrCreateUserByMessenger: %v", err)
+	}
+	user.UpdatedAt = now
+	if err := st.SaveUser(ctx, user); err != nil {
+		t.Fatalf("SaveUser: %v", err)
+	}
+
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		ID:             1,
+		UserID:         user.ID,
+		ConnectorID:    11,
+		PaymentID:      101,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: false,
+		StartsAt:       now.Add(-time.Hour),
+		EndsAt:         now.Add(time.Hour),
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}); err != nil {
+		t.Fatalf("UpsertSubscriptionByPayment current: %v", err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		ID:             2,
+		UserID:         user.ID,
+		ConnectorID:    11,
+		PaymentID:      102,
+		Status:         domain.SubscriptionStatusActive,
+		AutoPayEnabled: true,
+		StartsAt:       now.Add(time.Hour),
+		EndsAt:         now.Add(2 * time.Hour),
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}); err != nil {
+		t.Fatalf("UpsertSubscriptionByPayment future: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/users?lang=ru&user_id="+strconv.FormatInt(user.ID, 10), nil)
+	rec := httptest.NewRecorder()
+	h.usersPage(rec, withAdminAuthorized(req, &authorizedSession{session: domain.AdminSession{ID: 1}}))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Периоды доступа") || !strings.Contains(body, "Автоплатеж сейчас") {
+		t.Fatalf("response does not contain updated users vocabulary: %q", body)
+	}
+	if !strings.Contains(body, "<span class=\"badge is-warning\">выключен</span>") {
+		t.Fatalf("response does not contain current-period autopay status: %q", body)
+	}
+}

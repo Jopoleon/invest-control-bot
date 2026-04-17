@@ -152,6 +152,7 @@ func (h *Handler) billingPage(w http.ResponseWriter, r *http.Request) {
 
 	data.Subscriptions = make([]subscriptionView, 0, len(subs))
 	now := time.Now().UTC()
+	sortSubscriptionsForOperationalView(subs, now)
 	for _, s := range subs {
 		accountPresentation, err := resolveAccountPresentation(s.UserID)
 		if err != nil {
@@ -218,12 +219,15 @@ func buildBillingSummary(payments []domain.Payment, subs []domain.Subscription, 
 	}
 
 	for _, sub := range subs {
-		if !sub.IsCurrentActiveAt(now) {
-			continue
-		}
-		summary.ActiveSubscriptions++
 		group := ensureBillingGroup(groupMap, connectorNames, sub.ConnectorID)
-		group.ActiveSubscriptions++
+		switch {
+		case sub.IsCurrentActiveAt(now):
+			summary.ActiveSubscriptions++
+			group.ActiveSubscriptions++
+		case sub.IsFutureActiveAt(now):
+			summary.NextSubscriptions++
+			group.NextSubscriptions++
+		}
 	}
 
 	groups := make([]billingGroupView, 0, len(groupMap))

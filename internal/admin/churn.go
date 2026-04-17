@@ -100,6 +100,7 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang string, userFilterI
 	for _, user := range users {
 		userMap[user.UserID] = user
 	}
+	now := time.Now().UTC()
 
 	type key struct {
 		userID      int64
@@ -114,13 +115,10 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang string, userFilterI
 		}
 	}
 
-	latestSub := make(map[key]domain.Subscription)
+	subscriptionsByKey := make(map[key][]domain.Subscription)
 	for _, sub := range subs {
 		k := key{userID: sub.UserID, connectorID: sub.ConnectorID}
-		prev, ok := latestSub[k]
-		if !ok || sub.UpdatedAt.After(prev.UpdatedAt) || (sub.UpdatedAt.Equal(prev.UpdatedAt) && sub.ID > prev.ID) {
-			latestSub[k] = sub
-		}
+		subscriptionsByKey[k] = append(subscriptionsByKey[k], sub)
 	}
 
 	telegramFilter := parseInt64Default(telegramIDRaw)
@@ -130,11 +128,11 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang string, userFilterI
 	autoPayFilter := strings.TrimSpace(autoPayRaw)
 	retryFilter := recurringRetryFilter(strings.TrimSpace(retryStateRaw))
 
-	allKeys := make(map[key]struct{}, len(latestPayment)+len(latestSub))
+	allKeys := make(map[key]struct{}, len(latestPayment)+len(subscriptionsByKey))
 	for k := range latestPayment {
 		allKeys[k] = struct{}{}
 	}
-	for k := range latestSub {
+	for k := range subscriptionsByKey {
 		allKeys[k] = struct{}{}
 	}
 
@@ -156,7 +154,7 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang string, userFilterI
 		}
 
 		payment, hasPayment := latestPayment[k]
-		sub, hasSub := latestSub[k]
+		sub, hasSub := selectOperationalSubscription(subscriptionsByKey[k], now)
 
 		var issue churnIssueKind
 		switch {

@@ -165,8 +165,25 @@ func TestUserDetailPage_ShowsFutureRenewalAsNextPeriodWithoutSecondRevokeAction(
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 	body := rec.Body.String()
+	if !strings.Contains(body, "Всего периодов") || !strings.Contains(body, "Текущие периоды") || !strings.Contains(body, "Следующие периоды") {
+		t.Fatalf("response does not contain phase summary cards: %q", body)
+	}
+	if !strings.Contains(body, "Периоды доступа") {
+		t.Fatalf("response does not contain updated access periods title: %q", body)
+	}
+	if !strings.Contains(body, "текущий период") {
+		t.Fatalf("response does not contain current period badge: %q", body)
+	}
 	if !strings.Contains(body, "следующий период") {
 		t.Fatalf("response does not contain future renewal badge: %q", body)
+	}
+	currentPos := strings.Index(body, ">"+strconv.FormatInt(currentPayment.ID, 10)+"<")
+	futurePos := strings.Index(body, ">"+strconv.FormatInt(futurePayment.ID, 10)+"<")
+	if currentPos == -1 || futurePos == -1 {
+		t.Fatalf("response does not contain expected payment ids: %q", body)
+	}
+	if currentPos > futurePos {
+		t.Fatalf("current subscription rendered after future renewal: current=%d future=%d body=%q", currentPos, futurePos, body)
 	}
 	if got := strings.Count(body, "/admin/subscriptions/revoke?"); got != 1 {
 		t.Fatalf("revoke action count = %d, want 1 current subscription only", got)

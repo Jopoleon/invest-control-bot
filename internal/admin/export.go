@@ -104,17 +104,33 @@ func (h *Handler) exportUsersCSV(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resolveAccountPresentation := h.buildMessengerAccountPresentationLookup(r.Context(), h.resolveLang(w, r))
+	subs, err := h.store.ListSubscriptions(r.Context(), domain.SubscriptionListQuery{Limit: exportLimit})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	now := time.Now().UTC()
+	periodCountsByUser := buildUserPeriodCounts(subs, now)
+	autopayStatesByUser := buildUserAutopayStates(subs, now)
 
 	records := make([][]string, 0, len(rows)+1)
 	records = append(records, []string{
 		"user_id", "display_name", "primary_account", "linked_accounts", "full_name", "phone", "email",
-		"auto_pay_enabled", "has_auto_pay_settings", "updated_at",
+		"current_periods", "next_periods", "auto_pay_enabled", "has_auto_pay_settings", "updated_at",
 	})
 	for _, user := range rows {
 		accountPresentation, err := resolveAccountPresentation(user.UserID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+		counts := periodCountsByUser[user.UserID]
+		autopayState, ok := autopayStatesByUser[user.UserID]
+		if !ok {
+			autopayState = userAutopayState{
+				Enabled:    user.AutoPayEnabled,
+				Configured: user.HasAutoPaySettings,
+			}
 		}
 		records = append(records, []string{
 			strconv.FormatInt(user.UserID, 10),
@@ -124,8 +140,10 @@ func (h *Handler) exportUsersCSV(w http.ResponseWriter, r *http.Request) {
 			user.FullName,
 			user.Phone,
 			user.Email,
-			strconv.FormatBool(user.AutoPayEnabled),
-			strconv.FormatBool(user.HasAutoPaySettings),
+			strconv.Itoa(counts.Current),
+			strconv.Itoa(counts.Next),
+			strconv.FormatBool(autopayState.Enabled),
+			strconv.FormatBool(autopayState.Configured),
 			user.UpdatedAt.In(time.Local).Format(time.RFC3339),
 		})
 	}
@@ -246,10 +264,12 @@ func (h *Handler) exportSubscriptionsCSV(w http.ResponseWriter, r *http.Request)
 	}
 	connectorNames := h.loadConnectorNames(r.Context())
 	resolveAccountPresentation := h.buildMessengerAccountPresentationLookup(r.Context(), h.resolveLang(w, r))
+	now := time.Now().UTC()
+	sortSubscriptionsForOperationalView(rows, now)
 
 	records := make([][]string, 0, len(rows)+1)
 	records = append(records, []string{
-		"id", "user_id", "primary_account", "connector_id", "connector", "payment_id", "status",
+		"id", "user_id", "primary_account", "connector_id", "connector", "payment_id", "status", "phase",
 		"auto_pay_enabled", "starts_at", "ends_at", "reminder_sent_at",
 		"expiry_notice_sent_at", "created_at", "updated_at",
 	})
@@ -267,6 +287,7 @@ func (h *Handler) exportSubscriptionsCSV(w http.ResponseWriter, r *http.Request)
 			connectorDisplayName(connectorNames, sub.ConnectorID),
 			strconv.FormatInt(sub.PaymentID, 10),
 			string(sub.Status),
+			subscriptionPhaseLabel(sub, now),
 			strconv.FormatBool(sub.AutoPayEnabled),
 			sub.StartsAt.In(time.Local).Format(time.RFC3339),
 			sub.EndsAt.In(time.Local).Format(time.RFC3339),

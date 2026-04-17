@@ -114,8 +114,11 @@ func TestBuildBillingSummary_CountsOnlyCurrentActiveSubscriptions(t *testing.T) 
 	if summary.ActiveSubscriptions != 1 {
 		t.Fatalf("summary.ActiveSubscriptions = %d, want 1", summary.ActiveSubscriptions)
 	}
-	if len(groups) != 1 || groups[0].ActiveSubscriptions != 1 {
-		t.Fatalf("groups = %+v, want one current active subscription", groups)
+	if summary.NextSubscriptions != 1 {
+		t.Fatalf("summary.NextSubscriptions = %d, want 1", summary.NextSubscriptions)
+	}
+	if len(groups) != 1 || groups[0].ActiveSubscriptions != 1 || groups[0].NextSubscriptions != 1 {
+		t.Fatalf("groups = %+v, want one current and one next subscription", groups)
 	}
 }
 
@@ -128,6 +131,99 @@ func TestSubscriptionStatusBadgeAt_FutureActiveUsesNextPeriodLabel(t *testing.T)
 	}, now)
 	if label != "следующий период" || className != "is-accent" {
 		t.Fatalf("subscriptionStatusBadgeAt() = (%q,%q), want (следующий период,is-accent)", label, className)
+	}
+}
+
+func TestSubscriptionStatusBadgeAt_CurrentActiveUsesCurrentPeriodLabel(t *testing.T) {
+	now := time.Now().UTC()
+	label, className := subscriptionStatusBadgeAt("ru", domain.Subscription{
+		Status:   domain.SubscriptionStatusActive,
+		StartsAt: now.Add(-time.Hour),
+		EndsAt:   now.Add(time.Hour),
+	}, now)
+	if label != "текущий период" || className != "is-success" {
+		t.Fatalf("subscriptionStatusBadgeAt() = (%q,%q), want (текущий период,is-success)", label, className)
+	}
+}
+
+func TestBillingPage_SortsCurrentSubscriptionBeforeFutureRenewal(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil, nil)
+	now := time.Now().UTC()
+
+	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, "264704572", "egor")
+	if err != nil {
+		t.Fatalf("GetOrCreateUserByMessenger: %v", err)
+	}
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-billing-phase-order",
+		Name:          "Phase ordering",
+		ChatID:        "1003626584986",
+		PriceRUB:      500,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 30 * 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     now,
+	}); err != nil {
+		t.Fatalf("CreateConnector: %v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-billing-phase-order")
+	if err != nil || !found {
+		t.Fatalf("GetConnectorByStartPayload found=%v err=%v", found, err)
+	}
+
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		ID:          401,
+		UserID:      user.ID,
+		ConnectorID: connector.ID,
+		PaymentID:   501,
+		Status:      domain.SubscriptionStatusActive,
+		StartsAt:    now.Add(time.Hour),
+		EndsAt:      now.Add(2 * time.Hour),
+		CreatedAt:   now.Add(-time.Minute),
+		UpdatedAt:   now.Add(-time.Minute),
+	}); err != nil {
+		t.Fatalf("UpsertSubscriptionByPayment future: %v", err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		ID:          402,
+		UserID:      user.ID,
+		ConnectorID: connector.ID,
+		PaymentID:   502,
+		Status:      domain.SubscriptionStatusActive,
+		StartsAt:    now.Add(-time.Hour),
+		EndsAt:      now.Add(time.Hour),
+		CreatedAt:   now.Add(-2 * time.Minute),
+		UpdatedAt:   now.Add(-2 * time.Minute),
+	}); err != nil {
+		t.Fatalf("UpsertSubscriptionByPayment current: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/billing?lang=ru&user_id=1", nil)
+	rec := httptest.NewRecorder()
+	h.billingPage(rec, withAdminAuthorized(req, &authorizedSession{session: domain.AdminSession{ID: 1}}))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "текущий период") || !strings.Contains(body, "следующий период") {
+		t.Fatalf("response does not contain phase labels: %q", body)
+	}
+	if !strings.Contains(body, "Текущих периодов") || !strings.Contains(body, "Следующих периодов") {
+		t.Fatalf("response does not contain phase summary labels: %q", body)
+	}
+	if !strings.Contains(body, "Периоды доступа") || !strings.Contains(body, "Текущие периоды") {
+		t.Fatalf("response does not contain updated phase vocabulary: %q", body)
+	}
+	currentPos := strings.Index(body, ">502<")
+	futurePos := strings.Index(body, ">501<")
+	if currentPos == -1 || futurePos == -1 {
+		t.Fatalf("response does not contain expected payment ids: %q", body)
+	}
+	if currentPos > futurePos {
+		t.Fatalf("current subscription rendered after future renewal: current=%d future=%d body=%q", currentPos, futurePos, body)
 	}
 }
 

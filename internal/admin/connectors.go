@@ -322,7 +322,8 @@ func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWrite
 			PaidPayments:     usage.PaidPayments,
 			CurrentPeriods:   usage.CurrentPeriods,
 			NextPeriods:      usage.NextPeriods,
-			AutoPayPeriods:   usage.AutoPayPeriods,
+			CurrentAutoPay:   usage.CurrentAutoPay,
+			NextAutoPay:      usage.NextAutoPay,
 			CurrentUsers:     usage.CurrentUsers,
 			NextUsers:        usage.NextUsers,
 			IsActive:         c.IsActive,
@@ -365,7 +366,8 @@ type connectorUsageView struct {
 	PaidPayments   int
 	CurrentPeriods int
 	NextPeriods    int
-	AutoPayPeriods int
+	CurrentAutoPay int
+	NextAutoPay    int
 	CurrentUsers   []string
 	NextUsers      []string
 }
@@ -566,7 +568,7 @@ func buildConnectorUsageViews(
 		case sub.IsCurrentActiveAt(now):
 			item.CurrentPeriods++
 			if sub.AutoPayEnabled {
-				item.AutoPayPeriods++
+				item.CurrentAutoPay++
 			}
 			if _, ok := currentUsersByConnector[sub.ConnectorID]; !ok {
 				currentUsersByConnector[sub.ConnectorID] = make(map[int64]string)
@@ -575,7 +577,7 @@ func buildConnectorUsageViews(
 		case sub.IsFutureActiveAt(now):
 			item.NextPeriods++
 			if sub.AutoPayEnabled {
-				item.AutoPayPeriods++
+				item.NextAutoPay++
 			}
 			if _, ok := nextUsersByConnector[sub.ConnectorID]; !ok {
 				nextUsersByConnector[sub.ConnectorID] = make(map[int64]string)
