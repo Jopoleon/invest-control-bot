@@ -12,7 +12,7 @@
 
 Документ не заменяет:
 - `IMPLEMENTATION_PLAN.md` как основной roadmap проекта;
-- `docs/MAX_IMPLEMENTATION_PLAN.md` как канал-специфичный план по MAX.
+- `docs/max/implementation.md` как канал-специфичный план по MAX.
 
 Он нужен как отдельный рабочий backlog для инженерной доработки кода.
 
@@ -94,7 +94,7 @@
 ### Low
 
 1. MAX runtime/docs cleanup
-- после удаления отдельного polling runner следить, чтобы новые docs и startup paths не возвращали polling как второй живой runtime;
+- MAX runtime должен оставаться webhook/server path;
 - если снова понадобится transport-level debug runner, заводить его уже как явный `internal/devtools` артефакт, а не как отдельный `cmd/*`.
 
 2. `internal/bot/menu.go`
@@ -226,4 +226,4 @@
 
 5. После ближайшего milestone:
 - оценить, что осталось до clean-schema этапа;
-- проверить, не осталось ли в docs/runtime скрытых допущений про MAX polling.
+- проверить, не осталось ли в runtime скрытых допущений про отдельный MAX polling runner.

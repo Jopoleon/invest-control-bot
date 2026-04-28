@@ -235,8 +235,8 @@ Most important docs touched or aligned during this phase:
 - `AGENTS.md`
 - `IMPLEMENTATION_PLAN.md`
 - `README.md`
-- `docs/PROD_BUGFIX_TRACK_2026-04-01.md`
-- `docs/CONNECTOR_PERIOD_MODEL_PLAN.md`
+- `docs/archive/incidents/prod-recurring-2026-04-01.md`
+- `docs/architecture/connector-period-model.md`
 
 `AGENTS.md` was rewritten to reflect the current real state instead of historical assumptions.
 It now explicitly calls out:
@@ -296,7 +296,7 @@ Added helper script:
 - `scripts/prod_postgres_tunnel.sh`
 
 Added setup doc:
-- `docs/codex/PROD_POSTGRES_MCP_SETUP.md`
+- `docs/ops/prod-postgres-mcp.md`
 
 Intended flow:
 1. start SSH tunnel to prod Postgres locally
@@ -305,7 +305,7 @@ Intended flow:
 
 Note:
 - this session environment could not safely rewrite `.codex/config.toml`
-- the needed prod MCP snippet is documented in `docs/codex/PROD_POSTGRES_MCP_SETUP.md`
+- the needed prod MCP snippet is documented in `docs/ops/prod-postgres-mcp.md`
 
 ### Current session limitations that motivated handoff
 This session could edit repository files but could not write to `.git` internals for `git commit`.
@@ -353,15 +353,15 @@ If resuming work on recurring diagnosis, open these first:
 - `internal/app/subscriptions/service.go`
 - `internal/payment/robokassa.go`
 - `internal/app/store_open.go`
-- `docs/PROD_BUGFIX_TRACK_2026-04-01.md`
-- `docs/codex/PROD_POSTGRES_MCP_SETUP.md`
+- `docs/archive/incidents/prod-recurring-2026-04-01.md`
+- `docs/ops/prod-postgres-mcp.md`
 
 ## Suggested First Prompt For The New Session
 
 Use something close to this:
 
 ```text
-Read AGENTS.md and docs/HANDOFF_2026-04-02.md first.
+Read AGENTS.md and docs/archive/handoffs/2026-04-02-recurring.md first.
 Primary task: continue diagnosing real-money short-period recurring.
 We already know scheduler creates pending rebill payments; the main suspected issue is Robokassa rebill completion/callback visibility.
 Use the new recurring logs and, if needed, the repo-local production Postgres MCP through SSH tunnel.

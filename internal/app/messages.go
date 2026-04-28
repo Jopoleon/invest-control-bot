@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
+	"github.com/Jopoleon/invest-control-bot/internal/maxchat"
 	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 )
 
@@ -107,6 +108,7 @@ func appRecurringCancelSuccessForSubscription(connectorName string) string {
 func appPaymentPageActions(kind messenger.Kind, success bool, channelURL, botURL string) []paymentPageAction {
 	switch kind {
 	case messenger.KindMAX:
+		channelURL = maxchat.NormalizeAccessURL(channelURL)
 		actions := make([]paymentPageAction, 0, 3)
 		if success && strings.TrimSpace(channelURL) != "" {
 			label := appPaymentActionOpenMAXChannel

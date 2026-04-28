@@ -130,13 +130,15 @@ Messenger adapters должны только:
 
 На development-этапе можно поддержать Long Polling, но production ориентировать только на Webhook.
 
-## Локальная разработка и тестирование
+## Историческая Локальная Разработка И Тестирование
 
-Для MAX локальный dev-flow отличается от Telegram:
+Этот раздел описывает ранний исследовательский этап. Сейчас отдельный polling runner удален из репозитория, а актуальный runtime path для MAX идет через webhook внутри `cmd/server`.
+
+На раннем этапе MAX local dev-flow отличался от Telegram:
 - в Telegram удобно жить через `ngrok` и webhook;
 - в MAX официальный dev-friendly путь проще: long polling через `GET /updates`, если бот не подписан на webhook.
 
-Практический вывод для нашего проекта:
+Исторический практический вывод для первого adapter proof-of-concept:
 - для первого локального MAX теста нам не нужен `ngrok`;
 - нужен локальный polling-loop, который:
   - ходит в MAX `GET /updates`;
@@ -155,7 +157,7 @@ Messenger adapters должны только:
 3. sender для текстовых сообщений и простых кнопок;
 4. локальный runner, который запускает polling-loop с access token.
 
-После этого на промежуточном этапе уже можно было:
+После этого на промежуточном этапе можно было:
 - поднять сервер локально;
 - запустить отдельный polling runner рядом с ним;
 - писать в реального MAX-бота без webhook и без `ngrok`.
@@ -177,7 +179,7 @@ APP_ENCRYPTION_KEY=replace-with-32-or-more-char-secret
 ADMIN_AUTH_TOKEN=replace-with-strong-admin-token
 ```
 
-Сейчас этот runner удален из репозитория; актуальный путь для MAX идет через webhook внутри `cmd/server`.
+Сейчас этот runner удален из репозитория; не возвращай polling как второй живой runtime без отдельного explicit devtools решения.
 
 ### Шаг 5. Перенести сценарии по приоритету
 Приоритет переноса:

@@ -161,7 +161,11 @@ func botUpcomingSubscriptionLines(sub domain.Subscription, connector domain.Conn
 func botSubscriptionAccessLines(connector domain.Connector, kind messenger.Kind) []string {
 	currentKind := messengerKindFromIdentity(kind)
 	if channel := connector.AccessURL(currentKind); channel != "" {
-		return []string{fmt.Sprintf("  Канал: %s", channel)}
+		lines := []string{fmt.Sprintf("  Канал: %s", channel)}
+		if currentKind == domain.MessengerKindMAX {
+			lines = append(lines, "  Если ссылка открылась в браузере, откройте MAX: доступ уже выдан, канал должен быть в списке чатов.")
+		}
+		return lines
 	}
 
 	switch currentKind {
@@ -270,17 +274,14 @@ func botExistingSubscriptionText(connectorName string, endsAt time.Time) string 
 	return fmt.Sprintf("У вас уже есть активная подписка «%s» до %s.", connectorName, endsAt.In(time.Local).Format("02.01.2006 15:04"))
 }
 
-func botCheckoutAutopayEnabled(offerURL, agreementURL string) string {
+func botCheckoutAutopayEnabled(offerURL string) string {
 	lines := []string{
 		"",
 		"☑️ Автоплатеж будет включен для следующих списаний.",
-		"Согласие действует по оферте и пользовательскому соглашению.",
+		"Согласие действует по оферте.",
 	}
 	if strings.TrimSpace(offerURL) != "" {
 		lines = append(lines, "Оферта: "+strings.TrimSpace(offerURL))
-	}
-	if strings.TrimSpace(agreementURL) != "" {
-		lines = append(lines, "Пользовательское соглашение: "+strings.TrimSpace(agreementURL))
 	}
 	return strings.Join(lines, "\n")
 }

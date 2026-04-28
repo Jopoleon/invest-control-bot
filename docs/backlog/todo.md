@@ -14,7 +14,7 @@
 - [ ] На проде проверить, что у бота есть нужные права в каждом платном Telegram-канале: создание invite links и удаление участников.
 - [x] На проде подтвердить end-to-end сценарий: истечение подписки без replacement period приводит к удалению пользователя из канала и audit `subscription_revoked_from_chat`.
 - [ ] Обновить recurring docs после следующего production подтверждения, чтобы убрать уже устаревшие формулировки про callback visibility как главный неподтвержденный риск.
-- [ ] Синхронизировать roadmap/docs, где еще остались historical формулировки про старую схему, старые recurring-гипотезы или старые Telegram-only ограничения.
+- [x] Синхронизировать roadmap/docs, где еще остались historical формулировки про старую схему, старые recurring-гипотезы или старые Telegram-only ограничения.
 
 ## Current Tester Focus
 
@@ -90,13 +90,13 @@
 
 ## Large Refactor / Cleanup
 
-- [ ] Закрыть оставшиеся test gaps из `docs/REFACTORING_AND_TEST_PLAN.md` для payment pages, recurring pages и bot callback/payment branches.
+- [ ] Закрыть оставшиеся test gaps из `docs/architecture/refactoring-and-tests.md` для payment pages, recurring pages и bot callback/payment branches.
 - [ ] Довести cleanup `internal/app`: убрать оставшиеся compatibility wrappers, где они больше не нужны после выноса business logic в `internal/app/payments`, `internal/app/recurring`, `internal/app/subscriptions`.
-- [ ] Вынести payment status pages и `buildPaymentPageActions` из корневого `internal/app`, как это уже намечено в `docs/APP_REFACTOR_PLAN.md`.
+- [ ] Вынести payment status pages и `buildPaymentPageActions` из корневого `internal/app`, как это уже намечено в `docs/architecture/app-refactor.md`.
 - [ ] Дорезать recurring/public-page assembly на smaller helpers, чтобы `buildRecurringCancelPageData` не продолжал расти как многозадачный mapper.
 - [ ] Ввести более явный recurring-chain projection или identifier вместо текущего неявного grouping по `user + connector` в public cancel flows и related UI.
 - [ ] Вынести повторяющуюся connector/legal context logic из `bot/start`, recurring pages и payment flow в один helper/service слой.
 - [ ] Вынести user-facing notification builders в более явный слой, вместо дальнейшего размазывания payment/lifecycle/public-page текстов.
 - [ ] Решить, нужен ли отдельный unified messenger delivery service после стабилизации текущего recurring/lifecycle/payment набора.
 - [ ] Упростить wiring внутри `internal/app`: сейчас root application все еще вручную собирает несколько service runtimes с пересекающимися зависимостями.
-- [ ] После следующего recurring milestone перепроверить, какие тестовые TODO из `docs/REFACTORING_AND_TEST_PLAN.md` уже можно вычеркнуть, а какие еще реально открыты.
+- [ ] После следующего recurring milestone перепроверить, какие тестовые TODO из `docs/architecture/refactoring-and-tests.md` уже можно вычеркнуть, а какие еще реально открыты.

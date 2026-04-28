@@ -30,6 +30,25 @@ func ResolveChatID(chatIDRaw, accessURL string) (int64, bool) {
 	return parseChatIDFromURL(accessURL)
 }
 
+// NormalizeAccessURL keeps stored MAX links usable as user-facing links.
+// Admins often paste browser/web URLs from MAX (`web.max.ru`), but those links
+// tend to open the promo/browser flow on mobile. The shorter public host is the
+// better link to send back to users after payment and in subscription menus.
+func NormalizeAccessURL(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return ""
+	}
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return value
+	}
+	if strings.EqualFold(strings.TrimSpace(parsed.Host), "web.max.ru") {
+		parsed.Host = "max.ru"
+	}
+	return parsed.String()
+}
+
 func parseChatIDFromURL(raw string) (int64, bool) {
 	v := strings.TrimSpace(raw)
 	if v == "" {

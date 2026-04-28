@@ -41,7 +41,7 @@ func (h *Handler) buildFinalPaymentStep(ctx context.Context, connectorID int64, 
 	}
 
 	if recurringOptIn {
-		baseText += botCheckoutAutopayEnabled(offerURL, agreementURL)
+		baseText += botCheckoutAutopayEnabled(offerURL)
 		return baseText, paymentKeyboard(connectorID, true, true)
 	}
 

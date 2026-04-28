@@ -351,8 +351,8 @@ func TestActivateSuccessfulPayment_AddsMAXMemberAndKeepsChannelButton(t *testing
 	if len(addedUserIDs) != 1 || addedUserIDs[0] != 193465776 {
 		t.Fatalf("added user ids=%v want [193465776]", addedUserIDs)
 	}
-	if len(sent.Buttons) == 0 || len(sent.Buttons[0]) == 0 || sent.Buttons[0][0].URL != "https://web.max.ru/-72598909498032" {
-		t.Fatalf("sent buttons=%+v want MAX channel URL button", sent.Buttons)
+	if len(sent.Buttons) == 0 || len(sent.Buttons[0]) == 0 || sent.Buttons[0][0].URL != "https://max.ru/-72598909498032" {
+		t.Fatalf("sent buttons=%+v want normalized MAX channel URL button", sent.Buttons)
 	}
 
 	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 50})
@@ -436,8 +436,8 @@ func TestActivateSuccessfulPayment_DualDestinationMAXFlowDoesNotBuildTelegramInv
 	if telegramInviteCalls != 0 {
 		t.Fatalf("telegram invite calls=%d want 0 for MAX flow", telegramInviteCalls)
 	}
-	if len(sent.Buttons) == 0 || len(sent.Buttons[0]) == 0 || sent.Buttons[0][0].URL != "https://web.max.ru/-72598909498032" {
-		t.Fatalf("sent buttons=%+v want MAX channel URL button", sent.Buttons)
+	if len(sent.Buttons) == 0 || len(sent.Buttons[0]) == 0 || sent.Buttons[0][0].URL != "https://max.ru/-72598909498032" {
+		t.Fatalf("sent buttons=%+v want normalized MAX channel URL button", sent.Buttons)
 	}
 }
 

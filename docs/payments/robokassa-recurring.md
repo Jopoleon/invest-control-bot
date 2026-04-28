@@ -78,6 +78,10 @@ Recurring у Robokassa не считается доступным "по умол
 - публичная cancel page `/unsubscribe/{token}` без авторизации с простым отключением автоплатежа
 - cancel-link встроен в bot flow как публичная точка отключения автосписаний
 - recurring-архитектура и UX уже собраны, магазин активирован со стороны Robokassa
+- short-period recurring timing вынесен в `internal/app/periodpolicy`
+- Robokassa rebill request/response логируются с provider metadata
+- stale pending rebills видны в логах и audit events
+- operator UX показывает consent history, retry state и проблемные rebill
 
 ## Чего еще не хватает до полноценной боевой готовности
 
@@ -99,19 +103,18 @@ Recurring у Robokassa не считается доступным "по умол
 
 ### Backend / data
 
-- хранение истории попыток rebill
-- retry policy 3 попытки в течение 3-5 дней
-- ручной fallback на обычную оплату по тому же коннектору
+- продолжать live-money диагностику short-period recurring до нескольких стабильных повторов подряд
+- сверять Robokassa cabinet / provider-side state при `OK+InvoiceID`, если callback по child rebill не приходит
+- пересмотреть short-period windows в `internal/app/periodpolicy` после фактических замеров provider latency
+- решить, нужен ли отдельный admin/debug flow для provider-side lookup, если recurring callback visibility снова станет проблемой
 
 ## Предлагаемый порядок внедрения
 
-1. Подготовить юридический контент под recurring.
-2. Добавить в продукт отдельный recurring opt-in и хранение истории согласий.
-3. Доделать UX отмены автоплатежа.
-4. Подтвердить readiness и отправить в Robokassa `Shop ID`.
-5. Получить активацию recurring у магазина.
-6. Включить `ROBOKASSA_RECURRING_ENABLED=true`.
-7. Прогнать E2E на реальном тестовом flow.
+1. Держать юридический контент recurring актуальным.
+2. Держать `ROBOKASSA_RECURRING_ENABLED=true` только там, где магазин Robokassa активирован для recurring.
+3. Прогонять live-money short-period smoke после recurring/backend changes.
+4. По каждому smoke сверять journald, audit events, payment rows, subscription rows и provider-side state.
+5. Не считать `OK+InvoiceID` успешным списанием без server callback.
 
 ## Для текущего проекта
 
@@ -121,4 +124,5 @@ Recurring у Robokassa не считается доступным "по умол
 - первый платеж с opt-in должен уходить с `Recurring=true`;
 - повторное списание подтверждается только через `ResultURL`;
 - отключение автоплатежа должно работать по конкретной подписке, а не глобально по пользователю;
-- operator UX должен позволять видеть consent history, retry state и проблемные rebill.
+- operator UX должен позволять видеть consent history, retry state и проблемные rebill;
+- главная текущая зона риска - provider callback visibility и фактическое выполнение child rebill, а не только scheduler eligibility.

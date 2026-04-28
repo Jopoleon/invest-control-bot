@@ -135,6 +135,7 @@ func (h *Handler) Register(router chi.Router) {
 		})
 		r.HandleFunc("/logout", h.logout)
 		r.HandleFunc("/connectors", h.connectorsPage)
+		r.HandleFunc("/connectors/update", h.updateConnector)
 		r.HandleFunc("/connectors/toggle", h.toggleConnector)
 		r.HandleFunc("/connectors/delete", h.deleteConnector)
 		r.HandleFunc("/connectors/export.csv", h.exportConnectorsCSV)

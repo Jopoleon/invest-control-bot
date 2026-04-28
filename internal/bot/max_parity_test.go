@@ -204,6 +204,52 @@ func TestMAXMenuParity_SubscriptionAndPayments(t *testing.T) {
 	}
 }
 
+func TestMAXMenuSubscription_NormalizesWebMaxChannelLink(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	sender := &fakeSender{}
+	h := NewHandler(st, sender, nil, true, "https://investcontrol.example", "test-encryption-key-123456789012345")
+
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "max-menu-web-link",
+		Name:          "MAX web link plan",
+		MAXChatID:     "-74062431174074",
+		MAXChannelURL: "https://web.max.ru/-74062431174074",
+		PriceRUB:      3000,
+		PeriodMode:    domain.ConnectorPeriodModeCalendarMonths,
+		PeriodMonths:  1,
+		IsActive:      true,
+		CreatedAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create connector: %v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "max-menu-web-link")
+	if err != nil {
+		t.Fatalf("get connector: %v", err)
+	}
+	if !found {
+		t.Fatal("connector not found")
+	}
+	paymentID := seedMAXPayment(t, ctx, st, 193465785, connector.ID, true)
+	_ = seedMAXSubscription(t, ctx, st, 193465785, connector.ID, paymentID, true)
+
+	h.handleMenuCallback(ctx, maxAction("max-menu-subscription-web-link", 193465785, "fedor", menuCallbackSubscription))
+
+	if len(sender.sent) != 1 {
+		t.Fatalf("sent messages = %d, want 1", len(sender.sent))
+	}
+	got := sender.sent[0].msg.Text
+	if !strings.Contains(got, "Канал: https://max.ru/-74062431174074") {
+		t.Fatalf("subscription overview does not contain normalized MAX URL: %q", got)
+	}
+	if strings.Contains(got, "https://web.max.ru/-74062431174074") {
+		t.Fatalf("subscription overview still contains web.max.ru URL: %q", got)
+	}
+	if !strings.Contains(got, "Если ссылка открылась в браузере") {
+		t.Fatalf("subscription overview does not contain MAX fallback hint: %q", got)
+	}
+}
+
 func TestHandlePay_MAXCreatesPaymentAndSendsLink(t *testing.T) {
 	ctx := context.Background()
 	st := memory.New()

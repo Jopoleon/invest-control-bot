@@ -21,6 +21,7 @@ type ConnectorStore interface {
 	ListConnectors(ctx context.Context) ([]domain.Connector, error)
 	GetConnector(ctx context.Context, connectorID int64) (domain.Connector, bool, error)
 	GetConnectorByStartPayload(ctx context.Context, payload string) (domain.Connector, bool, error)
+	UpdateConnectorText(ctx context.Context, connectorID int64, name, description string) error
 	SetConnectorActive(ctx context.Context, connectorID int64, active bool) error
 	DeleteConnector(ctx context.Context, connectorID int64) error
 }

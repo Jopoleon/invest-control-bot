@@ -95,3 +95,17 @@ func TestConnectorResolvedTelegramChatRef(t *testing.T) {
 		})
 	}
 }
+
+func TestConnectorMAXAccessURL_NormalizesWebHostForUserFacingLinks(t *testing.T) {
+	connector := Connector{MAXChannelURL: " https://web.max.ru/-72598909498032 "}
+	if got := connector.MAXAccessURL(); got != "https://max.ru/-72598909498032" {
+		t.Fatalf("MAXAccessURL()=%q want https://max.ru/-72598909498032", got)
+	}
+}
+
+func TestConnectorMAXAccessURL_PreservesMaxHostAndPath(t *testing.T) {
+	connector := Connector{MAXChannelURL: "https://max.ru/-72598909498032?x=1"}
+	if got := connector.MAXAccessURL(); got != "https://max.ru/-72598909498032?x=1" {
+		t.Fatalf("MAXAccessURL()=%q want original max.ru url", got)
+	}
+}

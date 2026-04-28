@@ -33,3 +33,12 @@ func TestResolveChatID_RejectsNonNumericMAXURL(t *testing.T) {
 		t.Fatal("ResolveChatID should reject non-numeric MAX public links")
 	}
 }
+
+func TestNormalizeAccessURL_RewritesWebHostForUserFacingLinks(t *testing.T) {
+	t.Helper()
+
+	got := NormalizeAccessURL(" https://web.max.ru/-72598909498032?x=1 ")
+	if got != "https://max.ru/-72598909498032?x=1" {
+		t.Fatalf("NormalizeAccessURL()=%q want public max.ru URL", got)
+	}
+}

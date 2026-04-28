@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
 	storepkg "github.com/Jopoleon/invest-control-bot/internal/store"
@@ -26,6 +27,15 @@ var (
 	errCreateConnectorMonths     = errors.New("create_connector_months")
 	errCreateConnectorDeadline   = errors.New("create_connector_deadline")
 	errCreateConnectorChatOrURL  = errors.New("create_connector_chat_or_url_required")
+	errConnectorNameRequired     = errors.New("connector_name_required")
+	errConnectorNameTooLong      = errors.New("connector_name_too_long")
+	errConnectorDescriptionLong  = errors.New("connector_description_too_long")
+	errConnectorTextInvalid      = errors.New("connector_text_invalid")
+)
+
+const (
+	connectorNameMaxRunes        = 80
+	connectorDescriptionMaxRunes = 300
 )
 
 // connectorsPage handles list/create connector operations.
@@ -56,6 +66,49 @@ func (h *Handler) connectorsPage(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
+}
+
+// updateConnector edits only operator-facing connector fields. Price, period,
+// payload, and access destinations are deliberately excluded because existing
+// subscriptions and rebills still resolve those fields from the live connector.
+func (h *Handler) updateConnector(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAuth(w, r) {
+		return
+	}
+	lang := h.resolveLang(w, r)
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "connectors.bad_form"))
+		return
+	}
+	if !h.verifyCSRF(r) {
+		w.WriteHeader(http.StatusForbidden)
+		h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "csrf.invalid"))
+		return
+	}
+
+	id, err := parseConnectorID(r.FormValue("id"))
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "connectors.invalid_id"))
+		return
+	}
+	name, description, validationErr := normalizeConnectorText(r.FormValue("name"), r.FormValue("description"))
+	if validationErr != nil {
+		h.renderConnectorsPage(r.Context(), w, r, lang, h.localizeUpdateConnectorError(lang, validationErr))
+		return
+	}
+
+	if err := h.store.UpdateConnectorText(r.Context(), id, name, description); err != nil {
+		h.renderConnectorsPage(r.Context(), w, r, lang, h.localizeUpdateConnectorError(lang, err))
+		return
+	}
+	h.logAdminAudit(r, domain.AuditActionAdminConnectorUpdated, "connector_id="+strconv.FormatInt(id, 10))
+	h.redirectConnectors(w, r, lang, t(lang, "connectors.text_updated"))
 }
 
 // toggleConnector switches connector active state without deleting history.
@@ -142,8 +195,8 @@ func (h *Handler) deleteConnector(w http.ResponseWriter, r *http.Request) {
 // createConnector parses HTML form and persists connector entity.
 func (h *Handler) createConnector(ctx context.Context, r *http.Request) error {
 	startPayload := strings.TrimSpace(r.FormValue("start_payload"))
-	name := strings.TrimSpace(r.FormValue("name"))
-	description := strings.TrimSpace(r.FormValue("description"))
+	nameRaw := r.FormValue("name")
+	descriptionRaw := r.FormValue("description")
 	chatID := strings.TrimSpace(r.FormValue("chat_id"))
 	maxChatID := strings.TrimSpace(r.FormValue("max_chat_id"))
 	maxChannelURL := strings.TrimSpace(r.FormValue("max_channel_url"))
@@ -163,8 +216,12 @@ func (h *Handler) createConnector(ctx context.Context, r *http.Request) error {
 		startPayload = "in-" + generateToken(8)
 	}
 
-	if name == "" || priceRaw == "" {
+	if priceRaw == "" {
 		return errCreateConnectorRequired
+	}
+	name, description, validationErr := normalizeConnectorText(nameRaw, descriptionRaw)
+	if validationErr != nil {
+		return validationErr
 	}
 	if chatID == "" && channelURL == "" && maxChannelURL == "" && maxChatID == "" {
 		return errCreateConnectorChatOrURL
@@ -301,10 +358,12 @@ func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWrite
 			ID:               c.ID,
 			StartPayload:     c.StartPayload,
 			Name:             c.Name,
+			Description:      c.Description,
 			ChatID:           c.ChatID,
 			TelegramURL:      c.TelegramAccessURL(),
 			MAXChatID:        c.MAXChatID,
 			MAXChannelURL:    c.MAXChannelURL,
+			MAXAppURL:        c.MAXAccessURL(),
 			PriceRUB:         c.PriceRUB,
 			PeriodLabel:      adminConnectorPeriodLabel(c),
 			PeriodSortValue:  adminConnectorPeriodSortValue(c),
@@ -624,6 +683,14 @@ func (h *Handler) localizeCreateConnectorError(lang string, err error) string {
 	switch {
 	case errors.Is(err, errCreateConnectorRequired):
 		return t(lang, "connectors.required")
+	case errors.Is(err, errConnectorNameRequired):
+		return t(lang, "connector.validation.name_required")
+	case errors.Is(err, errConnectorNameTooLong):
+		return t(lang, "connector.validation.name_too_long")
+	case errors.Is(err, errConnectorDescriptionLong):
+		return t(lang, "connector.validation.description_too_long")
+	case errors.Is(err, errConnectorTextInvalid):
+		return t(lang, "connector.validation.text_invalid")
 	case errors.Is(err, errCreateConnectorPrice):
 		return t(lang, "connector.validation.price")
 	case errors.Is(err, errCreateConnectorPeriodMode):
@@ -650,6 +717,49 @@ func (h *Handler) localizeDeleteConnectorError(lang string, err error) string {
 	default:
 		return err.Error()
 	}
+}
+
+func (h *Handler) localizeUpdateConnectorError(lang string, err error) string {
+	switch {
+	case errors.Is(err, errConnectorNameRequired):
+		return t(lang, "connector.validation.name_required")
+	case errors.Is(err, errConnectorNameTooLong):
+		return t(lang, "connector.validation.name_too_long")
+	case errors.Is(err, errConnectorDescriptionLong):
+		return t(lang, "connector.validation.description_too_long")
+	case errors.Is(err, errConnectorTextInvalid):
+		return t(lang, "connector.validation.text_invalid")
+	case errors.Is(err, storepkg.ErrConnectorNotFound):
+		return t(lang, "connectors.not_found")
+	}
+	return err.Error()
+}
+
+func normalizeConnectorText(nameRaw, descriptionRaw string) (string, string, error) {
+	if containsControlRune(nameRaw) || containsControlRune(descriptionRaw) {
+		return "", "", errConnectorTextInvalid
+	}
+	name := strings.Join(strings.Fields(nameRaw), " ")
+	description := strings.Join(strings.Fields(descriptionRaw), " ")
+	if name == "" {
+		return "", "", errConnectorNameRequired
+	}
+	if len([]rune(name)) > connectorNameMaxRunes {
+		return "", "", errConnectorNameTooLong
+	}
+	if len([]rune(description)) > connectorDescriptionMaxRunes {
+		return "", "", errConnectorDescriptionLong
+	}
+	return name, description, nil
+}
+
+func containsControlRune(value string) bool {
+	for _, r := range value {
+		if unicode.IsControl(r) && r != '\t' && r != '\n' && r != '\r' {
+			return true
+		}
+	}
+	return false
 }
 
 func parseConnectorID(raw string) (int64, error) {

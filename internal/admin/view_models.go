@@ -14,10 +14,12 @@ type connectorView struct {
 	ID               int64
 	StartPayload     string
 	Name             string
+	Description      string
 	ChatID           string
 	TelegramURL      string
 	MAXChatID        string
 	MAXChannelURL    string
+	MAXAppURL        string
 	PriceRUB         int64
 	PeriodLabel      string
 	PeriodSortValue  int64

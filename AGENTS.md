@@ -322,14 +322,15 @@ Important practical rule:
 When you make meaningful product or architecture changes, update the relevant docs:
 - `README.md`
 - `IMPLEMENTATION_PLAN.md`
-- `docs/PROD_BUGFIX_TRACK_2026-04-01.md`
-- `docs/MAX_IMPLEMENTATION_PLAN.md`
-- `docs/APP_REFACTOR_PLAN.md`
-- `docs/REFACTORING_AND_TEST_PLAN.md`
-- `docs/CONNECTOR_PERIOD_MODEL_PLAN.md`
-- `docs/PAYMENTS_FLOW_RU.md`
-- `docs/robokassa-recurring-checklist.md`
-- `docs/TODO.md`
+- `docs/README.md`
+- `docs/archive/incidents/prod-recurring-2026-04-01.md`
+- `docs/max/implementation.md`
+- `docs/architecture/app-refactor.md`
+- `docs/architecture/refactoring-and-tests.md`
+- `docs/architecture/connector-period-model.md`
+- `docs/payments/flow-ru.md`
+- `docs/payments/robokassa-recurring.md`
+- `docs/backlog/todo.md`
 
 If a change affects recurring behavior, update recurring docs immediately.
 
@@ -377,7 +378,7 @@ GOCACHE=/tmp/go-build go mod vendor
 - `migrations/0001_init.sql`
 - `.codex/config.toml`
 - `IMPLEMENTATION_PLAN.md`
-- `docs/PROD_BUGFIX_TRACK_2026-04-01.md`
-- `docs/CONNECTOR_PERIOD_MODEL_PLAN.md`
-- `docs/robokassa-recurring-checklist.md`
-- `docs/TODO.md`
+- `docs/archive/incidents/prod-recurring-2026-04-01.md`
+- `docs/architecture/connector-period-model.md`
+- `docs/payments/robokassa-recurring.md`
+- `docs/backlog/todo.md`

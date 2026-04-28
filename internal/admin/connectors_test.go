@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -123,6 +124,175 @@ func TestConnectorsPageCreate_UsesMonthlyPresetFields(t *testing.T) {
 	}
 }
 
+func TestConnectorsPageUpdate_EditsOnlyNameAndDescription(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil, nil)
+
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload: "in-edit-text",
+		Name:         "Old Name",
+		Description:  "old description",
+		ChannelURL:   "https://t.me/original",
+		PriceRUB:     490,
+		PeriodMode:   domain.ConnectorPeriodModeCalendarMonths,
+		PeriodMonths: 1,
+		IsActive:     true,
+		CreatedAt:    time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateConnector: %v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-edit-text")
+	if err != nil {
+		t.Fatalf("GetConnectorByStartPayload: %v", err)
+	}
+	if !found {
+		t.Fatal("connector not found after create")
+	}
+
+	csrfReq := httptest.NewRequest(http.MethodGet, "/admin/connectors?lang=ru", nil)
+	csrfRec := httptest.NewRecorder()
+	csrfToken := h.ensureCSRFToken(csrfRec, csrfReq)
+	csrfResp := csrfRec.Result()
+	defer csrfResp.Body.Close()
+	var csrfCookie *http.Cookie
+	for _, c := range csrfResp.Cookies() {
+		if c.Name == csrfCookieName {
+			csrfCookie = c
+			break
+		}
+	}
+	if csrfCookie == nil {
+		t.Fatal("csrf cookie missing")
+	}
+
+	form := url.Values{}
+	form.Set("csrf_token", csrfToken)
+	form.Set("id", strconv.FormatInt(connector.ID, 10))
+	form.Set("name", "New Operator Name")
+	form.Set("description", "new internal note")
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/connectors/update?lang=ru", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(csrfCookie)
+	rec := httptest.NewRecorder()
+	h.updateConnector(rec, withAdminAuthorized(req, &authorizedSession{session: domain.AdminSession{ID: 1}}))
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusSeeOther)
+	}
+	updated, found, err := st.GetConnector(ctx, connector.ID)
+	if err != nil {
+		t.Fatalf("GetConnector: %v", err)
+	}
+	if !found {
+		t.Fatal("connector missing after update")
+	}
+	if updated.Name != "New Operator Name" || updated.Description != "new internal note" {
+		t.Fatalf("text fields were not updated: %+v", updated)
+	}
+	if updated.PriceRUB != 490 || updated.PeriodMode != domain.ConnectorPeriodModeCalendarMonths || updated.PeriodMonths != 1 || updated.ChannelURL != "https://t.me/original" || updated.StartPayload != "in-edit-text" {
+		t.Fatalf("non-text connector fields changed unexpectedly: %+v", updated)
+	}
+}
+
+func TestConnectorsPageUpdate_RequiresName(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil, nil)
+
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload: "in-edit-required",
+		Name:         "Keep Name",
+		ChannelURL:   "https://t.me/original",
+		PriceRUB:     490,
+		PeriodMode:   domain.ConnectorPeriodModeCalendarMonths,
+		PeriodMonths: 1,
+		IsActive:     true,
+		CreatedAt:    time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateConnector: %v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-edit-required")
+	if err != nil {
+		t.Fatalf("GetConnectorByStartPayload: %v", err)
+	}
+	if !found {
+		t.Fatal("connector not found after create")
+	}
+
+	csrfReq := httptest.NewRequest(http.MethodGet, "/admin/connectors?lang=ru", nil)
+	csrfRec := httptest.NewRecorder()
+	csrfToken := h.ensureCSRFToken(csrfRec, csrfReq)
+	csrfResp := csrfRec.Result()
+	defer csrfResp.Body.Close()
+	var csrfCookie *http.Cookie
+	for _, c := range csrfResp.Cookies() {
+		if c.Name == csrfCookieName {
+			csrfCookie = c
+			break
+		}
+	}
+	if csrfCookie == nil {
+		t.Fatal("csrf cookie missing")
+	}
+
+	form := url.Values{}
+	form.Set("csrf_token", csrfToken)
+	form.Set("id", strconv.FormatInt(connector.ID, 10))
+	form.Set("name", " ")
+	form.Set("description", "should not save")
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/connectors/update?lang=ru", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(csrfCookie)
+	rec := httptest.NewRecorder()
+	h.updateConnector(rec, withAdminAuthorized(req, &authorizedSession{session: domain.AdminSession{ID: 1}}))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "название коннектора обязательно") {
+		t.Fatalf("validation message missing from response: %q", body)
+	}
+	updated, found, err := st.GetConnector(ctx, connector.ID)
+	if err != nil {
+		t.Fatalf("GetConnector: %v", err)
+	}
+	if !found {
+		t.Fatal("connector missing after failed update")
+	}
+	if updated.Name != "Keep Name" || updated.Description != "" {
+		t.Fatalf("connector changed after failed update: %+v", updated)
+	}
+}
+
+func TestNormalizeConnectorText(t *testing.T) {
+	name, description, err := normalizeConnectorText("  VIP   monthly  ", " first\nsecond\tline ")
+	if err != nil {
+		t.Fatalf("normalizeConnectorText: %v", err)
+	}
+	if name != "VIP monthly" {
+		t.Fatalf("name=%q want %q", name, "VIP monthly")
+	}
+	if description != "first second line" {
+		t.Fatalf("description=%q want %q", description, "first second line")
+	}
+}
+
+func TestNormalizeConnectorTextValidation(t *testing.T) {
+	if _, _, err := normalizeConnectorText(strings.Repeat("я", connectorNameMaxRunes+1), ""); !errors.Is(err, errConnectorNameTooLong) {
+		t.Fatalf("long name err=%v want %v", err, errConnectorNameTooLong)
+	}
+	if _, _, err := normalizeConnectorText("Valid", strings.Repeat("a", connectorDescriptionMaxRunes+1)); !errors.Is(err, errConnectorDescriptionLong) {
+		t.Fatalf("long description err=%v want %v", err, errConnectorDescriptionLong)
+	}
+	if _, _, err := normalizeConnectorText("Bad\x00Name", ""); !errors.Is(err, errConnectorTextInvalid) {
+		t.Fatalf("control char err=%v want %v", err, errConnectorTextInvalid)
+	}
+}
+
 func TestConnectorsPage_RendersCompactLaunchAndLegalColumns(t *testing.T) {
 	ctx := context.Background()
 	st := memory.New()
@@ -160,6 +330,46 @@ func TestConnectorsPage_RendersCompactLaunchAndLegalColumns(t *testing.T) {
 	}
 	if strings.Contains(body, "<th>Оферта</th>") || strings.Contains(body, "<th>Политика</th>") {
 		t.Fatalf("response still contains separate legal columns: %q", body)
+	}
+	if !strings.Contains(body, `data-connector-edit-open`) || !strings.Contains(body, `data-connector-edit-form`) {
+		t.Fatalf("response does not contain inline connector edit controls: %q", body)
+	}
+	if !strings.Contains(body, `/admin/assets/img/icon-edit.png`) {
+		t.Fatalf("response does not use local edit icon asset: %q", body)
+	}
+}
+
+func TestConnectorsPage_RendersMAXWebAndAppLinks(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil, nil)
+
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-max-admin-links",
+		Name:          "MAX Admin Links",
+		MAXChannelURL: "https://web.max.ru/-73770240324272",
+		PriceRUB:      3000,
+		PeriodMode:    domain.ConnectorPeriodModeCalendarMonths,
+		PeriodMonths:  1,
+		IsActive:      true,
+		CreatedAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateConnector: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/connectors?lang=ru", nil)
+	rec := httptest.NewRecorder()
+	h.connectorsPage(rec, withAdminAuthorized(req, &authorizedSession{session: domain.AdminSession{ID: 1}}))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "MAX web") || !strings.Contains(body, "https://web.max.ru/-73770240324272") {
+		t.Fatalf("response does not contain MAX web link: %q", body)
+	}
+	if !strings.Contains(body, "MAX приложение") || !strings.Contains(body, "https://max.ru/-73770240324272") {
+		t.Fatalf("response does not contain normalized MAX app link: %q", body)
 	}
 }
 

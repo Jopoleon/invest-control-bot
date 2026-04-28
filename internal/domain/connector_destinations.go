@@ -1,8 +1,6 @@
 package domain
 
 import (
-	"strings"
-
 	"github.com/Jopoleon/invest-control-bot/internal/channelurl"
 	"github.com/Jopoleon/invest-control-bot/internal/maxchat"
 	"github.com/Jopoleon/invest-control-bot/internal/telegramchat"
@@ -22,7 +20,7 @@ func (c Connector) ResolvedTelegramChatRef() string {
 
 // MAXAccessURL resolves the MAX destination configured for this connector.
 func (c Connector) MAXAccessURL() string {
-	return strings.TrimSpace(c.MAXChannelURL)
+	return maxchat.NormalizeAccessURL(c.MAXChannelURL)
 }
 
 // ResolvedMAXChatID returns a MAX chat identifier suitable for membership

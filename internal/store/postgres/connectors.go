@@ -177,6 +177,28 @@ func (s *Store) GetConnectorByStartPayload(ctx context.Context, payload string) 
 	return c, true, nil
 }
 
+// UpdateConnectorText changes only operator-facing connector copy. Commercial
+// terms, start payload, and access destinations stay immutable through this
+// path because active payments/subscriptions resolve them from the connector.
+func (s *Store) UpdateConnectorText(ctx context.Context, connectorID int64, name, description string) error {
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE connectors
+		SET name = $2, description = $3
+		WHERE id = $1
+	`, connectorID, name, description)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return storepkg.ErrConnectorNotFound
+	}
+	return nil
+}
+
 // SetConnectorActive toggles connector active status.
 func (s *Store) SetConnectorActive(ctx context.Context, connectorID int64, active bool) error {
 	res, err := s.db.ExecContext(ctx, `UPDATE connectors SET is_active = $2 WHERE id = $1`, connectorID, active)

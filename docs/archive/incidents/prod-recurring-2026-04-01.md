@@ -1,7 +1,15 @@
 # Прод: трек текущих багов и план исправления
 
 Дата: 2026-04-01
-Статус: active, partially resolved
+Статус: archive
+
+Важно: это исторический incident log. Для актуального состояния recurring, period model и TODO смотреть:
+
+- [connector-period-model.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/architecture/connector-period-model.md)
+- [robokassa-recurring.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/payments/robokassa-recurring.md)
+- [todo.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/backlog/todo.md)
+
+Исторические упоминания `TestPeriodSeconds` / `test_period_seconds` ниже описывают состояние до canonical connector period model. В текущем runtime короткие smoke-периоды задаются через `period_mode=duration` и `period_seconds`.
 
 ## Контекст
 

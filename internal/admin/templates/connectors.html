@@ -84,10 +84,10 @@
     .table-wrap col.name-col { width: 16%; }
     .table-wrap col.price-col { width: 5.5rem; }
     .table-wrap col.period-col { width: 6rem; }
-    .table-wrap col.usage-col { width: 18%; }
-    .table-wrap col.channel-col { width: 16%; }
+    .table-wrap col.usage-col { width: 16%; }
+    .table-wrap col.channel-col { width: 20%; }
     .table-wrap col.legal-col { width: 9%; }
-    .table-wrap col.launch-col { width: 19%; }
+    .table-wrap col.launch-col { width: 13%; }
     .table-wrap col.status-col { width: 8%; }
     .table-wrap col.action-col { width: 13%; }
     .connector-summary {
@@ -130,31 +130,104 @@
       color: #5c6d82;
       word-break: break-word;
     }
+    .connector-title-row {
+      display: flex;
+      align-items: center;
+      gap: .4rem;
+      min-width: 0;
+    }
+    .connector-title-row strong {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .connector-edit-trigger {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.6rem;
+      height: 1.6rem;
+      padding: 0;
+      border: 1px solid rgba(31, 61, 112, .12);
+      border-radius: 999px;
+      background: rgba(247, 249, 253, .95);
+      color: #53677f;
+      box-shadow: none;
+      cursor: pointer;
+      flex: 0 0 auto;
+    }
+    .connector-edit-trigger:hover {
+      border-color: rgba(13, 97, 255, .28);
+      color: #0d61ff;
+      background: #fff;
+    }
+    .connector-edit-trigger img {
+      width: .82rem;
+      height: .82rem;
+      display: block;
+      opacity: .78;
+    }
+    .connector-read[hidden],
+    .connector-inline-edit[hidden] {
+      display: none !important;
+    }
+    .connector-description {
+      font-size: .8rem;
+      color: #506176;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+    .connector-inline-edit {
+      border: 1px solid rgba(31, 61, 112, .09);
+      border-radius: 12px;
+      padding: .55rem .65rem;
+      background: rgba(247, 249, 253, .72);
+      display: grid;
+      gap: .45rem;
+      min-width: 12rem;
+    }
+    .connector-inline-edit input,
+    .connector-inline-edit textarea {
+      margin-bottom: 0;
+      min-width: 12rem;
+    }
+    .connector-inline-actions {
+      display: flex;
+      align-items: center;
+      gap: .45rem;
+    }
+    .connector-inline-actions small {
+      color: #6c7b91;
+      font-size: .72rem;
+      line-height: 1.25;
+    }
     .usage-cell {
       white-space: normal !important;
-      min-width: 15rem;
+      min-width: 12.5rem;
     }
     .usage-stats {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: .4rem;
+      gap: .28rem;
     }
     .usage-stat {
-      padding: .45rem .55rem;
+      padding: .28rem .42rem;
       border: 1px solid rgba(31, 61, 112, .09);
-      border-radius: 10px;
+      border-radius: 8px;
       background: rgba(247, 249, 253, .72);
     }
     .usage-stat small {
       display: block;
-      margin-bottom: .2rem;
+      margin-bottom: .1rem;
       color: #5c6d82;
-      font-size: .68rem;
+      font-size: .61rem;
+      line-height: 1.15;
       text-transform: uppercase;
-      letter-spacing: .04em;
+      letter-spacing: .03em;
     }
     .usage-stat strong {
-      font-size: .95rem;
+      display: block;
+      font-size: .86rem;
+      line-height: 1.1;
       color: #203244;
     }
     .usage-users {
@@ -214,17 +287,15 @@
     }
     .table-wrap td.launch-cell,
     .table-wrap th.launch-cell {
-      min-width: 18rem;
+      min-width: 10rem;
     }
     .table-wrap td.launch-cell a,
     .table-wrap td.launch-cell code {
-      display: block !important;
-      max-width: none !important;
-      overflow: visible !important;
-      text-overflow: clip !important;
-      white-space: normal !important;
-      word-break: break-word !important;
-      overflow-wrap: anywhere !important;
+      display: block;
+      max-width: 10rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .table-wrap td.channel-cell,
     .table-wrap th.channel-cell {
@@ -239,21 +310,55 @@
       gap: .45rem;
     }
     .launch-cell .link-group {
-      min-width: 16rem;
+      min-width: 9rem;
       width: 100%;
-    }
-    .launch-cell .link-stack a,
-    .launch-cell .link-stack code {
-      max-width: none !important;
-      overflow: visible !important;
-      text-overflow: clip !important;
-      word-break: break-word !important;
-      overflow-wrap: anywhere !important;
-      white-space: normal !important;
     }
     .channel-cell .link-group,
     .legal-cell .link-group {
       min-width: 9rem;
+    }
+    .access-mini-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 22rem;
+      table-layout: fixed;
+    }
+    .access-mini-table th,
+    .access-mini-table td {
+      padding: .28rem .35rem;
+      border-bottom: 1px solid rgba(31, 61, 112, .08);
+      vertical-align: top;
+      white-space: normal;
+    }
+    .access-mini-table tr:last-child td {
+      border-bottom: 0;
+    }
+    .access-mini-table th {
+      color: #5c6d82;
+      font-size: .62rem;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      font-weight: 700;
+    }
+    .access-mini-table .access-kind {
+      width: 6.2rem;
+      color: #22344a;
+      font-weight: 700;
+    }
+    .access-mini-table .access-note {
+      width: 6.8rem;
+      color: #5c6d82;
+      font-size: .72rem;
+    }
+    .access-mini-table a,
+    .access-mini-table code {
+      display: block;
+      max-width: none !important;
+      overflow: visible !important;
+      text-overflow: clip !important;
+      white-space: normal !important;
+      word-break: break-word !important;
+      overflow-wrap: anywhere !important;
     }
     .link-stack a,
     .link-stack code {
@@ -323,7 +428,7 @@
           <div class="connector-main-grid">
             <label>
               {{index .I18N "connectors.form.name"}}
-              <input name="name" required>
+              <input name="name" required maxlength="80">
               <small class="field-inline-hint">{{index .I18N "connectors.form.name_hint"}}</small>
             </label>
             <label>
@@ -335,7 +440,7 @@
               {{index .I18N "connectors.form.period_mode"}}
               <select name="period_mode" id="period_mode">
                 <option value="duration">{{index .I18N "connectors.form.period_mode_duration"}}</option>
-                <option value="calendar_months">{{index .I18N "connectors.form.period_mode_calendar_months"}}</option>
+                <option value="calendar_months" selected>{{index .I18N "connectors.form.period_mode_calendar_months"}}</option>
                 <option value="fixed_deadline">{{index .I18N "connectors.form.period_mode_fixed_deadline"}}</option>
               </select>
             </label>
@@ -430,7 +535,7 @@
 
         <label class="connector-description">
           {{index .I18N "connectors.form.description"}}
-          <input name="description" placeholder="{{index .I18N "connectors.form.description_ph"}}">
+          <input name="description" maxlength="300" placeholder="{{index .I18N "connectors.form.description_ph"}}">
         </label>
       </details>
 
@@ -550,12 +655,30 @@
             <td class="mono">{{.ID}}</td>
             <td class="name-cell">
               <div class="connector-name">
-                <strong>{{.Name}}</strong>
-                <div class="connector-meta">
-                  <span class="badge {{.DestinationClass}}">{{.DestinationLabel}}</span>
-                  <span class="badge {{.ActiveClass}}">{{.ActiveLabel}}</span>
+                <div class="connector-read" data-connector-read="{{.ID}}">
+                  <div class="connector-title-row">
+                    <strong>{{.Name}}</strong>
+                    <button type="button" class="connector-edit-trigger" data-connector-edit-open="{{.ID}}" aria-label="{{index $.I18N "connectors.table.edit"}}">
+                      <img src="/admin/assets/img/icon-edit.png" alt="" aria-hidden="true">
+                    </button>
+                  </div>
+                  <div class="connector-meta">
+                    <span class="badge {{.DestinationClass}}">{{.DestinationLabel}}</span>
+                    <span class="badge {{.ActiveClass}}">{{.ActiveLabel}}</span>
+                  </div>
+                  {{if .Description}}<div class="connector-description">{{.Description}}</div>{{end}}
+                  <div class="connector-payload">{{index $.I18N "connectors.table.payload"}}: {{.StartPayload}}</div>
                 </div>
-                <div class="connector-payload">{{index $.I18N "connectors.table.payload"}}: {{.StartPayload}}</div>
+                <form method="POST" action="/admin/connectors/update?lang={{$.Lang}}" class="connector-inline-edit" data-connector-edit-form="{{.ID}}" hidden>
+                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                  <input type="hidden" name="id" value="{{.ID}}">
+                  <input name="name" value="{{.Name}}" required maxlength="80" aria-label="{{index $.I18N "connectors.form.name"}}">
+                  <textarea name="description" rows="3" maxlength="300" aria-label="{{index $.I18N "connectors.form.description"}}">{{.Description}}</textarea>
+                  <div class="connector-inline-actions">
+                    <button type="submit" class="action-btn">{{index $.I18N "connectors.table.save"}}</button>
+                    <small>{{index $.I18N "connectors.table.autosave_hint"}}</small>
+                  </div>
+                </form>
               </div>
             </td>
             <td class="price-cell">{{.PriceRUB}} ₽</td>
@@ -594,15 +717,25 @@
               {{end}}
             </td>
             <td class="link-cell channel-cell">
-              {{if or .TelegramURL .MAXChannelURL .ChatID .MAXChatID}}
+              {{if or .TelegramURL .MAXChannelURL .MAXAppURL .ChatID .MAXChatID}}
               <details class="link-group">
                 <summary class="link-summary">{{index $.I18N "connectors.table.open_link"}}</summary>
-                <div class="link-stack">
-                  {{if .TelegramURL}}<div><small>{{index $.I18N "connectors.table.telegram_channel"}}</small><a href="{{.TelegramURL}}" target="_blank" rel="noreferrer">{{.TelegramURL}}</a></div>{{end}}
-                  {{if .MAXChannelURL}}<div><small>{{index $.I18N "connectors.table.max_channel"}}</small><a href="{{.MAXChannelURL}}" target="_blank" rel="noreferrer">{{.MAXChannelURL}}</a></div>{{end}}
-                  {{if .ChatID}}<div><small>{{index $.I18N "connectors.table.chat"}}</small><code>{{.ChatID}}</code></div>{{end}}
-                  {{if .MAXChatID}}<div><small>{{index $.I18N "connectors.table.max_chat_id"}}</small><code>{{.MAXChatID}}</code></div>{{end}}
-                </div>
+                <table class="access-mini-table">
+                  <thead>
+                    <tr>
+                      <th>{{index $.I18N "connectors.table.access_type"}}</th>
+                      <th>{{index $.I18N "connectors.table.access_value"}}</th>
+                      <th>{{index $.I18N "connectors.table.access_note"}}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {{if .TelegramURL}}<tr><td class="access-kind">{{index $.I18N "connectors.table.telegram_channel"}}</td><td><a href="{{.TelegramURL}}" target="_blank" rel="noreferrer">{{.TelegramURL}}</a></td><td class="access-note">{{index $.I18N "connectors.table.access_channel_note"}}</td></tr>{{end}}
+                    {{if .MAXChannelURL}}<tr><td class="access-kind">{{index $.I18N "connectors.table.max_web_channel"}}</td><td><a href="{{.MAXChannelURL}}" target="_blank" rel="noreferrer">{{.MAXChannelURL}}</a></td><td class="access-note">{{index $.I18N "connectors.table.access_web_note"}}</td></tr>{{end}}
+                    {{if .MAXAppURL}}<tr><td class="access-kind">{{index $.I18N "connectors.table.max_app_channel"}}</td><td><a href="{{.MAXAppURL}}" target="_blank" rel="noreferrer">{{.MAXAppURL}}</a></td><td class="access-note">{{index $.I18N "connectors.table.access_app_note"}}</td></tr>{{end}}
+                    {{if .ChatID}}<tr><td class="access-kind">{{index $.I18N "connectors.table.chat"}}</td><td><code>{{.ChatID}}</code></td><td class="access-note">{{index $.I18N "connectors.table.access_chat_note"}}</td></tr>{{end}}
+                    {{if .MAXChatID}}<tr><td class="access-kind">{{index $.I18N "connectors.table.max_chat_id"}}</td><td><code>{{.MAXChatID}}</code></td><td class="access-note">{{index $.I18N "connectors.table.access_chat_note"}}</td></tr>{{end}}
+                  </tbody>
+                </table>
               </details>
               {{else}}—{{end}}
             </td>
@@ -702,6 +835,77 @@
     form.addEventListener("submit", function () {
       syncValidity();
     });
+
+    let activeEditForm = null;
+    const closeInlineEditor = (editForm) => {
+      if (!editForm) return;
+      const id = editForm.getAttribute("data-connector-edit-form");
+      const readBlock = document.querySelector(`[data-connector-read="${id}"]`);
+      editForm.hidden = true;
+      if (readBlock) readBlock.hidden = false;
+      if (activeEditForm === editForm) activeEditForm = null;
+    };
+    const isInlineEditDirty = (editForm) => {
+      const name = editForm.querySelector("input[name='name']");
+      const description = editForm.querySelector("textarea[name='description']");
+      if (!name || !description) return false;
+      return name.value !== name.defaultValue || description.value !== description.defaultValue;
+    };
+    const submitOrCloseInlineEditor = (editForm) => {
+      if (!editForm) return;
+      if (isInlineEditDirty(editForm)) {
+        editForm.requestSubmit();
+      } else {
+        closeInlineEditor(editForm);
+      }
+    };
+
+    document.querySelectorAll("[data-connector-edit-open]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        const id = button.getAttribute("data-connector-edit-open");
+        const editForm = document.querySelector(`[data-connector-edit-form="${id}"]`);
+        const readBlock = document.querySelector(`[data-connector-read="${id}"]`);
+        if (!editForm || !readBlock) return;
+        if (activeEditForm && activeEditForm !== editForm) {
+          submitOrCloseInlineEditor(activeEditForm);
+          return;
+        }
+        readBlock.hidden = true;
+        editForm.hidden = false;
+        activeEditForm = editForm;
+        const name = editForm.querySelector("input[name='name']");
+        if (name) {
+          name.focus();
+          name.select();
+        }
+      });
+    });
+
+    document.querySelectorAll("[data-connector-edit-form]").forEach((editForm) => {
+      editForm.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          editForm.reset();
+          closeInlineEditor(editForm);
+          return;
+        }
+        if (event.key === "Enter" && event.target && event.target.matches("input[name='name']")) {
+          event.preventDefault();
+          editForm.requestSubmit();
+        }
+      });
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!activeEditForm) return;
+      const target = event.target;
+      if (activeEditForm.contains(target)) return;
+      if (target.closest("[data-connector-edit-open]")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      submitOrCloseInlineEditor(activeEditForm);
+    }, true);
   });
 </script>
 </body>

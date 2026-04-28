@@ -45,6 +45,7 @@ const (
 	AuditActionAdminMessageSent               = "admin_message_sent"
 	AuditActionAdminPaymentLinkSendFailed     = "admin_payment_link_send_failed"
 	AuditActionAdminPaymentLinkSent           = "admin_payment_link_sent"
+	AuditActionAdminConnectorUpdated          = "admin_connector_updated"
 	AuditActionAdminSubscriptionRevokeFailed  = "admin_subscription_revoke_chat_failed"
 	AuditActionAdminSubscriptionRevokedChat   = "admin_subscription_revoked_from_chat"
 	AuditActionAdminSubscriptionRevoked       = "admin_subscription_revoked"

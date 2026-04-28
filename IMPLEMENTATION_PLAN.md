@@ -1,17 +1,18 @@
 # План реализации сервиса (рабочий документ)
 
-Статус: v1.16 (identity-first runtime cleanup after clean baseline)
-Дата обновления: 2026-04-01
+Статус: v1.17 (documentation audit and recurring/current-state cleanup)
+Дата обновления: 2026-04-28
 Основание: `tz.md`, `telegram-bot-flow.md`
 
 ## 1) Цель
-Собрать и реализовать Telegram-бот + backend + БД + интеграцию с выбранным платежным провайдером (YooKassa/Т-Банк/др.) + админ-панель для управления платным доступом в закрытые Telegram-чаты по подписке.
+Развивать Go backend для платного доступа к Telegram/MAX destinations с PostgreSQL, Robokassa payments/recurring и server-rendered admin panel.
 
 Сопутствующие рабочие документы:
-- `docs/MAX_IMPLEMENTATION_PLAN.md` - MAX-specific track
-- `docs/APP_REFACTOR_PLAN.md` - текущий цикл рефакторинга `internal/app`
-- `docs/REFACTORING_AND_TEST_PLAN.md` - отдельный backlog по unit-тестам, дедупликации и безопасным refactoring-задачам
-- `docs/CONNECTOR_PERIOD_MODEL_PLAN.md` - целевая model периодов коннектора (`duration`, `calendar_months`, `fixed_deadline`)
+- `docs/README.md` - карта документации
+- `docs/max/implementation.md` - MAX-specific track
+- `docs/architecture/app-refactor.md` - текущий цикл рефакторинга `internal/app`
+- `docs/architecture/refactoring-and-tests.md` - backlog по unit-тестам, дедупликации и безопасным refactoring-задачам
+- `docs/architecture/connector-period-model.md` - текущая model периодов коннектора (`duration`, `calendar_months`, `fixed_deadline`)
 
 ### Обновление 2026-03-27
 - Историческая цепочка additive SQL-миграций схлопнута в новый clean bootstrap.
@@ -84,14 +85,14 @@
   - defer-expiry при `pending` rebill на коротком периоде;
   - отсутствия ложного `subscription expired` после уже активированного следующего периода;
   - сохранения зеленого `GOCACHE=/tmp/go-build go test ./...`.
-- Admin operations перестали быть Telegram-only:
+- Admin operations перестали быть transport-specific:
   - direct user message теперь отправляется в preferred linked messenger account;
   - payment link из user detail теперь можно отправить и MAX-only пользователю;
   - для MAX payment-link сообщения добавлен fallback `/start <payload>` помимо deeplink.
-- Admin user-facing presentation начала уходить от Telegram-first UI:
+- Admin user-facing presentation ушла от Telegram-first UI в основных операционных экранах:
   - `users` registry теперь показывает primary messenger и linked accounts вместо двух Telegram-only колонок;
   - `user detail` карточка выводит messenger-neutral identity summary и delivery target;
-  - autopay cancel page остается transport-specific action и явно помечена как Telegram-only public page.
+  - autopay cancel page остается public web flow для конкретной подписки.
 - Продолжен admin frontend cleanup для multi-messenger UX:
   - `billing` и `churn` больше не показывают derived Telegram ID как основную колонку, а выводят primary messenger account;
   - `events` больше не форсит Telegram-kind при фильтрации `messenger_user_id` и теперь нормально режется по `telegram|max`;
@@ -167,7 +168,8 @@
 - `connectors`
   - `id` (BIGINT identity), `start_payload` (unique, например `in-94db7d6813507bc`)
   - `name`, `description`, `telegram_chat_id`, `channel_url`
-  - `price_amount`, `price_currency`, `period_days`
+  - `price_amount`, `price_currency`
+  - `period_mode`, `period_seconds`, `period_months`, `fixed_ends_at`
   - `offer_url`, `privacy_url`
   - `is_active`, timestamps
 - `users`
@@ -177,7 +179,7 @@
 - `subscriptions`
   - `id`, `user_id`, `connector_id`, `status` (`pending|active|expired|canceled`), `started_at`, `expires_at`, `auto_renew_enabled`, timestamps
 - `payments`
-  - `id`, `user_id`, `subscription_id`, `connector_id`, `provider` (`mock|yookassa|tbank|...`), `provider_payment_id`, `amount`, `currency`, `status`, `paid_at`, `raw_payload`, timestamps
+  - `id`, `user_id`, `subscription_id`, `connector_id`, `provider` (`mock|robokassa`), `provider_payment_id`, `amount`, `currency`, `status`, `paid_at`, `raw_payload`, timestamps
 - `user_consents`
   - `id`, `user_id`, `connector_id`, `offer_accepted_at`, `privacy_accepted_at`, `offer_document_id`, `offer_document_version`, `privacy_document_id`, `privacy_document_version`, `accept_source`, timestamps
 - `chat_memberships`
@@ -247,7 +249,7 @@
 - Создание платежа + checkout URL.
 - Webhook endpoint + идемпотентность.
 - Обновление `payments/subscriptions`.
-Примечание: работает `mock` provider, финальный провайдер (YooKassa/T-Банк) ожидает выбора.
+Примечание: сейчас поддерживаются `mock` для локальной разработки и `robokassa` для production flow.
 
 ### Итерация 4: Доступ в чат
 - Выдача доступа после оплаты.
@@ -278,7 +280,7 @@
 - Первый recurring-friendly платеж: opt-in пользователя в боте, правильная маркировка платежа, сохранение признаков recurring.
 - Checkout/cancel compliance pages добавлены и используются в продукте.
 - Магазин Robokassa активирован для recurring; E2E flow подтвержден на тестовом сценарии.
-- Для production readiness продолжаем держать в актуальном состоянии checklist из `docs/robokassa-recurring-checklist.md`.
+- Для production readiness продолжаем держать в актуальном состоянии checklist из `docs/payments/robokassa-recurring.md`.
 - Compliance-блок recurring:
 - дописать оферту под recurring-условия Robokassa;
 - добавить пользовательское соглашение;
@@ -450,20 +452,20 @@
   - внутренний `user_id` и `user_messenger_accounts`;
   - mixed-mode resolution в `bot`, `app` и `admin`;
   - additive `user_id` слой в `payments` и `subscriptions` без отказа от legacy `telegram_id`.
-- Стартовый MAX transport foundation добавлен:
-  - `internal/max` client;
-  - long polling через `GET /updates`;
+- MAX transport foundation добавлен:
+  - `internal/max` client/sender;
+  - webhook endpoint `POST /max/webhook`;
+  - startup webhook synchronization;
   - базовый outbound `POST /messages`;
-  - unit-тесты на polling и отправку сообщений.
+  - unit-тесты на transport boundary и adapter mapping.
 - Определить минимальный MAX MVP:
   - старт;
   - меню;
   - просмотр подписок;
   - запуск оплаты;
   - recurring status / cancel / re-enable через общие web entrypoints.
-- Для локальной разработки MAX первым этапом идем через long polling (`GET /updates`), а не через webhook tunnel.
-- После этого реализовать proof-of-concept MAX webhook adapter для production-контура.
-Примечание: детали вынесены в `docs/MAX_BOT_RESEARCH.md`, `docs/MAX_DECOMPOSITION_PLAN.md` и `docs/MAX_IMPLEMENTATION_PLAN.md`.
+- Текущий поддерживаемый runtime path для MAX идет через webhook/server mode, без отдельного polling runner.
+Примечание: детали вынесены в `docs/max/research.md`, `docs/architecture/max-decomposition.md` и `docs/max/implementation.md`.
 
 ## 8) Нефункциональные требования
 - Надежность webhook: идемпотентность, ретраи, таблица необработанных событий.
@@ -517,7 +519,7 @@
 - `2026-03-10` Реализация bot/webhook слоя переведена на `github.com/go-telegram/bot`; в flow добавлены `start_payload`, E.164 валидация телефона и кнопка `Оплатить`.
 - `2026-03-10` В коде обновлены admin/bot/store: коннекторы расширены (`start_payload`, offer/privacy URL, описание), генерация deeplink в админке, удален самописный Telegram types слой.
 - `2026-03-10` Добавлен временный `mock` checkout режим до выбора провайдера оплаты; добавлены `/mock/pay` и `/mock/pay/success`.
-- `2026-03-10` Добавлен документ по регуляторике ПДн РФ: `docs/DATA_COMPLIANCE_RU.md`.
+- `2026-03-10` Добавлен документ по регуляторике ПДн РФ: `docs/compliance/data-russia.md`.
 - `2026-03-11` Обновлены docs под текущее состояние кода (mock checkout, шаблоны админки, маршруты) и добавлены требования по обезличиванию (Приказ РКН №140 от 19.06.2025).
 - `2026-03-11` План платежей переведен на provider-agnostic модель (до выбора финальной кассы).
 - `2026-03-11` Внедрен единый structured logger (`log/slog`) с конфигурируемым уровнем `LOG_LEVEL`.
@@ -578,7 +580,7 @@
 - `2026-03-29` `PaymentListQuery` и `SubscriptionListQuery` переведены на `user_id`-first контракт: admin billing/exports и public recurring cancel page больше не фильтруют платежи и подписки по `telegram_id`, а Postgres/memory list methods больше не тащат derived Telegram column в SQL/runtime для этих списков.
 - `2026-03-29` `UserListQuery` и admin screens `users/churn` начали принимать `user_id` как основной filter key, а recurring cancel token model получил messenger-neutral naming (`messenger_user_id` вместо Telegram-specific payload field), чтобы убрать еще один misleading identity слой из runtime.
 - `2026-03-29` Дочищены Telegram-biased runtime хвосты вокруг checkout/cancel: `internal/payment.Request` больше не тащит лишний `UserTelegramID`, mock checkout flow опирается на payment token вместо декоративного user query param, а recurring cancel page внутри app-layer переименована в messenger-neutral термины без misleading `legacyExternalID`/`subscriptionMatchesLegacyTelegramID`.
-- `2026-03-31` В connectors добавлен короткий test-only override периода подписки через duration field (`90s`, `15m`), который хранится как `test_period_seconds` и используется в payment activation для быстрых smoke-тестов recurring/autopay без подмены обычного `period_days`.
+- `2026-04-01` Canonical connector period model заменила legacy duration поля: короткие smoke-тесты теперь задаются как обычный `period_mode=duration` с малым `period_seconds`; `period_days` и `test_period_seconds` не используются в runtime.
 - `2026-03-26` Для MAX был добавлен первый рабочий local-dev transport через long polling `GET /updates`; этот этап использовался как промежуточная диагностика adapter-level интеграции, а затем был сведен обратно к webhook-first runtime. Пакет `internal/max` остался покрыт client/poller/adapter unit-тестами, а mapper `message_created` выровнен под documented payload (`message.sender`, `message.recipient`, `message.body.mid`) и логирует raw update при очередном несовпадении формы события.
 - `2026-03-27` На живом MAX E2E подтверждены `/menu`, `/start <payload>`, регистрация, `accept_terms`, `payconsent` и генерация Robokassa checkout link. App-level post-payment notification path переведен с Telegram-only отправки на messenger-aware notifier, чтобы успешная оплата и ошибки recurring могли уведомлять пользователя в MAX-чате.
 - `2026-03-27` Отдельно зафиксирован следующий инфраструктурный этап по БД: после стабилизации multi-messenger behavior нужен clean-schema pass с полной пересборкой миграций под чистую накатку, удобным финальным порядком полей и удалением временных compatibility-слоев там, где они больше не нужны.

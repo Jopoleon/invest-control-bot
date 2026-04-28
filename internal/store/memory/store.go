@@ -370,6 +370,21 @@ func (s *Store) GetConnectorByStartPayload(_ context.Context, payload string) (d
 	return c, true, nil
 }
 
+// UpdateConnectorText changes only operator-facing connector copy.
+func (s *Store) UpdateConnectorText(_ context.Context, connectorID int64, name, description string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	c, ok := s.connectors[connectorID]
+	if !ok {
+		return storepkg.ErrConnectorNotFound
+	}
+	c.Name = strings.TrimSpace(name)
+	c.Description = strings.TrimSpace(description)
+	s.connectors[connectorID] = c
+	return nil
+}
+
 // SetConnectorActive toggles connector active state.
 func (s *Store) SetConnectorActive(_ context.Context, connectorID int64, active bool) error {
 	s.mu.Lock()

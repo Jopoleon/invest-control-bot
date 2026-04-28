@@ -12,7 +12,7 @@
 
 ## 1. Что именно продает система
 
-Система продает доступ к Telegram-каналам или платным подпискам.
+Система продает доступ к Telegram/MAX-чатам, каналам или платным подпискам.
 
 Каждый такой тариф внутри проекта называется `коннектор`.
 
@@ -31,7 +31,7 @@
 - подписка `Премиум аналитика`;
 - цена `2300 ₽`;
 - период `30 дней`;
-- после оплаты пользователь получает доступ в нужный Telegram-канал.
+- после оплаты пользователь получает доступ в нужный Telegram/MAX destination.
 
 ## 2. Какие сущности участвуют в оплате
 
@@ -82,7 +82,7 @@
 
 Выбирает подписку, соглашается с условиями и оплачивает.
 
-### Бот Telegram
+### Бот Telegram Или MAX
 
 Показывает пользователю тариф, документы, кнопки оплаты и статус подписок.
 
@@ -624,7 +624,6 @@ Telegram-сообщение для этого неудобно, а веб-стр
 
 Если позже понадобится более технический слой, можно посмотреть:
 
-- [robokassa-recurring-checklist.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/robokassa-recurring-checklist.md)
-- [ADMIN_GUIDE.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/ADMIN_GUIDE.md)
+- [robokassa-recurring.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/payments/robokassa-recurring.md)
+- [admin-guide.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/ops/admin-guide.md)
 - [README.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/README.md)
-

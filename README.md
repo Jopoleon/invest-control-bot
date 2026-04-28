@@ -117,26 +117,36 @@ TELEGRAM_HTTP_PROXY_URL=http://proxy.example.com:8080
 Некоторые RU-hosting/VPS сети могут нормально обслуживать backend, БД и обычный интернет, но выборочно не достукиваться до `api.telegram.org`. Для такого случая в проекте уже предусмотрен relay path через `TELEGRAM_API_BASE_URL`.
 
 Текущий рабочий вариант:
-- Cloudflare Worker выступает как HTTPS relay до `https://api.telegram.org`
-- приложение продолжает работать через обычный Telegram client, меняется только base URL outbound запросов
-- webhook URLs и бизнес-логика при этом не меняются
+- Cloudflare Worker выступает как HTTPS relay до `https://api.telegram.org` для outbound Bot API запросов
+- тот же Worker может принимать Telegram webhook и пересылать его на origin приложения, если Telegram не достукивается до RU-домена напрямую
+- приложение продолжает работать через обычный Telegram client, бизнес-логика при этом не меняется
 
 Для Worker:
 - в приложении задаётся
 ```env
 TELEGRAM_API_BASE_URL=https://telegram-bot-relay.egortictac3.workers.dev
 ```
-- в Worker задаётся secret:
+- если входящий webhook тоже нужно вести через Worker, в приложении задаётся:
+```env
+TELEGRAM_WEBHOOK_PUBLIC_URL=https://telegram-bot-relay.egortictac3.workers.dev/telegram/webhook
+```
+- в Worker задаются secrets:
 ```bash
 wrangler secret put TELEGRAM_BOT_TOKEN
+wrangler secret put TELEGRAM_WEBHOOK_SECRET
+wrangler secret put TELEGRAM_WEBHOOK_ORIGIN_URL
 ```
-- в этот secret кладётся тот же токен, что и в приложении в `TELEGRAM_BOT_TOKEN`
-- это нужно, чтобы relay обслуживал только нашего бота, а не работал как общий публичный Telegram proxy
+- в `TELEGRAM_BOT_TOKEN` кладётся тот же токен, что и в приложении
+- в `TELEGRAM_WEBHOOK_SECRET` кладётся тот же secret, что и в приложении
+- в `TELEGRAM_WEBHOOK_ORIGIN_URL` кладётся прямой origin приложения, например `https://xn--b1aghkfidhbthmd7l.xn--p1ai/telegram/webhook`
+- secrets нужны, чтобы relay обслуживал только нашего бота и принимал только webhook-запросы с правильным Telegram secret
 
 Важно:
 - в `TELEGRAM_API_BASE_URL` указывается только base URL relay
 - без `/bot`
 - без токена
+- `TELEGRAM_WEBHOOK_PUBLIC_URL` может указывать на Worker route `/telegram/webhook`
+- `TELEGRAM_WEBHOOK_ORIGIN_URL` в Worker должен указывать на настоящий webhook приложения, а не обратно на Worker
 
 ## Deploy И Ops
 
@@ -211,9 +221,9 @@ MAX_WEBHOOK_SECRET=your-max-webhook-secret
   - operator tooling в админке
 
 Полезные файлы:
-- `docs/PAYMENTS_FLOW_RU.md`
-- `docs/robokassa-recurring-checklist.md`
-- `docs/CONNECTOR_PERIOD_MODEL_PLAN.md`
+- `docs/payments/flow-ru.md`
+- `docs/payments/robokassa-recurring.md`
+- `docs/architecture/connector-period-model.md`
 
 ## Админка
 В админке сейчас есть:
@@ -231,11 +241,12 @@ Admin auth:
 - machine-to-machine через `Authorization: Bearer <ADMIN_AUTH_TOKEN>`
 
 ## Документация
-- `docs/ADMIN_GUIDE.md`
-- `docs/PAYMENTS_FLOW_RU.md`
-- `docs/robokassa-recurring-checklist.md`
-- `docs/MAX_IMPLEMENTATION_PLAN.md`
-- `docs/APP_REFACTOR_PLAN.md`
-- `docs/REFACTORING_AND_TEST_PLAN.md`
-- `docs/TODO.md`
+- `docs/README.md`
+- `docs/ops/admin-guide.md`
+- `docs/payments/flow-ru.md`
+- `docs/payments/robokassa-recurring.md`
+- `docs/max/implementation.md`
+- `docs/architecture/app-refactor.md`
+- `docs/architecture/refactoring-and-tests.md`
+- `docs/backlog/todo.md`
 - `IMPLEMENTATION_PLAN.md`

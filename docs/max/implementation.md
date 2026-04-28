@@ -4,7 +4,7 @@
 
 ## Текущий статус
 
-Проект находится на этапе предварительного исследования интеграции с мессенджером MAX как второго клиентского канала наряду с Telegram.
+MAX уже интегрирован как второй transport внутри общего backend. Текущий поддерживаемый runtime path - webhook/server mode через `POST /max/webhook`; отдельный polling runner не считается живым runtime.
 
 ## Прогресс
 
@@ -57,13 +57,13 @@
 ## Дорожная карта
 
 ### Инициация MAX-канала
-Статус: in_progress
-- Собрать официальные ограничения и возможности MAX Bot API.
-- Зафиксировать минимальный MVP parity относительно Telegram.
-- Выявить расхождения по deep links, callback-кнопкам, webhook security и группам/каналам.
+Статус: mostly_done
+- Официальные ограничения и возможности MAX Bot API зафиксированы.
+- Минимальный MVP parity относительно Telegram подтвержден для стартового пользовательского flow.
+- Открытым остается только накопление production наблюдений по deep links после web checkout.
 
 ### Архитектурная декомпозиция мессенджерного слоя
-Статус: in_progress
+Статус: implemented_incrementally
 - Выделить messenger-agnostic core для сценариев регистрации, подписок, платежей и автоплатежей.
 - Ввести абстракции transport/update sender, callback handling, identity mapping.
 - Отвязать предметную логику от Telegram-специфичных DTO и callback payloads.
@@ -76,14 +76,14 @@
   - внутренний `user_id` и foundation для multiple messenger identities в store/domain/migrations.
 
 ### Реализация MAX adapter
-Статус: in_progress
-- Подключить официальный Go SDK MAX либо тонкий HTTP client поверх platform-api.max.ru.
-- Реализовать webhook endpoint MAX с проверкой секрета `X-Max-Bot-Api-Secret`.
-- Реализовать приём update types, базовый dispatcher и отправку сообщений.
+Статус: implemented
+- Реализован тонкий HTTP client/sender поверх MAX Bot API.
+- Реализован webhook endpoint MAX с проверкой секрета `X-Max-Bot-Api-Secret`.
+- Реализованы прием update types, mapper в internal messenger events и отправка сообщений.
 
 ### Parity пользовательских сценариев
-Статус: pending
-- Продублировать базовые входные сценарии: старт, регистрация, меню, мои подписки, платежи.
+Статус: mostly_done
+- Базовые входные сценарии реализованы: старт, регистрация, меню, мои подписки, платежи.
 - Определить, какие inline/callback сценарии можно перенести без потерь.
 - Для recurring checkout/cancel зафиксирован messenger-neutral web fallback:
   - `/subscribe/{start_payload}` остается web entry page;
@@ -91,9 +91,9 @@
   - `/unsubscribe/{token}` остается публичной web page отключения автоплатежа и должна давать явный return path обратно в MAX-бота.
 
 ### Платежи и recurring
-Статус: pending
-- Переиспользовать существующую payment/core-логику.
-- Подготовить messenger-neutral точки входа в recurring checkout/cancel flow.
+Статус: implemented_with_live_validation_pending
+- Используется существующая payment/core-логика.
+- Messenger-neutral точки входа в recurring checkout/cancel flow подготовлены.
 - Уже зафиксировано целевое поведение для MAX:
   - `/payment/success` и `/payment/fail` должны возвращать пользователя в конкретного бота через direct deeplink `max.ru/<bot>?start=<connector_start_payload>`;
   - `MAX Web` остается fallback-кнопкой, а не основным return path;
@@ -101,7 +101,7 @@
 - Остается подтвердить это поведение на production MAX-клиенте после живого прогона.
 
 ### Тестирование и rollout
-Статус: pending
+Статус: ongoing
 - Локальные контрактные тесты transport-слоя.
 - Sandbox / development bot на MAX.
 - Ограниченный rollout без отключения Telegram-канала.

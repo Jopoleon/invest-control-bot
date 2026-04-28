@@ -78,3 +78,44 @@ func TestDeleteConnectorInUse(t *testing.T) {
 		t.Fatalf("sql expectations: %v", err)
 	}
 }
+
+func TestUpdateConnectorText(t *testing.T) {
+	store, mock, cleanup := newMockStore(t)
+	defer cleanup()
+
+	mock.ExpectExec(regexp.QuoteMeta(`
+		UPDATE connectors
+		SET name = $2, description = $3
+		WHERE id = $1
+	`)).
+		WithArgs(int64(11), "New name", "New description").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	if err := store.UpdateConnectorText(context.Background(), 11, "New name", "New description"); err != nil {
+		t.Fatalf("UpdateConnectorText: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestUpdateConnectorTextNotFound(t *testing.T) {
+	store, mock, cleanup := newMockStore(t)
+	defer cleanup()
+
+	mock.ExpectExec(regexp.QuoteMeta(`
+		UPDATE connectors
+		SET name = $2, description = $3
+		WHERE id = $1
+	`)).
+		WithArgs(int64(11), "New name", "").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	err := store.UpdateConnectorText(context.Background(), 11, "New name", "")
+	if err != storepkg.ErrConnectorNotFound {
+		t.Fatalf("expected ErrConnectorNotFound, got %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}

@@ -604,8 +604,11 @@ func TestPaymentSuccessPage_MAXActionsUseMAXLinks(t *testing.T) {
 	}
 	body, _ := io.ReadAll(rr.Body)
 	text := string(body)
-	if !strings.Contains(text, "https://web.max.ru/-72598909498032") {
-		t.Fatalf("response does not contain MAX channel URL: %q", text)
+	if !strings.Contains(text, "https://max.ru/-72598909498032") {
+		t.Fatalf("response does not contain normalized MAX channel URL: %q", text)
+	}
+	if strings.Contains(text, "https://web.max.ru/-72598909498032") {
+		t.Fatalf("response still contains web MAX channel URL: %q", text)
 	}
 	if !strings.Contains(text, appPaymentActionOpenMAXChannel) {
 		t.Fatalf("response does not contain MAX channel action label: %q", text)
