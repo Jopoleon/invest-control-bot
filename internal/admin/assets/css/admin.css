@@ -13,11 +13,29 @@
 }
 
 body {
+  position: relative;
+  min-height: 100vh;
   background: var(--admin-page-bg);
+  background-attachment: fixed;
   color: var(--admin-text);
 }
 
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: url("/admin/assets/img/admin-doodles-clean-bg.png");
+  background-size: 900px 900px;
+  background-position: top 1.5rem right 1.5rem;
+  background-repeat: repeat;
+  opacity: .36;
+}
+
 main.container {
+  position: relative;
+  z-index: 1;
   font-family: var(--admin-font-family);
 }
 

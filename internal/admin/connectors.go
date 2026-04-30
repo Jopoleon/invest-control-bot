@@ -322,6 +322,7 @@ func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWrite
 	now := time.Now().UTC()
 	resolveAccountPresentation := h.buildMessengerAccountPresentationLookup(ctx, lang)
 	usageByConnector := buildConnectorUsageViews(ctx, connectors, payments, subs, now, resolveAccountPresentation)
+	publicOfferOptions, nonPublicOfferOptions, privacyOptions := h.buildConnectorLegalDocumentOptions(ctx, r)
 
 	totalConnectors := len(connectors)
 	activeConnectors := 0
@@ -402,22 +403,77 @@ func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWrite
 			TopbarPath: "/admin/connectors",
 			ActiveNav:  "connectors",
 		},
-		Notice:              notice,
-		RequiredMessage:     t(lang, "connectors.required"),
-		ExportURL:           buildExportURL("/admin/connectors/export.csv", r.URL.Query(), lang),
-		TelegramBotUsername: botUsername,
-		MAXBotUsername:      maxBotUsername,
-		Search:              search,
-		StatusFilter:        statusFilter,
-		DestinationFilter:   destinationFilter,
-		Sort:                sortMode,
-		TotalConnectors:     totalConnectors,
-		ActiveConnectors:    activeConnectors,
-		TelegramOnlyCount:   telegramOnlyCount,
-		MAXOnlyCount:        maxOnlyCount,
-		DualCount:           dualCount,
-		Connectors:          rows,
+		Notice:                        notice,
+		RequiredMessage:               t(lang, "connectors.required"),
+		ExportURL:                     buildExportURL("/admin/connectors/export.csv", r.URL.Query(), lang),
+		TelegramBotUsername:           botUsername,
+		MAXBotUsername:                maxBotUsername,
+		Search:                        search,
+		StatusFilter:                  statusFilter,
+		DestinationFilter:             destinationFilter,
+		Sort:                          sortMode,
+		TotalConnectors:               totalConnectors,
+		ActiveConnectors:              activeConnectors,
+		TelegramOnlyCount:             telegramOnlyCount,
+		MAXOnlyCount:                  maxOnlyCount,
+		DualCount:                     dualCount,
+		PublicOfferDocumentOptions:    publicOfferOptions,
+		NonPublicOfferDocumentOptions: nonPublicOfferOptions,
+		PrivacyDocumentOptions:        privacyOptions,
+		Connectors:                    rows,
 	})
+}
+
+func (h *Handler) buildConnectorLegalDocumentOptions(ctx context.Context, r *http.Request) ([]legalDocumentOptionView, []legalDocumentOptionView, []legalDocumentOptionView) {
+	offers, _ := h.store.ListLegalDocuments(ctx, domain.LegalDocumentTypeOffer)
+	privacies, _ := h.store.ListLegalDocuments(ctx, domain.LegalDocumentTypePrivacy)
+
+	publicOffers := make([]legalDocumentOptionView, 0, len(offers))
+	nonPublicOffers := make([]legalDocumentOptionView, 0)
+	for _, doc := range offers {
+		option := h.legalDocumentOption(r, doc)
+		if option.URL == "" {
+			continue
+		}
+		if isNonPublicOfferTitle(doc.Title) {
+			nonPublicOffers = append(nonPublicOffers, option)
+			continue
+		}
+		publicOffers = append(publicOffers, option)
+	}
+
+	privacyOptions := make([]legalDocumentOptionView, 0, len(privacies))
+	for _, doc := range privacies {
+		option := h.legalDocumentOption(r, doc)
+		if option.URL != "" {
+			privacyOptions = append(privacyOptions, option)
+		}
+	}
+	sortLegalDocumentOptions(publicOffers)
+	sortLegalDocumentOptions(nonPublicOffers)
+	sortLegalDocumentOptions(privacyOptions)
+	return publicOffers, nonPublicOffers, privacyOptions
+}
+
+func (h *Handler) legalDocumentOption(r *http.Request, doc domain.LegalDocument) legalDocumentOptionView {
+	return legalDocumentOptionView{
+		Label: fmt.Sprintf("%s · v%d", strings.TrimSpace(doc.Title), doc.Version),
+		URL:   h.legalDocumentPublicURL(r, doc.Type, doc.ID),
+	}
+}
+
+func sortLegalDocumentOptions(items []legalDocumentOptionView) {
+	sort.SliceStable(items, func(i, j int) bool {
+		return strings.ToLower(items[i].Label) < strings.ToLower(items[j].Label)
+	})
+}
+
+func isNonPublicOfferTitle(title string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(title))
+	return strings.Contains(normalized, "непублич") ||
+		strings.Contains(normalized, "не публич") ||
+		strings.Contains(normalized, "non-public") ||
+		strings.Contains(normalized, "nonpublic")
 }
 
 type connectorUsageView struct {

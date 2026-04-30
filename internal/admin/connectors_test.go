@@ -322,20 +322,69 @@ func TestConnectorsPage_RendersCompactLaunchAndLegalColumns(t *testing.T) {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, ">Документы<") {
-		t.Fatalf("response does not contain compact legal column: %q", body)
+	if !strings.Contains(body, ">Документы / Запуск<") {
+		t.Fatalf("response does not contain combined resources column: %q", body)
 	}
-	if !strings.Contains(body, ">Запуск<") {
-		t.Fatalf("response does not contain compact launch column: %q", body)
+	if !strings.Contains(body, ">Цена / Период<") {
+		t.Fatalf("response does not contain combined tariff column: %q", body)
 	}
 	if strings.Contains(body, "<th>Оферта</th>") || strings.Contains(body, "<th>Политика</th>") {
 		t.Fatalf("response still contains separate legal columns: %q", body)
+	}
+	if strings.Contains(body, `class="access-mini-table"`) {
+		t.Fatalf("response still contains nested access table: %q", body)
+	}
+	if !strings.Contains(body, `class="access-list"`) {
+		t.Fatalf("response does not contain compact access list: %q", body)
 	}
 	if !strings.Contains(body, `data-connector-edit-open`) || !strings.Contains(body, `data-connector-edit-form`) {
 		t.Fatalf("response does not contain inline connector edit controls: %q", body)
 	}
 	if !strings.Contains(body, `/admin/assets/img/icon-edit.png`) {
 		t.Fatalf("response does not use local edit icon asset: %q", body)
+	}
+}
+
+func TestConnectorsPage_RendersLegalDocumentSelectsGroupedByOfferTitle(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil, nil)
+
+	docs := []domain.LegalDocument{
+		{Type: domain.LegalDocumentTypeOffer, Title: "ЖЭПЭ публичная оферта", Content: "public offer", IsActive: true, CreatedAt: time.Now().UTC()},
+		{Type: domain.LegalDocumentTypeOffer, Title: "Ритейл групп непубличная оферта", Content: "non public offer", IsActive: true, CreatedAt: time.Now().UTC()},
+		{Type: domain.LegalDocumentTypePrivacy, Title: "Политика обработки данных", Content: "privacy", IsActive: true, CreatedAt: time.Now().UTC()},
+	}
+	for _, doc := range docs {
+		if err := st.CreateLegalDocument(ctx, doc); err != nil {
+			t.Fatalf("CreateLegalDocument: %v", err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/connectors?lang=ru", nil)
+	req.Host = "pay.example.test"
+	req.Header.Set("X-Forwarded-Proto", "https")
+	rec := httptest.NewRecorder()
+	h.connectorsPage(rec, withAdminAuthorized(req, &authorizedSession{session: domain.AdminSession{ID: 1}}))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `<select name="offer_url">`) || !strings.Contains(body, `<select name="privacy_url">`) {
+		t.Fatalf("response does not render legal document selects: %q", body)
+	}
+	if !strings.Contains(body, `<optgroup label="Публичная оферта">`) || !strings.Contains(body, `<optgroup label="Непубличная оферта">`) {
+		t.Fatalf("response does not group offer documents: %q", body)
+	}
+	if !strings.Contains(body, `value="https://pay.example.test/oferta/1"`) || !strings.Contains(body, `ЖЭПЭ публичная оферта · v1`) {
+		t.Fatalf("response does not contain public offer option: %q", body)
+	}
+	if !strings.Contains(body, `value="https://pay.example.test/oferta/2"`) || !strings.Contains(body, `Ритейл групп непубличная оферта · v2`) {
+		t.Fatalf("response does not contain non-public offer option: %q", body)
+	}
+	if !strings.Contains(body, `value="https://pay.example.test/policy/3"`) || !strings.Contains(body, `Политика обработки данных · v1`) {
+		t.Fatalf("response does not contain privacy option: %q", body)
 	}
 }
 

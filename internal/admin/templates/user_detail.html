@@ -20,11 +20,24 @@
       --panel-bg: rgba(255, 255, 255, .88);
     }
     body {
-      background:
-        radial-gradient(circle at top left, rgba(176, 205, 234, .45), transparent 28%),
-        linear-gradient(180deg, #f4f7fb, #eaf0f7);
+      position: relative;
+      min-height: 100vh;
+      background: var(--admin-page-bg);
+      background-attachment: fixed;
     }
-    main.container { max-width: 1380px; }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background-image: url("/admin/assets/img/admin-doodles-clean-bg.png");
+      background-size: 900px 900px;
+      background-position: top 1.5rem right 1.5rem;
+      background-repeat: repeat;
+      opacity: .36;
+    }
+    main.container { position: relative; z-index: 1; max-width: 1380px; }
     .topbar { display: flex; justify-content: space-between; align-items: center; gap: .75rem; flex-wrap: wrap; margin: 1rem 0; }
     .topbar nav ul { align-items: center; }
     .langs a[aria-current="true"] { font-weight: 700; text-decoration: underline; }

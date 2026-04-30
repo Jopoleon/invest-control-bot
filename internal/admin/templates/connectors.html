@@ -6,407 +6,10 @@
   <title>Admin · {{index .I18N "connectors.title"}}</title>
   <link rel="stylesheet" href="/admin/assets/css/pico.min.css">
   <link rel="stylesheet" href="/admin/assets/css/admin.css">
-  <style>
-    :root {
-      --pico-font-family: "Manrope", "Segoe UI", sans-serif;
-      --pico-font-size: 87.5%;
-      --pico-spacing: .8rem;
-      --pico-form-element-spacing-vertical: .45rem;
-      --pico-form-element-spacing-horizontal: .6rem;
-    }
-    main.container { max-width: 1220px; }
-    .connector-form {
-      display: grid;
-      gap: 1rem;
-    }
-    .connector-core {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr);
-      gap: 1rem;
-      align-items: start;
-    }
-    .connector-main-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1.25fr) minmax(10rem, .45fr) minmax(8rem, .35fr);
-      gap: .9rem;
-    }
-    .connector-main {
-      display: grid;
-      gap: .9rem;
-    }
-    .connector-channel label > small,
-    .connector-advanced summary small {
-      display: block;
-      margin-top: .25rem;
-      color: #6c7b91;
-      font-size: .8rem;
-      line-height: 1.35;
-    }
-    .connector-advanced {
-      border: 1px solid rgba(31, 61, 112, .09);
-      border-radius: 16px;
-      padding: .15rem .9rem .85rem;
-      background: rgba(247, 249, 253, .8);
-    }
-    .connector-advanced summary {
-      cursor: pointer;
-      list-style: none;
-      font-weight: 700;
-      color: #2b3f5f;
-      padding: .7rem 0;
-    }
-    .connector-advanced summary::-webkit-details-marker {
-      display: none;
-    }
-    .connector-advanced-grid {
-      display: grid;
-      grid-template-columns: minmax(0, .7fr) minmax(0, 1fr) minmax(0, 1fr);
-      gap: .9rem;
-      margin-top: .35rem;
-    }
-    .connector-description {
-      margin-top: .9rem;
-    }
-    .field-inline-hint {
-      display: block;
-      margin-top: .25rem;
-      color: #6c7b91;
-      font-size: .8rem;
-      line-height: 1.35;
-    }
-    .table-wrap { overflow-x: auto; }
-    .table-wrap table {
-      width: 100%;
-      min-width: 940px;
-      table-layout: auto;
-    }
-    .table-wrap col.id-col { width: 3.5rem; }
-    .table-wrap col.name-col { width: 16%; }
-    .table-wrap col.price-col { width: 5.5rem; }
-    .table-wrap col.period-col { width: 6rem; }
-    .table-wrap col.usage-col { width: 16%; }
-    .table-wrap col.channel-col { width: 20%; }
-    .table-wrap col.legal-col { width: 9%; }
-    .table-wrap col.launch-col { width: 13%; }
-    .table-wrap col.status-col { width: 8%; }
-    .table-wrap col.action-col { width: 13%; }
-    .connector-summary {
-      display: grid;
-      gap: .75rem;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-    }
-    .summary-card {
-      padding: .85rem .95rem;
-      border: 1px solid rgba(31, 61, 112, .09);
-      border-radius: 14px;
-      background: rgba(247, 249, 253, .72);
-    }
-    .summary-card small {
-      display: block;
-      margin-bottom: .35rem;
-      color: #5c6d82;
-      font-size: .72rem;
-      text-transform: uppercase;
-      letter-spacing: .04em;
-    }
-    .summary-card strong {
-      font-size: 1.25rem;
-      line-height: 1;
-      color: #203244;
-    }
-    .connector-name {
-      display: grid;
-      gap: .35rem;
-    }
-    .connector-meta {
-      display: flex;
-      align-items: center;
-      gap: .35rem;
-      flex-wrap: wrap;
-    }
-    .connector-payload {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-      font-size: .76rem;
-      color: #5c6d82;
-      word-break: break-word;
-    }
-    .connector-title-row {
-      display: flex;
-      align-items: center;
-      gap: .4rem;
-      min-width: 0;
-    }
-    .connector-title-row strong {
-      min-width: 0;
-      overflow-wrap: anywhere;
-    }
-    .connector-edit-trigger {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 1.6rem;
-      height: 1.6rem;
-      padding: 0;
-      border: 1px solid rgba(31, 61, 112, .12);
-      border-radius: 999px;
-      background: rgba(247, 249, 253, .95);
-      color: #53677f;
-      box-shadow: none;
-      cursor: pointer;
-      flex: 0 0 auto;
-    }
-    .connector-edit-trigger:hover {
-      border-color: rgba(13, 97, 255, .28);
-      color: #0d61ff;
-      background: #fff;
-    }
-    .connector-edit-trigger img {
-      width: .82rem;
-      height: .82rem;
-      display: block;
-      opacity: .78;
-    }
-    .connector-read[hidden],
-    .connector-inline-edit[hidden] {
-      display: none !important;
-    }
-    .connector-description {
-      font-size: .8rem;
-      color: #506176;
-      line-height: 1.35;
-      word-break: break-word;
-    }
-    .connector-inline-edit {
-      border: 1px solid rgba(31, 61, 112, .09);
-      border-radius: 12px;
-      padding: .55rem .65rem;
-      background: rgba(247, 249, 253, .72);
-      display: grid;
-      gap: .45rem;
-      min-width: 12rem;
-    }
-    .connector-inline-edit input,
-    .connector-inline-edit textarea {
-      margin-bottom: 0;
-      min-width: 12rem;
-    }
-    .connector-inline-actions {
-      display: flex;
-      align-items: center;
-      gap: .45rem;
-    }
-    .connector-inline-actions small {
-      color: #6c7b91;
-      font-size: .72rem;
-      line-height: 1.25;
-    }
-    .usage-cell {
-      white-space: normal !important;
-      min-width: 12.5rem;
-    }
-    .usage-stats {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: .28rem;
-    }
-    .usage-stat {
-      padding: .28rem .42rem;
-      border: 1px solid rgba(31, 61, 112, .09);
-      border-radius: 8px;
-      background: rgba(247, 249, 253, .72);
-    }
-    .usage-stat small {
-      display: block;
-      margin-bottom: .1rem;
-      color: #5c6d82;
-      font-size: .61rem;
-      line-height: 1.15;
-      text-transform: uppercase;
-      letter-spacing: .03em;
-    }
-    .usage-stat strong {
-      display: block;
-      font-size: .86rem;
-      line-height: 1.1;
-      color: #203244;
-    }
-    .usage-users {
-      margin-top: .55rem;
-      border: 1px solid rgba(31, 61, 112, .09);
-      border-radius: 12px;
-      padding: .55rem .65rem;
-      background: rgba(247, 249, 253, .72);
-    }
-    .usage-users summary {
-      cursor: pointer;
-      font-weight: 700;
-      color: #22344a;
-    }
-    .usage-users summary::-webkit-details-marker {
-      display: none;
-    }
-    .usage-users ul {
-      margin: .55rem 0 0;
-      padding-left: 1rem;
-    }
-    .usage-users li {
-      margin: 0 0 .3rem;
-      color: #36485f;
-      word-break: break-word;
-      overflow-wrap: anywhere;
-    }
-    td.mono, th.mono {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
-      font-size: .8rem;
-    }
-    .table-wrap th,
-    .table-wrap td {
-      vertical-align: middle;
-      white-space: nowrap;
-    }
-    .table-wrap td.name-cell {
-      white-space: normal;
-      min-width: 9rem;
-    }
-    .table-wrap td.price-cell,
-    .table-wrap td.period-cell,
-    .table-wrap td.status-cell {
-      white-space: nowrap;
-    }
-    .table-wrap a { color: #0d61ff; text-decoration: underline; }
-    .table-wrap td.link-cell a {
-      display: inline-block;
-      max-width: 8rem;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      vertical-align: middle;
-      white-space: nowrap;
-    }
-    .table-wrap td.channel-cell a {
-      max-width: 14rem;
-    }
-    .table-wrap td.launch-cell,
-    .table-wrap th.launch-cell {
-      min-width: 10rem;
-    }
-    .table-wrap td.launch-cell a,
-    .table-wrap td.launch-cell code {
-      display: block;
-      max-width: 10rem;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .table-wrap td.channel-cell,
-    .table-wrap th.channel-cell {
-      min-width: 11rem;
-    }
-    .table-wrap td.legal-cell,
-    .table-wrap th.legal-cell {
-      min-width: 8rem;
-    }
-    .link-stack {
-      display: grid;
-      gap: .45rem;
-    }
-    .launch-cell .link-group {
-      min-width: 9rem;
-      width: 100%;
-    }
-    .channel-cell .link-group,
-    .legal-cell .link-group {
-      min-width: 9rem;
-    }
-    .access-mini-table {
-      width: 100%;
-      border-collapse: collapse;
-      min-width: 22rem;
-      table-layout: fixed;
-    }
-    .access-mini-table th,
-    .access-mini-table td {
-      padding: .28rem .35rem;
-      border-bottom: 1px solid rgba(31, 61, 112, .08);
-      vertical-align: top;
-      white-space: normal;
-    }
-    .access-mini-table tr:last-child td {
-      border-bottom: 0;
-    }
-    .access-mini-table th {
-      color: #5c6d82;
-      font-size: .62rem;
-      text-transform: uppercase;
-      letter-spacing: .04em;
-      font-weight: 700;
-    }
-    .access-mini-table .access-kind {
-      width: 6.2rem;
-      color: #22344a;
-      font-weight: 700;
-    }
-    .access-mini-table .access-note {
-      width: 6.8rem;
-      color: #5c6d82;
-      font-size: .72rem;
-    }
-    .access-mini-table a,
-    .access-mini-table code {
-      display: block;
-      max-width: none !important;
-      overflow: visible !important;
-      text-overflow: clip !important;
-      white-space: normal !important;
-      word-break: break-word !important;
-      overflow-wrap: anywhere !important;
-    }
-    .link-stack a,
-    .link-stack code {
-      display: block;
-      max-width: none;
-      overflow: visible;
-      text-overflow: clip;
-      white-space: normal;
-      word-break: break-all;
-    }
-    .link-summary {
-      display: inline-flex;
-      align-items: center;
-      gap: .45rem;
-      cursor: pointer;
-      font-weight: 700;
-      color: #22344a;
-    }
-    .link-summary::-webkit-details-marker {
-      display: none;
-    }
-    .link-group {
-      border: 1px solid rgba(31, 61, 112, .09);
-      border-radius: 12px;
-      padding: .55rem .65rem;
-      background: rgba(247, 249, 253, .72);
-      min-width: 11rem;
-    }
-    .link-group small {
-      display: block;
-      margin-bottom: .35rem;
-      color: #5c6d82;
-      font-size: .72rem;
-      text-transform: uppercase;
-      letter-spacing: .04em;
-    }
-    @media (max-width: 960px) {
-      .connector-summary,
-      .connector-core,
-      .connector-main-grid,
-      .connector-advanced-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-  </style>
+  <link rel="stylesheet" href="/admin/assets/css/connectors.css">
 </head>
 <body>
-<main class="container">
+<main class="container connectors-admin-page">
   {{template "topbar" .}}
 
   <article class="page-hero">
@@ -416,372 +19,369 @@
     {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
   </article>
 
-  <article class="section-card">
-    <div class="panel-head">
-      <h3>{{index .I18N "connectors.create"}}</h3>
-      <span class="panel-kicker">{{index .I18N "connectors.title"}}</span>
-    </div>
-    <form method="POST" action="/admin/connectors?lang={{.Lang}}" class="connector-form">
-      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-      <div class="connector-core">
-        <div class="connector-main">
-          <div class="connector-main-grid">
-            <label>
-              {{index .I18N "connectors.form.name"}}
-              <input name="name" required maxlength="80">
-              <small class="field-inline-hint">{{index .I18N "connectors.form.name_hint"}}</small>
-            </label>
-            <label>
-              {{index .I18N "connectors.form.price_rub"}}
-              <input name="price_rub" placeholder="{{index .I18N "connectors.form.price_ph"}}" required>
-              <small class="field-inline-hint">{{index .I18N "connectors.form.price_hint"}}</small>
-            </label>
-            <label>
-              {{index .I18N "connectors.form.period_mode"}}
-              <select name="period_mode" id="period_mode">
-                <option value="duration">{{index .I18N "connectors.form.period_mode_duration"}}</option>
-                <option value="calendar_months" selected>{{index .I18N "connectors.form.period_mode_calendar_months"}}</option>
-                <option value="fixed_deadline">{{index .I18N "connectors.form.period_mode_fixed_deadline"}}</option>
-              </select>
-            </label>
-          </div>
-
-          <div class="connector-main-grid">
-            <label data-period-field="duration">
-              {{index .I18N "connectors.form.period_duration_preset"}}
-              <select name="period_duration_preset">
-                <option value="7d">{{index .I18N "connectors.form.period_duration_7d"}}</option>
-                <option value="14d">{{index .I18N "connectors.form.period_duration_14d"}}</option>
-                <option value="30d" selected>{{index .I18N "connectors.form.period_duration_30d"}}</option>
-                <option value="90d">{{index .I18N "connectors.form.period_duration_90d"}}</option>
-                <option value="5m">{{index .I18N "connectors.form.period_duration_test_5m"}}</option>
-                <option value="">{{index .I18N "connectors.form.period_duration_custom"}}</option>
-              </select>
-              <small>{{index .I18N "connectors.form.period_value_hint"}}</small>
-            </label>
-            <label data-period-field="calendar_months" hidden>
-              {{index .I18N "connectors.form.period_months"}}
-              <select name="period_months_preset">
-                <option value="1" selected>{{index .I18N "connectors.form.period_month_1"}}</option>
-                <option value="3">{{index .I18N "connectors.form.period_month_3"}}</option>
-                <option value="6">{{index .I18N "connectors.form.period_month_6"}}</option>
-                <option value="12">{{index .I18N "connectors.form.period_month_12"}}</option>
-              </select>
-              <small>{{index .I18N "connectors.form.period_months_hint"}}</small>
-            </label>
-            <label data-period-field="fixed_deadline" hidden>
-              {{index .I18N "connectors.form.fixed_ends_at"}}
-              <input type="datetime-local" name="fixed_ends_at">
-              <small>{{index .I18N "connectors.form.fixed_ends_at_hint"}}</small>
-            </label>
-          </div>
-
-          <div class="connector-channel">
-            <label>
-              {{index .I18N "connectors.form.access_title"}}
-              <small>{{index .I18N "connectors.form.access_hint"}}</small>
-            </label>
-            <label>
-              {{index .I18N "connectors.form.channel_url"}}
-              <input name="channel_url" id="channel_url" placeholder="https://t.me/testtestinvest">
-              <small>{{index .I18N "connectors.form.channel_hint"}}</small>
-            </label>
-            <label>
-              {{index .I18N "connectors.form.max_channel_url"}}
-              <input name="max_channel_url" id="max_channel_url" placeholder="https://max.ru/-72598909498032">
-              <small>{{index .I18N "connectors.form.max_channel_hint"}}</small>
-            </label>
-          </div>
+  <div class="connector-workspace">
+    <div class="connector-left">
+      <article class="section-card connector-create-card">
+        <div class="panel-head">
+          <h3>{{index .I18N "connectors.create"}}</h3>
+          <span class="panel-kicker">{{index .I18N "connectors.title"}}</span>
         </div>
-      </div>
+        <form method="POST" action="/admin/connectors?lang={{.Lang}}" class="connector-form">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <div class="connector-core">
+            <div class="connector-main">
+              <div class="connector-main-grid tariff-grid">
+                <label>
+                  {{index .I18N "connectors.form.name"}}
+                  <input name="name" required maxlength="80">
+                  <small class="field-inline-hint">{{index .I18N "connectors.form.name_hint"}}</small>
+                </label>
+                <label>
+                  {{index .I18N "connectors.form.price_rub"}}
+                  <input name="price_rub" placeholder="{{index .I18N "connectors.form.price_ph"}}" required>
+                  <small class="field-inline-hint">{{index .I18N "connectors.form.price_hint"}}</small>
+                </label>
+              </div>
 
-      <details class="connector-advanced">
-        <summary>
-          {{index .I18N "connectors.form.advanced"}}
-          <small>{{index .I18N "connectors.form.advanced_hint"}}</small>
-        </summary>
+              <div class="connector-main-grid connector-period-grid">
+                <label>
+                  {{index .I18N "connectors.form.period_mode"}}
+                  <select name="period_mode" id="period_mode">
+                    <option value="duration">{{index .I18N "connectors.form.period_mode_duration"}}</option>
+                    <option value="calendar_months" selected>{{index .I18N "connectors.form.period_mode_calendar_months"}}</option>
+                    <option value="fixed_deadline">{{index .I18N "connectors.form.period_mode_fixed_deadline"}}</option>
+                  </select>
+                </label>
+                <label data-period-field="duration">
+                  {{index .I18N "connectors.form.period_duration_preset"}}
+                  <select name="period_duration_preset">
+                    <option value="7d">{{index .I18N "connectors.form.period_duration_7d"}}</option>
+                    <option value="14d">{{index .I18N "connectors.form.period_duration_14d"}}</option>
+                    <option value="30d" selected>{{index .I18N "connectors.form.period_duration_30d"}}</option>
+                    <option value="90d">{{index .I18N "connectors.form.period_duration_90d"}}</option>
+                    <option value="5m">{{index .I18N "connectors.form.period_duration_test_5m"}}</option>
+                    <option value="">{{index .I18N "connectors.form.period_duration_custom"}}</option>
+                  </select>
+                  <small class="field-inline-hint">{{index .I18N "connectors.form.period_value_hint"}}</small>
+                </label>
+                <label data-period-field="calendar_months" hidden>
+                  {{index .I18N "connectors.form.period_months"}}
+                  <select name="period_months_preset">
+                    <option value="1" selected>{{index .I18N "connectors.form.period_month_1"}}</option>
+                    <option value="3">{{index .I18N "connectors.form.period_month_3"}}</option>
+                    <option value="6">{{index .I18N "connectors.form.period_month_6"}}</option>
+                    <option value="12">{{index .I18N "connectors.form.period_month_12"}}</option>
+                  </select>
+                  <small class="field-inline-hint">{{index .I18N "connectors.form.period_months_hint"}}</small>
+                </label>
+                <label data-period-field="fixed_deadline" hidden>
+                  {{index .I18N "connectors.form.fixed_ends_at"}}
+                  <input type="datetime-local" name="fixed_ends_at">
+                  <small class="field-inline-hint">{{index .I18N "connectors.form.fixed_ends_at_hint"}}</small>
+                </label>
+              </div>
 
-        <div class="connector-advanced-grid">
-          <label>
-            {{index .I18N "connectors.form.chat_id"}}
-            <input name="chat_id" id="chat_id">
-          </label>
-          <label>
-            {{index .I18N "connectors.form.max_chat_id"}}
-            <input name="max_chat_id" id="max_chat_id" placeholder="-72598909498032">
-            <small>{{index .I18N "connectors.form.max_chat_id_hint"}}</small>
-          </label>
-          <label>
-            {{index .I18N "connectors.form.custom_period_value"}}
-            <input name="custom_period_value" placeholder="12h">
-            <small>{{index .I18N "connectors.form.custom_period_value_hint"}}</small>
-          </label>
-          <label>
-            <span class="field-label">
-              {{index .I18N "connectors.form.start_payload"}}
-              <span class="help-tip" tabindex="0" data-tip="{{index .I18N "connectors.form.payload_hint"}}">?</span>
+              <div class="connector-channel">
+                <div class="connector-channel-head">
+                  <h4 class="connector-channel-title">{{index .I18N "connectors.form.access_title"}}</h4>
+                  <small class="field-inline-hint">{{index .I18N "connectors.form.access_hint"}}</small>
+                </div>
+                <div class="connector-channel-grid">
+                  <label>
+                    {{index .I18N "connectors.form.channel_url"}}
+                    <input name="channel_url" id="channel_url" placeholder="https://t.me/testtestinvest">
+                    <small>{{index .I18N "connectors.form.channel_hint"}}</small>
+                  </label>
+                  <label>
+                    {{index .I18N "connectors.form.max_channel_url"}}
+                    <input name="max_channel_url" id="max_channel_url" placeholder="https://max.ru/-72598909498032">
+                    <small>{{index .I18N "connectors.form.max_channel_hint"}}</small>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <details class="connector-advanced">
+            <summary>
+              <span class="connector-advanced-summary-copy">
+                <span>{{index .I18N "connectors.form.advanced"}}</span>
+                <small>{{index .I18N "connectors.form.advanced_hint"}}</small>
+              </span>
+            </summary>
+
+            <div class="connector-advanced-grid">
+              <label>
+                {{index .I18N "connectors.form.chat_id"}}
+                <input name="chat_id" id="chat_id">
+              </label>
+              <label>
+                {{index .I18N "connectors.form.max_chat_id"}}
+                <input name="max_chat_id" id="max_chat_id" placeholder="-72598909498032">
+                <small>{{index .I18N "connectors.form.max_chat_id_hint"}}</small>
+              </label>
+              <label>
+                {{index .I18N "connectors.form.custom_period_value"}}
+                <input name="custom_period_value" placeholder="12h">
+                <small>{{index .I18N "connectors.form.custom_period_value_hint"}}</small>
+              </label>
+              <label>
+                <span class="field-label">
+                  {{index .I18N "connectors.form.start_payload"}}
+                  <span class="help-tip" tabindex="0" data-tip="{{index .I18N "connectors.form.payload_hint"}}">?</span>
+                </span>
+                <input name="start_payload" placeholder="in-94db7d6813507bc">
+              </label>
+              <label>
+                {{index .I18N "connectors.form.offer_url"}}
+                <select name="offer_url">
+                  <option value="">{{index .I18N "connectors.form.legal_select_empty"}}</option>
+                  {{if .PublicOfferDocumentOptions}}
+                  <optgroup label="{{index .I18N "connectors.form.offer_group_public"}}">
+                    {{range .PublicOfferDocumentOptions}}<option value="{{.URL}}">{{.Label}}</option>{{end}}
+                  </optgroup>
+                  {{end}}
+                  {{if .NonPublicOfferDocumentOptions}}
+                  <optgroup label="{{index .I18N "connectors.form.offer_group_non_public"}}">
+                    {{range .NonPublicOfferDocumentOptions}}<option value="{{.URL}}">{{.Label}}</option>{{end}}
+                  </optgroup>
+                  {{end}}
+                </select>
+              </label>
+              <label>
+                {{index .I18N "connectors.form.privacy_url"}}
+                <select name="privacy_url">
+                  <option value="">{{index .I18N "connectors.form.legal_select_empty"}}</option>
+                  {{range .PrivacyDocumentOptions}}<option value="{{.URL}}">{{.Label}}</option>{{end}}
+                </select>
+              </label>
+              <label class="connector-description">
+                {{index .I18N "connectors.form.description"}}
+                <input name="description" maxlength="300" value="{{index .I18N "connectors.form.description_default"}}" placeholder="{{index .I18N "connectors.form.description_ph"}}">
+              </label>
+            </div>
+          </details>
+
+          <div class="form-actions connector-form-footer">
+            <span class="connector-form-note">
+              <span class="help-tip" tabindex="0" data-tip="{{index .I18N "connectors.required_short"}}">?</span>
             </span>
-            <input name="start_payload" placeholder="in-94db7d6813507bc">
-          </label>
-          <label>
-            {{index .I18N "connectors.form.offer_url"}}
-            <input name="offer_url" placeholder="https://...">
-          </label>
-          <label>
-            {{index .I18N "connectors.form.privacy_url"}}
-            <input name="privacy_url" placeholder="https://...">
-          </label>
+            <button type="submit">{{index .I18N "connectors.create"}}</button>
+          </div>
+        </form>
+      </article>
+    </div>
+
+    <div class="connector-right">
+      <article class="section-card connector-catalog-controls">
+        <div class="catalog-controls-head">
+          <h3>{{index .I18N "common.filters"}}</h3>
+          <span class="panel-kicker">{{index .I18N "connectors.summary.kicker"}}</span>
         </div>
+        <form method="GET" action="/admin/connectors" class="catalog-filter-form">
+          <div class="catalog-filter-grid">
+            <label class="filter-field">
+              <span>{{index .I18N "connectors.filter.search"}}</span>
+              <input name="search" value="{{.Search}}" placeholder="{{index .I18N "connectors.filter.search_ph"}}">
+            </label>
+            <label class="filter-field">
+              <span>{{index .I18N "connectors.filter.status"}}</span>
+              <select name="status">
+                <option value="all" {{if eq .StatusFilter "all"}}selected{{end}}>{{index .I18N "connectors.filter.all"}}</option>
+                <option value="active" {{if eq .StatusFilter "active"}}selected{{end}}>{{index .I18N "connectors.filter.active"}}</option>
+                <option value="inactive" {{if eq .StatusFilter "inactive"}}selected{{end}}>{{index .I18N "connectors.filter.inactive"}}</option>
+              </select>
+            </label>
+            <label class="filter-field">
+              <span>{{index .I18N "connectors.filter.destination"}}</span>
+              <select name="destination">
+                <option value="all" {{if eq .DestinationFilter "all"}}selected{{end}}>{{index .I18N "connectors.filter.all"}}</option>
+                <option value="telegram" {{if eq .DestinationFilter "telegram"}}selected{{end}}>{{index .I18N "connectors.filter.telegram"}}</option>
+                <option value="max" {{if eq .DestinationFilter "max"}}selected{{end}}>{{index .I18N "connectors.filter.max"}}</option>
+                <option value="dual" {{if eq .DestinationFilter "dual"}}selected{{end}}>{{index .I18N "connectors.filter.dual"}}</option>
+              </select>
+            </label>
+            <label class="filter-field">
+              <span>{{index .I18N "connectors.filter.sort"}}</span>
+              <select name="sort">
+                <option value="active_newest" {{if eq .Sort "active_newest"}}selected{{end}}>{{index .I18N "connectors.sort.active_newest"}}</option>
+                <option value="newest" {{if eq .Sort "newest"}}selected{{end}}>{{index .I18N "connectors.sort.newest"}}</option>
+                <option value="oldest" {{if eq .Sort "oldest"}}selected{{end}}>{{index .I18N "connectors.sort.oldest"}}</option>
+                <option value="name_asc" {{if eq .Sort "name_asc"}}selected{{end}}>{{index .I18N "connectors.sort.name_asc"}}</option>
+                <option value="name_desc" {{if eq .Sort "name_desc"}}selected{{end}}>{{index .I18N "connectors.sort.name_desc"}}</option>
+                <option value="price_desc" {{if eq .Sort "price_desc"}}selected{{end}}>{{index .I18N "connectors.sort.price_desc"}}</option>
+                <option value="price_asc" {{if eq .Sort "price_asc"}}selected{{end}}>{{index .I18N "connectors.sort.price_asc"}}</option>
+                <option value="period_desc" {{if eq .Sort "period_desc"}}selected{{end}}>{{index .I18N "connectors.sort.period_desc"}}</option>
+                <option value="period_asc" {{if eq .Sort "period_asc"}}selected{{end}}>{{index .I18N "connectors.sort.period_asc"}}</option>
+              </select>
+            </label>
+            <div class="catalog-filter-actions">
+              <input type="hidden" name="lang" value="{{.Lang}}">
+              <a href="/admin/connectors?lang={{.Lang}}" role="button" class="secondary">{{index .I18N "common.reset"}}</a>
+              <button type="submit">{{index .I18N "common.apply"}}</button>
+            </div>
+          </div>
+        </form>
+        <div class="catalog-summary-strip">
+          <div class="summary-card"><small>{{index .I18N "connectors.summary.total"}}</small><strong>{{.TotalConnectors}}</strong></div>
+          <div class="summary-card"><small>{{index .I18N "connectors.summary.active"}}</small><strong>{{.ActiveConnectors}}</strong></div>
+          <div class="summary-card"><small>{{index .I18N "connectors.summary.telegram_only"}}</small><strong>{{.TelegramOnlyCount}}</strong></div>
+          <div class="summary-card"><small>{{index .I18N "connectors.summary.max_only"}}</small><strong>{{.MAXOnlyCount}}</strong></div>
+          <div class="summary-card"><small>{{index .I18N "connectors.summary.dual"}}</small><strong>{{.DualCount}}</strong></div>
+        </div>
+      </article>
 
-        <label class="connector-description">
-          {{index .I18N "connectors.form.description"}}
-          <input name="description" maxlength="300" placeholder="{{index .I18N "connectors.form.description_ph"}}">
-        </label>
-      </details>
-
-      <div class="form-actions">
-        <span class="help-tip" tabindex="0" data-tip="{{index .I18N "connectors.required_short"}}">?</span>
-        <button type="submit">{{index .I18N "connectors.create"}}</button>
-      </div>
-    </form>
-  </article>
-
-  <article class="section-card filter-shell">
-    <div class="panel-head">
-      <h3>{{index .I18N "common.filters"}}</h3>
-      <span class="panel-kicker">{{index .I18N "common.filters"}}</span>
-    </div>
-    <form method="GET" action="/admin/connectors" class="filter-form">
-      <div class="filter-grid is-three">
-        <label class="filter-field">
-          <span>{{index .I18N "connectors.filter.search"}}</span>
-          <input name="search" value="{{.Search}}" placeholder="{{index .I18N "connectors.filter.search_ph"}}">
-        </label>
-        <label class="filter-field">
-          <span>{{index .I18N "connectors.filter.status"}}</span>
-          <select name="status">
-            <option value="all" {{if eq .StatusFilter "all"}}selected{{end}}>{{index .I18N "connectors.filter.all"}}</option>
-            <option value="active" {{if eq .StatusFilter "active"}}selected{{end}}>{{index .I18N "connectors.filter.active"}}</option>
-            <option value="inactive" {{if eq .StatusFilter "inactive"}}selected{{end}}>{{index .I18N "connectors.filter.inactive"}}</option>
-          </select>
-        </label>
-        <label class="filter-field">
-          <span>{{index .I18N "connectors.filter.destination"}}</span>
-          <select name="destination">
-            <option value="all" {{if eq .DestinationFilter "all"}}selected{{end}}>{{index .I18N "connectors.filter.all"}}</option>
-            <option value="telegram" {{if eq .DestinationFilter "telegram"}}selected{{end}}>{{index .I18N "connectors.filter.telegram"}}</option>
-            <option value="max" {{if eq .DestinationFilter "max"}}selected{{end}}>{{index .I18N "connectors.filter.max"}}</option>
-            <option value="dual" {{if eq .DestinationFilter "dual"}}selected{{end}}>{{index .I18N "connectors.filter.dual"}}</option>
-          </select>
-        </label>
-      </div>
-      <div class="filter-grid is-two">
-        <label class="filter-field">
-          <span>{{index .I18N "connectors.filter.sort"}}</span>
-          <select name="sort">
-            <option value="active_newest" {{if eq .Sort "active_newest"}}selected{{end}}>{{index .I18N "connectors.sort.active_newest"}}</option>
-            <option value="newest" {{if eq .Sort "newest"}}selected{{end}}>{{index .I18N "connectors.sort.newest"}}</option>
-            <option value="oldest" {{if eq .Sort "oldest"}}selected{{end}}>{{index .I18N "connectors.sort.oldest"}}</option>
-            <option value="name_asc" {{if eq .Sort "name_asc"}}selected{{end}}>{{index .I18N "connectors.sort.name_asc"}}</option>
-            <option value="name_desc" {{if eq .Sort "name_desc"}}selected{{end}}>{{index .I18N "connectors.sort.name_desc"}}</option>
-            <option value="price_desc" {{if eq .Sort "price_desc"}}selected{{end}}>{{index .I18N "connectors.sort.price_desc"}}</option>
-            <option value="price_asc" {{if eq .Sort "price_asc"}}selected{{end}}>{{index .I18N "connectors.sort.price_asc"}}</option>
-            <option value="period_desc" {{if eq .Sort "period_desc"}}selected{{end}}>{{index .I18N "connectors.sort.period_desc"}}</option>
-            <option value="period_asc" {{if eq .Sort "period_asc"}}selected{{end}}>{{index .I18N "connectors.sort.period_asc"}}</option>
-          </select>
-        </label>
-      </div>
-      <div class="filter-actions">
-        <input type="hidden" name="lang" value="{{.Lang}}">
-        <a href="/admin/connectors?lang={{.Lang}}" role="button" class="secondary">{{index .I18N "common.reset"}}</a>
-        <button type="submit">{{index .I18N "common.apply"}}</button>
-      </div>
-    </form>
-  </article>
-
-  <article class="section-card">
-    <div class="panel-head">
-      <h3>{{index .I18N "connectors.summary.title"}}</h3>
-      <span class="panel-kicker">{{index .I18N "connectors.summary.kicker"}}</span>
-    </div>
-    <div class="connector-summary">
-      <div class="summary-card"><small>{{index .I18N "connectors.summary.total"}}</small><strong>{{.TotalConnectors}}</strong></div>
-      <div class="summary-card"><small>{{index .I18N "connectors.summary.active"}}</small><strong>{{.ActiveConnectors}}</strong></div>
-      <div class="summary-card"><small>{{index .I18N "connectors.summary.telegram_only"}}</small><strong>{{.TelegramOnlyCount}}</strong></div>
-      <div class="summary-card"><small>{{index .I18N "connectors.summary.max_only"}}</small><strong>{{.MAXOnlyCount}}</strong></div>
-      <div class="summary-card"><small>{{index .I18N "connectors.summary.dual"}}</small><strong>{{.DualCount}}</strong></div>
-    </div>
-  </article>
-
-  <article class="table-panel section-card">
-    <div class="panel-head">
-      <h3>{{index .I18N "connectors.table_title"}} ({{len .Connectors}})</h3>
-      <div class="panel-actions">
-        <a href="{{.ExportURL}}" role="button" class="secondary">{{index .I18N "common.export_csv"}}</a>
-        <span class="panel-kicker">{{index .I18N "common.catalogue"}}</span>
-      </div>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <colgroup>
-          <col class="id-col">
-          <col class="name-col">
-          <col class="price-col">
-          <col class="period-col">
-          <col class="usage-col">
-          <col class="channel-col">
-          <col class="legal-col">
-          <col class="launch-col">
-          <col class="status-col">
-          <col class="action-col">
-        </colgroup>
-        <thead>
-          <tr>
-            <th class="mono">{{index .I18N "connectors.table.id"}}</th>
-            <th>{{index .I18N "connectors.table.name"}}</th>
-            <th>{{index .I18N "connectors.table.price"}}</th>
-            <th>{{index .I18N "connectors.table.period"}}</th>
-            <th>{{index .I18N "connectors.table.usage"}}</th>
-            <th class="channel-cell">{{index .I18N "connectors.table.channel"}}</th>
-            <th class="legal-cell">{{index .I18N "connectors.table.legal"}}</th>
-            <th class="launch-cell">{{index .I18N "connectors.table.launch"}}</th>
-            <th>{{index .I18N "connectors.table.active"}}</th>
-            <th>{{index .I18N "connectors.table.action"}}</th>
-          </tr>
-        </thead>
-        <tbody>
-        {{range .Connectors}}
-          <tr>
-            <td class="mono">{{.ID}}</td>
-            <td class="name-cell">
-              <div class="connector-name">
-                <div class="connector-read" data-connector-read="{{.ID}}">
-                  <div class="connector-title-row">
-                    <strong>{{.Name}}</strong>
-                    <button type="button" class="connector-edit-trigger" data-connector-edit-open="{{.ID}}" aria-label="{{index $.I18N "connectors.table.edit"}}">
-                      <img src="/admin/assets/img/icon-edit.png" alt="" aria-hidden="true">
-                    </button>
+      <article class="table-panel section-card">
+        <div class="panel-head">
+          <h3>{{index .I18N "connectors.table_title"}} ({{len .Connectors}})</h3>
+          <div class="panel-actions">
+            <a href="{{.ExportURL}}" role="button" class="secondary">{{index .I18N "common.export_csv"}}</a>
+            <span class="panel-kicker">{{index .I18N "common.catalogue"}}</span>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <colgroup>
+              <col class="name-col">
+              <col class="tariff-col">
+              <col class="usage-col">
+              <col class="channel-col">
+              <col class="resources-col">
+              <col class="status-col">
+              <col class="action-col">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>{{index .I18N "connectors.table.name"}}</th>
+                <th>{{index .I18N "connectors.table.price"}} / {{index .I18N "connectors.table.period"}}</th>
+                <th>{{index .I18N "connectors.table.usage"}}</th>
+                <th class="channel-cell">{{index .I18N "connectors.table.channel"}}</th>
+                <th class="resources-cell">{{index .I18N "connectors.table.legal"}} / {{index .I18N "connectors.table.launch"}}</th>
+                <th>{{index .I18N "connectors.table.active"}}</th>
+                <th>{{index .I18N "connectors.table.action"}}</th>
+              </tr>
+            </thead>
+            <tbody>
+            {{range .Connectors}}
+              <tr>
+                <td class="name-cell">
+                  <div class="connector-name">
+                    <div class="connector-read" data-connector-read="{{.ID}}">
+                      <div class="connector-payload">ID: {{.ID}}</div>
+                      <div class="connector-title-row">
+                        <strong>{{.Name}}</strong>
+                        <button type="button" class="connector-edit-trigger" data-connector-edit-open="{{.ID}}" aria-label="{{index $.I18N "connectors.table.edit"}}">
+                          <img src="/admin/assets/img/icon-edit.png" alt="" aria-hidden="true">
+                        </button>
+                      </div>
+                      <div class="connector-meta">
+                        <span class="badge {{.DestinationClass}}">{{.DestinationLabel}}</span>
+                        <span class="badge {{.ActiveClass}}">{{.ActiveLabel}}</span>
+                      </div>
+                      {{if .Description}}<div class="connector-description">{{.Description}}</div>{{end}}
+                      <div class="connector-payload">{{index $.I18N "connectors.table.payload"}}: {{.StartPayload}}</div>
+                    </div>
+                    <form method="POST" action="/admin/connectors/update?lang={{$.Lang}}" class="connector-inline-edit" data-connector-edit-form="{{.ID}}" hidden>
+                      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                      <input type="hidden" name="id" value="{{.ID}}">
+                      <input name="name" value="{{.Name}}" required maxlength="80" aria-label="{{index $.I18N "connectors.form.name"}}">
+                      <textarea name="description" rows="3" maxlength="300" aria-label="{{index $.I18N "connectors.form.description"}}">{{.Description}}</textarea>
+                      <div class="connector-inline-actions">
+                        <button type="submit" class="action-btn">{{index $.I18N "connectors.table.save"}}</button>
+                        <small>{{index $.I18N "connectors.table.autosave_hint"}}</small>
+                      </div>
+                    </form>
                   </div>
-                  <div class="connector-meta">
-                    <span class="badge {{.DestinationClass}}">{{.DestinationLabel}}</span>
-                    <span class="badge {{.ActiveClass}}">{{.ActiveLabel}}</span>
+                </td>
+                <td class="tariff-cell">
+                  <div class="tariff-stack">
+                    <strong>{{.PriceRUB}} ₽</strong>
+                    <small>{{.PeriodLabel}}</small>
                   </div>
-                  {{if .Description}}<div class="connector-description">{{.Description}}</div>{{end}}
-                  <div class="connector-payload">{{index $.I18N "connectors.table.payload"}}: {{.StartPayload}}</div>
-                </div>
-                <form method="POST" action="/admin/connectors/update?lang={{$.Lang}}" class="connector-inline-edit" data-connector-edit-form="{{.ID}}" hidden>
-                  <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                  <input type="hidden" name="id" value="{{.ID}}">
-                  <input name="name" value="{{.Name}}" required maxlength="80" aria-label="{{index $.I18N "connectors.form.name"}}">
-                  <textarea name="description" rows="3" maxlength="300" aria-label="{{index $.I18N "connectors.form.description"}}">{{.Description}}</textarea>
-                  <div class="connector-inline-actions">
-                    <button type="submit" class="action-btn">{{index $.I18N "connectors.table.save"}}</button>
-                    <small>{{index $.I18N "connectors.table.autosave_hint"}}</small>
+                </td>
+                <td class="usage-cell">
+                  <div class="usage-stats">
+                    <div class="usage-stat"><small>{{index $.I18N "connectors.usage.users"}}</small><strong>{{.DistinctUsers}}</strong></div>
+                    <div class="usage-stat"><small>{{index $.I18N "connectors.usage.paid"}}</small><strong>{{.PaidPayments}}</strong></div>
+                    <div class="usage-stat"><small>{{index $.I18N "connectors.usage.current"}}</small><strong>{{.CurrentPeriods}}</strong></div>
+                    <div class="usage-stat"><small>{{index $.I18N "connectors.usage.next"}}</small><strong>{{.NextPeriods}}</strong></div>
                   </div>
-                </form>
-              </div>
-            </td>
-            <td class="price-cell">{{.PriceRUB}} ₽</td>
-            <td class="period-cell">{{.PeriodLabel}}</td>
-            <td class="usage-cell">
-              <div class="usage-stats">
-                <div class="usage-stat"><small>{{index $.I18N "connectors.usage.users"}}</small><strong>{{.DistinctUsers}}</strong></div>
-                <div class="usage-stat"><small>{{index $.I18N "connectors.usage.paid"}}</small><strong>{{.PaidPayments}}</strong></div>
-                <div class="usage-stat"><small>{{index $.I18N "connectors.usage.current"}}</small><strong>{{.CurrentPeriods}}</strong></div>
-                <div class="usage-stat"><small>{{index $.I18N "connectors.usage.next"}}</small><strong>{{.NextPeriods}}</strong></div>
-              </div>
-              <div class="connector-meta" style="margin-top:.45rem;">
-                <span class="badge {{if gt .CurrentAutoPay 0}}is-success{{else}}is-muted{{end}}">{{index $.I18N "connectors.usage.autopay_current"}}: {{.CurrentAutoPay}}</span>
-                <span class="badge {{if gt .NextAutoPay 0}}is-accent{{else}}is-muted{{end}}">{{index $.I18N "connectors.usage.autopay_next"}}: {{.NextAutoPay}}</span>
-              </div>
-              {{if or .CurrentUsers .NextUsers}}
-              <details class="usage-users">
-                <summary>{{index $.I18N "connectors.usage.open"}}</summary>
-                {{if .CurrentUsers}}
-                <div style="margin-top:.45rem;">
-                  <small>{{index $.I18N "connectors.usage.current_users"}}</small>
-                  <ul>
-                    {{range .CurrentUsers}}<li>{{.}}</li>{{end}}
-                  </ul>
-                </div>
-                {{end}}
-                {{if .NextUsers}}
-                <div style="margin-top:.45rem;">
-                  <small>{{index $.I18N "connectors.usage.next_users"}}</small>
-                  <ul>
-                    {{range .NextUsers}}<li>{{.}}</li>{{end}}
-                  </ul>
-                </div>
-                {{end}}
-              </details>
-              {{end}}
-            </td>
-            <td class="link-cell channel-cell">
-              {{if or .TelegramURL .MAXChannelURL .MAXAppURL .ChatID .MAXChatID}}
-              <details class="link-group">
-                <summary class="link-summary">{{index $.I18N "connectors.table.open_link"}}</summary>
-                <table class="access-mini-table">
-                  <thead>
-                    <tr>
-                      <th>{{index $.I18N "connectors.table.access_type"}}</th>
-                      <th>{{index $.I18N "connectors.table.access_value"}}</th>
-                      <th>{{index $.I18N "connectors.table.access_note"}}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {{if .TelegramURL}}<tr><td class="access-kind">{{index $.I18N "connectors.table.telegram_channel"}}</td><td><a href="{{.TelegramURL}}" target="_blank" rel="noreferrer">{{.TelegramURL}}</a></td><td class="access-note">{{index $.I18N "connectors.table.access_channel_note"}}</td></tr>{{end}}
-                    {{if .MAXChannelURL}}<tr><td class="access-kind">{{index $.I18N "connectors.table.max_web_channel"}}</td><td><a href="{{.MAXChannelURL}}" target="_blank" rel="noreferrer">{{.MAXChannelURL}}</a></td><td class="access-note">{{index $.I18N "connectors.table.access_web_note"}}</td></tr>{{end}}
-                    {{if .MAXAppURL}}<tr><td class="access-kind">{{index $.I18N "connectors.table.max_app_channel"}}</td><td><a href="{{.MAXAppURL}}" target="_blank" rel="noreferrer">{{.MAXAppURL}}</a></td><td class="access-note">{{index $.I18N "connectors.table.access_app_note"}}</td></tr>{{end}}
-                    {{if .ChatID}}<tr><td class="access-kind">{{index $.I18N "connectors.table.chat"}}</td><td><code>{{.ChatID}}</code></td><td class="access-note">{{index $.I18N "connectors.table.access_chat_note"}}</td></tr>{{end}}
-                    {{if .MAXChatID}}<tr><td class="access-kind">{{index $.I18N "connectors.table.max_chat_id"}}</td><td><code>{{.MAXChatID}}</code></td><td class="access-note">{{index $.I18N "connectors.table.access_chat_note"}}</td></tr>{{end}}
-                  </tbody>
-                </table>
-              </details>
-              {{else}}—{{end}}
-            </td>
-            <td class="link-cell legal-cell">
-              {{if or .OfferURL .PrivacyURL}}
-              <details class="link-group">
-                <summary class="link-summary">{{index $.I18N "connectors.table.open_link"}}</summary>
-                <div class="link-stack">
-                  {{if .OfferURL}}<div><small>{{index $.I18N "connectors.table.offer"}}</small><a href="{{.OfferURL}}" target="_blank" rel="noreferrer">{{.OfferURL}}</a></div>{{end}}
-                  {{if .PrivacyURL}}<div><small>{{index $.I18N "connectors.table.privacy"}}</small><a href="{{.PrivacyURL}}" target="_blank" rel="noreferrer">{{.PrivacyURL}}</a></div>{{end}}
-                </div>
-              </details>
-              {{else}}—{{end}}
-            </td>
-            <td class="link-cell launch-cell">
-              {{if or .TelegramBotLink .MAXBotLink .MAXStartCommand}}
-              <details class="link-group">
-                <summary class="link-summary">{{index $.I18N "connectors.table.bot_open"}}</summary>
-                <div class="link-stack">
-                  {{if .TelegramBotLink}}<div><small>{{index $.I18N "connectors.table.telegram_bot_link"}}</small><a href="{{.TelegramBotLink}}" target="_blank" rel="noreferrer">{{.TelegramBotLink}}</a></div>{{end}}
-                  {{if .MAXBotLink}}<div><small>{{index $.I18N "connectors.table.max_bot_link"}}</small><a href="{{.MAXBotLink}}" target="_blank" rel="noreferrer">{{.MAXBotLink}}</a></div>{{end}}
-                  {{if .MAXStartCommand}}<div><small>{{index $.I18N "connectors.table.max_start_command"}}</small><code>{{.MAXStartCommand}}</code></div>{{end}}
-                </div>
-              </details>
-              {{else}}—{{end}}
-            </td>
-            <td class="status-cell"><span class="badge {{.ActiveClass}}">{{.ActiveLabel}}</span></td>
-            <td class="actions">
-              <form method="POST" action="/admin/connectors/toggle?lang={{$.Lang}}">
-                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                <input type="hidden" name="id" value="{{.ID}}">
-                <input type="hidden" name="active" value="{{.ToggleTo}}">
-                <button type="submit" class="action-btn {{if .ToggleTo}}is-enable{{else}}is-disable{{end}}">{{.ToggleLabel}}</button>
-              </form>
-              <form method="POST" action="/admin/connectors/delete?lang={{$.Lang}}" onsubmit="return confirm('{{index $.I18N "connectors.delete_confirm"}}');">
-                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                <input type="hidden" name="id" value="{{.ID}}">
-                <button type="submit" class="action-btn is-delete">{{index $.I18N "connectors.table.delete"}}</button>
-              </form>
-            </td>
-          </tr>
-        {{end}}
-        </tbody>
-      </table>
+                  <div class="connector-meta" style="margin-top:.45rem;">
+                    <span class="badge {{if gt .CurrentAutoPay 0}}is-success{{else}}is-muted{{end}}">{{index $.I18N "connectors.usage.autopay_current"}}: {{.CurrentAutoPay}}</span>
+                    <span class="badge {{if gt .NextAutoPay 0}}is-accent{{else}}is-muted{{end}}">{{index $.I18N "connectors.usage.autopay_next"}}: {{.NextAutoPay}}</span>
+                  </div>
+                  {{if or .CurrentUsers .NextUsers}}
+                  <details class="usage-users">
+                    <summary>{{index $.I18N "connectors.usage.open"}}</summary>
+                    {{if .CurrentUsers}}
+                    <div style="margin-top:.45rem;">
+                      <small>{{index $.I18N "connectors.usage.current_users"}}</small>
+                      <ul>
+                        {{range .CurrentUsers}}<li>{{.}}</li>{{end}}
+                      </ul>
+                    </div>
+                    {{end}}
+                    {{if .NextUsers}}
+                    <div style="margin-top:.45rem;">
+                      <small>{{index $.I18N "connectors.usage.next_users"}}</small>
+                      <ul>
+                        {{range .NextUsers}}<li>{{.}}</li>{{end}}
+                      </ul>
+                    </div>
+                    {{end}}
+                  </details>
+                  {{end}}
+                </td>
+                <td class="link-cell channel-cell">
+                  {{if or .TelegramURL .MAXChannelURL .MAXAppURL .ChatID .MAXChatID}}
+                  <details class="link-group">
+                    <summary class="link-summary">{{index $.I18N "connectors.table.open_link"}}</summary>
+                    <div class="access-list">
+                      {{if .TelegramURL}}<div class="access-row"><span class="access-kind">{{index $.I18N "connectors.table.telegram_channel"}}</span><a href="{{.TelegramURL}}" target="_blank" rel="noreferrer">{{.TelegramURL}}</a><span class="access-note">{{index $.I18N "connectors.table.access_channel_note"}}</span></div>{{end}}
+                      {{if .MAXChannelURL}}<div class="access-row"><span class="access-kind">{{index $.I18N "connectors.table.max_web_channel"}}</span><a href="{{.MAXChannelURL}}" target="_blank" rel="noreferrer">{{.MAXChannelURL}}</a><span class="access-note">{{index $.I18N "connectors.table.access_web_note"}}</span></div>{{end}}
+                      {{if .MAXAppURL}}<div class="access-row"><span class="access-kind">{{index $.I18N "connectors.table.max_app_channel"}}</span><a href="{{.MAXAppURL}}" target="_blank" rel="noreferrer">{{.MAXAppURL}}</a><span class="access-note">{{index $.I18N "connectors.table.access_app_note"}}</span></div>{{end}}
+                      {{if .ChatID}}<div class="access-row"><span class="access-kind">{{index $.I18N "connectors.table.chat"}}</span><code>{{.ChatID}}</code><span class="access-note">{{index $.I18N "connectors.table.access_chat_note"}}</span></div>{{end}}
+                      {{if .MAXChatID}}<div class="access-row"><span class="access-kind">{{index $.I18N "connectors.table.max_chat_id"}}</span><code>{{.MAXChatID}}</code><span class="access-note">{{index $.I18N "connectors.table.access_chat_note"}}</span></div>{{end}}
+                    </div>
+                  </details>
+                  {{else}}—{{end}}
+                </td>
+                <td class="link-cell resources-cell">
+                  {{if or .OfferURL .PrivacyURL .TelegramBotLink .MAXBotLink .MAXStartCommand}}
+                  <details class="link-group">
+                    <summary class="link-summary">{{index $.I18N "connectors.table.open_link"}}</summary>
+                    <div class="link-stack">
+                      {{if .OfferURL}}<div><small>{{index $.I18N "connectors.table.offer"}}</small><a href="{{.OfferURL}}" target="_blank" rel="noreferrer">{{.OfferURL}}</a></div>{{end}}
+                      {{if .PrivacyURL}}<div><small>{{index $.I18N "connectors.table.privacy"}}</small><a href="{{.PrivacyURL}}" target="_blank" rel="noreferrer">{{.PrivacyURL}}</a></div>{{end}}
+                      {{if .TelegramBotLink}}<div><small>{{index $.I18N "connectors.table.telegram_bot_link"}}</small><a href="{{.TelegramBotLink}}" target="_blank" rel="noreferrer">{{.TelegramBotLink}}</a></div>{{end}}
+                      {{if .MAXBotLink}}<div><small>{{index $.I18N "connectors.table.max_bot_link"}}</small><a href="{{.MAXBotLink}}" target="_blank" rel="noreferrer">{{.MAXBotLink}}</a></div>{{end}}
+                      {{if .MAXStartCommand}}<div><small>{{index $.I18N "connectors.table.max_start_command"}}</small><code>{{.MAXStartCommand}}</code></div>{{end}}
+                    </div>
+                  </details>
+                  {{else}}—{{end}}
+                </td>
+                <td class="status-cell"><span class="badge {{.ActiveClass}}">{{.ActiveLabel}}</span></td>
+                <td class="actions">
+                  <form method="POST" action="/admin/connectors/toggle?lang={{$.Lang}}">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                    <input type="hidden" name="id" value="{{.ID}}">
+                    <input type="hidden" name="active" value="{{.ToggleTo}}">
+                    <button type="submit" class="action-btn {{if .ToggleTo}}is-enable{{else}}is-disable{{end}}">{{.ToggleLabel}}</button>
+                  </form>
+                  <form method="POST" action="/admin/connectors/delete?lang={{$.Lang}}" onsubmit="return confirm('{{index $.I18N "connectors.delete_confirm"}}');">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                    <input type="hidden" name="id" value="{{.ID}}">
+                    <button type="submit" class="action-btn is-delete">{{index $.I18N "connectors.table.delete"}}</button>
+                  </form>
+                </td>
+              </tr>
+            {{end}}
+            </tbody>
+          </table>
+        </div>
+      </article>
     </div>
-  </article>
+  </div>
 </main>
 <script>
   window.addEventListener("DOMContentLoaded", function () {

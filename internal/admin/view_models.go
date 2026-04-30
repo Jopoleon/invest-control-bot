@@ -52,21 +52,29 @@ type connectorView struct {
 type connectorsPageData struct {
 	basePageData
 
-	Notice              string
-	RequiredMessage     string
-	ExportURL           string
-	TelegramBotUsername string
-	MAXBotUsername      string
-	Search              string
-	StatusFilter        string
-	DestinationFilter   string
-	Sort                string
-	TotalConnectors     int
-	ActiveConnectors    int
-	TelegramOnlyCount   int
-	MAXOnlyCount        int
-	DualCount           int
-	Connectors          []connectorView
+	Notice                        string
+	RequiredMessage               string
+	ExportURL                     string
+	TelegramBotUsername           string
+	MAXBotUsername                string
+	Search                        string
+	StatusFilter                  string
+	DestinationFilter             string
+	Sort                          string
+	TotalConnectors               int
+	ActiveConnectors              int
+	TelegramOnlyCount             int
+	MAXOnlyCount                  int
+	DualCount                     int
+	PublicOfferDocumentOptions    []legalDocumentOptionView
+	NonPublicOfferDocumentOptions []legalDocumentOptionView
+	PrivacyDocumentOptions        []legalDocumentOptionView
+	Connectors                    []connectorView
+}
+
+type legalDocumentOptionView struct {
+	Label string
+	URL   string
 }
 
 // helpPageData is context passed into help.html template.
