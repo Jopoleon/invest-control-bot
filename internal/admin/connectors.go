@@ -111,6 +111,58 @@ func (h *Handler) updateConnector(w http.ResponseWriter, r *http.Request) {
 	h.redirectConnectors(w, r, lang, t(lang, "connectors.text_updated"))
 }
 
+// updateConnectorTelegramChat attaches a discovered Telegram chat to an
+// existing connector. This is intentionally a narrow operational action: it
+// fixes private-chat invite-link generation without exposing full tariff/access
+// editing for price, period, payload, or MAX destinations.
+func (h *Handler) updateConnectorTelegramChat(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAuth(w, r) {
+		return
+	}
+	lang := h.resolveLang(w, r)
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "connectors.bad_form"))
+		return
+	}
+	if !h.verifyCSRF(r) {
+		w.WriteHeader(http.StatusForbidden)
+		h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "csrf.invalid"))
+		return
+	}
+	id, err := parseConnectorID(r.FormValue("id"))
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "connectors.invalid_id"))
+		return
+	}
+	chatID := strings.TrimSpace(r.FormValue("chat_id"))
+	if chatID == "" {
+		if err := h.store.UpdateConnectorTelegramChatID(r.Context(), id, ""); err != nil {
+			h.renderConnectorsPage(r.Context(), w, r, lang, err.Error())
+			return
+		}
+		h.logAdminAudit(r, domain.AuditActionAdminConnectorUpdated, fmt.Sprintf("connector_id=%d;telegram_chat_id_cleared=true", id))
+		h.redirectConnectors(w, r, lang, t(lang, "connectors.telegram_chat_updated"))
+		return
+	}
+	if _, found, err := h.store.GetTelegramChat(r.Context(), chatID); err != nil || !found {
+		h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "connectors.telegram_chat_unknown"))
+		return
+	}
+	storedChatID := strings.TrimPrefix(chatID, "-")
+	if err := h.store.UpdateConnectorTelegramChatID(r.Context(), id, storedChatID); err != nil {
+		h.renderConnectorsPage(r.Context(), w, r, lang, err.Error())
+		return
+	}
+	h.logAdminAudit(r, domain.AuditActionAdminConnectorUpdated, fmt.Sprintf("connector_id=%d;telegram_chat_id=%s", id, chatID))
+	h.redirectConnectors(w, r, lang, t(lang, "connectors.telegram_chat_updated"))
+}
+
 // toggleConnector switches connector active state without deleting history.
 func (h *Handler) toggleConnector(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAuth(w, r) {
@@ -323,6 +375,7 @@ func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWrite
 	resolveAccountPresentation := h.buildMessengerAccountPresentationLookup(ctx, lang)
 	usageByConnector := buildConnectorUsageViews(ctx, connectors, payments, subs, now, resolveAccountPresentation)
 	publicOfferOptions, nonPublicOfferOptions, privacyOptions := h.buildConnectorLegalDocumentOptions(ctx, r)
+	telegramChatOptions := h.buildTelegramChatOptions(ctx)
 
 	totalConnectors := len(connectors)
 	activeConnectors := 0
@@ -361,6 +414,7 @@ func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWrite
 			Name:             c.Name,
 			Description:      c.Description,
 			ChatID:           c.ChatID,
+			TelegramChatRef:  c.ResolvedTelegramChatRef(),
 			TelegramURL:      c.TelegramAccessURL(),
 			MAXChatID:        c.MAXChatID,
 			MAXChannelURL:    c.MAXChannelURL,
@@ -420,8 +474,65 @@ func (h *Handler) renderConnectorsPage(ctx context.Context, w http.ResponseWrite
 		PublicOfferDocumentOptions:    publicOfferOptions,
 		NonPublicOfferDocumentOptions: nonPublicOfferOptions,
 		PrivacyDocumentOptions:        privacyOptions,
+		TelegramChatOptions:           telegramChatOptions,
 		Connectors:                    rows,
 	})
+}
+
+func (h *Handler) buildTelegramChatOptions(ctx context.Context) []telegramChatOptionView {
+	chats, err := h.store.ListTelegramChats(ctx)
+	if err != nil {
+		return nil
+	}
+	options := make([]telegramChatOptionView, 0, len(chats))
+	for _, chat := range chats {
+		if strings.TrimSpace(chat.ChatID) == "" {
+			continue
+		}
+		if !telegramChatCanCreateInviteLinks(chat) {
+			continue
+		}
+		title := strings.TrimSpace(chat.Title)
+		if title == "" && strings.TrimSpace(chat.Username) != "" {
+			title = "@" + strings.TrimPrefix(strings.TrimSpace(chat.Username), "@")
+		}
+		if title == "" {
+			title = chat.ChatID
+		}
+		status := strings.TrimSpace(chat.BotStatus)
+		rights := make([]string, 0, 2)
+		if chat.CanInviteUsers {
+			rights = append(rights, "invite")
+		}
+		if chat.CanRestrictMembers {
+			rights = append(rights, "remove")
+		}
+		suffix := strings.TrimSpace(chat.Type)
+		if status != "" {
+			suffix = strings.TrimSpace(suffix + " · " + status)
+		}
+		if len(rights) > 0 {
+			suffix = strings.TrimSpace(suffix + " · " + strings.Join(rights, "/"))
+		}
+		label := fmt.Sprintf("%s · %s", title, chat.ChatID)
+		if suffix != "" {
+			label += " · " + suffix
+		}
+		options = append(options, telegramChatOptionView{
+			Label: label,
+			Value: chat.ChatID,
+		})
+	}
+	return options
+}
+
+func telegramChatCanCreateInviteLinks(chat domain.TelegramChat) bool {
+	switch strings.TrimSpace(chat.BotStatus) {
+	case "administrator", "creator":
+		return chat.CanInviteUsers
+	default:
+		return false
+	}
 }
 
 func (h *Handler) buildConnectorLegalDocumentOptions(ctx context.Context, r *http.Request) ([]legalDocumentOptionView, []legalDocumentOptionView, []legalDocumentOptionView) {

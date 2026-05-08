@@ -1,4 +1,5 @@
--- +goose Up
+-- +migrate Up
+
 CREATE TABLE IF NOT EXISTS telegram_chats (
     chat_id TEXT PRIMARY KEY,
     title TEXT NOT NULL DEFAULT '',
@@ -20,5 +21,6 @@ COMMENT ON TABLE telegram_chats IS 'Telegram chats discovered from bot membershi
 COMMENT ON COLUMN telegram_chats.chat_id IS 'Telegram chat ID in Bot API format, usually negative for groups/channels. Example: -1001234567890.';
 COMMENT ON COLUMN telegram_chats.bot_status IS 'Bot membership status from my_chat_member update. Example: administrator, member, left, kicked.';
 
--- +goose Down
+-- +migrate Down
+
 DROP TABLE IF EXISTS telegram_chats;

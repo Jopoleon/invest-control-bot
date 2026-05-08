@@ -95,6 +95,27 @@ func scanTelegramInviteLink(scanner rowScanner) (domain.TelegramInviteLink, erro
 	return item, nil
 }
 
+func scanTelegramChat(scanner rowScanner) (domain.TelegramChat, error) {
+	var item domain.TelegramChat
+	err := scanner.Scan(
+		&item.ChatID,
+		&item.Title,
+		&item.Username,
+		&item.Type,
+		&item.BotStatus,
+		&item.CanInviteUsers,
+		&item.CanRestrictMembers,
+		&item.CanManageChat,
+		&item.LastSeenAt,
+		&item.LastVerifiedAt,
+		&item.UpdatedAt,
+	)
+	if err != nil {
+		return domain.TelegramChat{}, err
+	}
+	return item, nil
+}
+
 func scanLegalDocument(scanner rowScanner) (domain.LegalDocument, error) {
 	var (
 		item    domain.LegalDocument

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
@@ -186,6 +187,29 @@ func (s *Store) UpdateConnectorText(ctx context.Context, connectorID int64, name
 		SET name = $2, description = $3
 		WHERE id = $1
 	`, connectorID, name, description)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return storepkg.ErrConnectorNotFound
+	}
+	return nil
+}
+
+// UpdateConnectorTelegramChatID links an existing connector to a discovered
+// Telegram chat. This is intentionally narrower than full connector editing:
+// it fixes invite-link generation for private chats without changing price,
+// period, payload, or MAX destinations.
+func (s *Store) UpdateConnectorTelegramChatID(ctx context.Context, connectorID int64, chatID string) error {
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE connectors
+		SET chat_id = $2
+		WHERE id = $1
+	`, connectorID, strings.TrimSpace(chatID))
 	if err != nil {
 		return err
 	}

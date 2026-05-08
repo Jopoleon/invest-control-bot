@@ -40,6 +40,25 @@ type Connector struct {
 	CreatedAt     time.Time           `db:"created_at" json:"created_at"`
 }
 
+// TelegramChat is the bot's locally discovered catalog of Telegram groups and
+// channels where Telegram told us about the bot membership state. Telegram Bot
+// API cannot list "all chats where this bot is an admin", so this table is
+// populated from my_chat_member updates when admins add/re-add the bot or edit
+// its rights in a chat.
+type TelegramChat struct {
+	ChatID             string     `db:"chat_id" json:"chat_id"`
+	Title              string     `db:"title" json:"title"`
+	Username           string     `db:"username" json:"username"`
+	Type               string     `db:"chat_type" json:"chat_type"`
+	BotStatus          string     `db:"bot_status" json:"bot_status"`
+	CanInviteUsers     bool       `db:"can_invite_users" json:"can_invite_users"`
+	CanRestrictMembers bool       `db:"can_restrict_members" json:"can_restrict_members"`
+	CanManageChat      bool       `db:"can_manage_chat" json:"can_manage_chat"`
+	LastSeenAt         time.Time  `db:"last_seen_at" json:"last_seen_at"`
+	LastVerifiedAt     *time.Time `db:"last_verified_at" json:"last_verified_at,omitempty"`
+	UpdatedAt          time.Time  `db:"updated_at" json:"updated_at"`
+}
+
 // SubscriptionEndsAt returns the next access boundary for this connector using
 // the canonical period model.
 func (c Connector) SubscriptionEndsAt(start time.Time) time.Time {

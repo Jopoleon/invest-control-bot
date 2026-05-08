@@ -113,7 +113,13 @@
             <div class="connector-advanced-grid">
               <label>
                 {{index .I18N "connectors.form.chat_id"}}
-                <input name="chat_id" id="chat_id">
+                <select name="chat_id" id="chat_id">
+                  <option value="">{{index .I18N "connectors.form.chat_id_empty"}}</option>
+                  {{range .TelegramChatOptions}}
+                  <option value="{{.Value}}">{{.Label}}</option>
+                  {{end}}
+                </select>
+                <small>{{index .I18N "connectors.form.chat_id_hint"}}</small>
               </label>
               <label>
                 {{index .I18N "connectors.form.max_chat_id"}}
@@ -342,6 +348,21 @@
                       {{if .MAXAppURL}}<div class="access-row"><span class="access-kind">{{index $.I18N "connectors.table.max_app_channel"}}</span><a href="{{.MAXAppURL}}" target="_blank" rel="noreferrer">{{.MAXAppURL}}</a><span class="access-note">{{index $.I18N "connectors.table.access_app_note"}}</span></div>{{end}}
                       {{if .ChatID}}<div class="access-row"><span class="access-kind">{{index $.I18N "connectors.table.chat"}}</span><code>{{.ChatID}}</code><span class="access-note">{{index $.I18N "connectors.table.access_chat_note"}}</span></div>{{end}}
                       {{if .MAXChatID}}<div class="access-row"><span class="access-kind">{{index $.I18N "connectors.table.max_chat_id"}}</span><code>{{.MAXChatID}}</code><span class="access-note">{{index $.I18N "connectors.table.access_chat_note"}}</span></div>{{end}}
+                      {{if and .HasTelegram $.TelegramChatOptions}}
+                      {{$row := .}}
+                      <form class="access-row" method="POST" action="/admin/connectors/telegram-chat?lang={{$.Lang}}">
+                        <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                        <input type="hidden" name="id" value="{{.ID}}">
+                        <span class="access-kind">{{index $.I18N "connectors.table.telegram_chat_bind"}}</span>
+                        <select name="chat_id">
+                          <option value="">{{index $.I18N "connectors.form.chat_id_empty"}}</option>
+                          {{range $.TelegramChatOptions}}
+                          <option value="{{.Value}}" {{if eq .Value $row.TelegramChatRef}}selected{{end}}>{{.Label}}</option>
+                          {{end}}
+                        </select>
+                        <button type="submit" class="action-btn is-edit">{{index $.I18N "connectors.table.telegram_chat_save"}}</button>
+                      </form>
+                      {{end}}
                     </div>
                   </details>
                   {{else}}—{{end}}

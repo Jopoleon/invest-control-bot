@@ -22,6 +22,7 @@ type ConnectorStore interface {
 	GetConnector(ctx context.Context, connectorID int64) (domain.Connector, bool, error)
 	GetConnectorByStartPayload(ctx context.Context, payload string) (domain.Connector, bool, error)
 	UpdateConnectorText(ctx context.Context, connectorID int64, name, description string) error
+	UpdateConnectorTelegramChatID(ctx context.Context, connectorID int64, chatID string) error
 	SetConnectorActive(ctx context.Context, connectorID int64, active bool) error
 	DeleteConnector(ctx context.Context, connectorID int64) error
 }
@@ -116,6 +117,15 @@ type TelegramInviteLinkStore interface {
 	MarkTelegramInviteLinkRevoked(ctx context.Context, inviteLinkID int64, revokedAt time.Time) error
 }
 
+// TelegramChatStore manages the Telegram chat catalog discovered from bot
+// membership updates. It exists because Telegram does not provide a reliable
+// "list all admin chats for this bot" API.
+type TelegramChatStore interface {
+	UpsertTelegramChat(ctx context.Context, chat domain.TelegramChat) error
+	ListTelegramChats(ctx context.Context) ([]domain.TelegramChat, error)
+	GetTelegramChat(ctx context.Context, chatID string) (domain.TelegramChat, bool, error)
+}
+
 // Store describes persistence operations required by bot/admin flows.
 type Store interface {
 	ConnectorStore
@@ -128,4 +138,5 @@ type Store interface {
 	PaymentStore
 	SubscriptionStore
 	TelegramInviteLinkStore
+	TelegramChatStore
 }

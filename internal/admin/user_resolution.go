@@ -94,6 +94,22 @@ func (h *Handler) resolvePreferredMessengerAccount(ctx context.Context, userID i
 	return account, found, nil
 }
 
+func (h *Handler) resolveMessengerAccount(ctx context.Context, userID int64, kind domain.MessengerKind) (domain.UserMessengerAccount, bool, error) {
+	if userID <= 0 {
+		return domain.UserMessengerAccount{}, false, nil
+	}
+	accounts, err := h.store.ListUserMessengerAccounts(ctx, userID)
+	if err != nil {
+		return domain.UserMessengerAccount{}, false, err
+	}
+	for _, account := range accounts {
+		if account.MessengerKind == kind {
+			return account, true, nil
+		}
+	}
+	return domain.UserMessengerAccount{}, false, nil
+}
+
 func pickPreferredMessengerAccount(accounts []domain.UserMessengerAccount) (domain.UserMessengerAccount, bool) {
 	for _, account := range accounts {
 		if account.MessengerKind == domain.MessengerKindTelegram {

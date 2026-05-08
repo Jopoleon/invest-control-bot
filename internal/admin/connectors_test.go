@@ -73,6 +73,97 @@ func TestConnectorsPageCreate_UsesRedirectAfterPost(t *testing.T) {
 	}
 }
 
+func TestUpdateConnectorTelegramChat_LinksDiscoveredChat(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil, nil)
+	now := time.Now().UTC()
+
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload: "in-bind-chat",
+		Name:         "Private chat tariff",
+		ChannelURL:   "https://t.me/+staticFallback",
+		PriceRUB:     1000,
+		PeriodMode:   domain.ConnectorPeriodModeCalendarMonths,
+		PeriodMonths: 1,
+		IsActive:     true,
+		CreatedAt:    now,
+	}); err != nil {
+		t.Fatalf("CreateConnector: %v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-bind-chat")
+	if err != nil || !found {
+		t.Fatalf("GetConnectorByStartPayload found=%v err=%v", found, err)
+	}
+	if err := st.UpsertTelegramChat(ctx, domain.TelegramChat{
+		ChatID:         "-1001234567890",
+		Title:          "Private Paid Chat",
+		Type:           "supergroup",
+		BotStatus:      "administrator",
+		CanInviteUsers: true,
+		LastSeenAt:     now,
+		UpdatedAt:      now,
+	}); err != nil {
+		t.Fatalf("UpsertTelegramChat: %v", err)
+	}
+
+	csrfReq := httptest.NewRequest(http.MethodGet, "/admin/connectors?lang=ru", nil)
+	csrfRec := httptest.NewRecorder()
+	csrfToken := h.ensureCSRFToken(csrfRec, csrfReq)
+	csrfResp := csrfRec.Result()
+	defer csrfResp.Body.Close()
+	csrfCookie := csrfResp.Cookies()[0]
+
+	form := url.Values{}
+	form.Set("csrf_token", csrfToken)
+	form.Set("id", strconv.FormatInt(connector.ID, 10))
+	form.Set("chat_id", "-1001234567890")
+	req := httptest.NewRequest(http.MethodPost, "/admin/connectors/telegram-chat?lang=ru", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(csrfCookie)
+	rec := httptest.NewRecorder()
+	h.updateConnectorTelegramChat(rec, withAdminAuthorized(req, &authorizedSession{session: domain.AdminSession{ID: 1}}))
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status=%d want %d body=%s", rec.Code, http.StatusSeeOther, rec.Body.String())
+	}
+	updated, found, err := st.GetConnector(ctx, connector.ID)
+	if err != nil || !found {
+		t.Fatalf("GetConnector found=%v err=%v", found, err)
+	}
+	if updated.ChatID != "1001234567890" {
+		t.Fatalf("chat_id=%q want unsigned storage value", updated.ChatID)
+	}
+	if updated.ResolvedTelegramChatRef() != "-1001234567890" {
+		t.Fatalf("resolved chat ref=%q want -1001234567890", updated.ResolvedTelegramChatRef())
+	}
+}
+
+func TestBuildTelegramChatOptions_OnlyShowsInviteCapableAdminChats(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil, nil)
+	now := time.Now().UTC()
+	chats := []domain.TelegramChat{
+		{ChatID: "-1001", Title: "Good", Type: "supergroup", BotStatus: "administrator", CanInviteUsers: true, LastSeenAt: now, UpdatedAt: now},
+		{ChatID: "-1002", Title: "No invite", Type: "supergroup", BotStatus: "administrator", CanInviteUsers: false, LastSeenAt: now, UpdatedAt: now},
+		{ChatID: "-1003", Title: "Removed", Type: "supergroup", BotStatus: "left", CanInviteUsers: true, LastSeenAt: now, UpdatedAt: now},
+	}
+	for _, chat := range chats {
+		if err := st.UpsertTelegramChat(ctx, chat); err != nil {
+			t.Fatalf("UpsertTelegramChat: %v", err)
+		}
+	}
+
+	options := h.buildTelegramChatOptions(ctx)
+	if len(options) != 1 {
+		t.Fatalf("options=%+v want only one usable chat", options)
+	}
+	if options[0].Value != "-1001" || !strings.Contains(options[0].Label, "Good") {
+		t.Fatalf("option=%+v want Good chat", options[0])
+	}
+}
+
 func TestConnectorsPageCreate_UsesMonthlyPresetFields(t *testing.T) {
 	st := memory.New()
 	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil, nil)

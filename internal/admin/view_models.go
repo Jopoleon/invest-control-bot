@@ -16,6 +16,7 @@ type connectorView struct {
 	Name             string
 	Description      string
 	ChatID           string
+	TelegramChatRef  string
 	TelegramURL      string
 	MAXChatID        string
 	MAXChannelURL    string
@@ -69,12 +70,18 @@ type connectorsPageData struct {
 	PublicOfferDocumentOptions    []legalDocumentOptionView
 	NonPublicOfferDocumentOptions []legalDocumentOptionView
 	PrivacyDocumentOptions        []legalDocumentOptionView
+	TelegramChatOptions           []telegramChatOptionView
 	Connectors                    []connectorView
 }
 
 type legalDocumentOptionView struct {
 	Label string
 	URL   string
+}
+
+type telegramChatOptionView struct {
+	Label string
+	Value string
 }
 
 // helpPageData is context passed into help.html template.
@@ -163,29 +170,33 @@ type paymentView struct {
 }
 
 type subscriptionView struct {
-	ID               int64
-	UserID           int64
-	PrimaryAccount   string
-	Status           string
-	StatusLabel      string
-	StatusClass      string
-	AutoPayEnabled   bool
-	AutoPayLabel     string
-	AutoPayClass     string
-	ConnectorID      int64
-	Connector        string
-	PaymentID        int64
-	AccessLabel      string
-	AccessClass      string
-	StartsAt         string
-	EndsAt           string
-	CreatedAt        string
-	CanRevoke        bool
-	RevokeURL        string
-	CanSendPayLink   bool
-	PaymentLinkURL   string
-	CanTriggerRebill bool
-	RebillURL        string
+	ID                 int64
+	UserID             int64
+	PrimaryAccount     string
+	Status             string
+	StatusLabel        string
+	StatusClass        string
+	AutoPayEnabled     bool
+	AutoPayLabel       string
+	AutoPayClass       string
+	ConnectorID        int64
+	Connector          string
+	PaymentID          int64
+	AccessLabel        string
+	AccessClass        string
+	StartsAt           string
+	EndsAt             string
+	CreatedAt          string
+	CanRevoke          bool
+	RevokeURL          string
+	CanSendPayLink     bool
+	PaymentLinkURL     string
+	CanSendAccessLink  bool
+	AccessLinkURL      string
+	CanUnbanAccessLink bool
+	UnbanAccessLinkURL string
+	CanTriggerRebill   bool
+	RebillURL          string
 }
 
 type billingPageData struct {
@@ -345,6 +356,10 @@ type churnIssueView struct {
 	UserDetailURL      string
 	CanSendPayLink     bool
 	PaymentLinkURL     string
+	CanSendAccessLink  bool
+	AccessLinkURL      string
+	CanUnbanAccessLink bool
+	UnbanAccessLinkURL string
 	CanTriggerRebill   bool
 	RebillURL          string
 }

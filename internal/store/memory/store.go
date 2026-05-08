@@ -40,6 +40,7 @@ type Store struct {
 	subsByPayID            map[int64]domain.Subscription
 	nextSubscrID           int64
 	telegramInviteLinks    map[int64]domain.TelegramInviteLink
+	telegramChats          map[string]domain.TelegramChat
 	nextTelegramInviteID   int64
 	nextRecurringConsentID int64
 }
@@ -70,6 +71,7 @@ func New() *Store {
 		subsByPayID:            make(map[int64]domain.Subscription),
 		nextSubscrID:           1,
 		telegramInviteLinks:    make(map[int64]domain.TelegramInviteLink),
+		telegramChats:          make(map[string]domain.TelegramChat),
 		nextTelegramInviteID:   1,
 		nextRecurringConsentID: 1,
 	}
@@ -381,6 +383,20 @@ func (s *Store) UpdateConnectorText(_ context.Context, connectorID int64, name, 
 	}
 	c.Name = strings.TrimSpace(name)
 	c.Description = strings.TrimSpace(description)
+	s.connectors[connectorID] = c
+	return nil
+}
+
+// UpdateConnectorTelegramChatID links an existing connector to a discovered Telegram chat.
+func (s *Store) UpdateConnectorTelegramChatID(_ context.Context, connectorID int64, chatID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	c, ok := s.connectors[connectorID]
+	if !ok {
+		return storepkg.ErrConnectorNotFound
+	}
+	c.ChatID = strings.TrimSpace(chatID)
 	s.connectors[connectorID] = c
 	return nil
 }

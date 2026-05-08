@@ -57,6 +57,37 @@ COMMENT ON COLUMN connectors.created_at IS 'Connector creation timestamp in UTC.
 
 CREATE INDEX idx_connectors_period_mode ON connectors (period_mode);
 
+CREATE TABLE telegram_chats (
+    -- Telegram chat ID in Bot API format. Example: -1001234567890.
+    chat_id TEXT PRIMARY KEY,
+    -- Human-readable chat title from Telegram. Example: Paid Members.
+    title TEXT NOT NULL DEFAULT '',
+    -- Public username if Telegram provides one. Example: invest_channel.
+    username TEXT NOT NULL DEFAULT '',
+    -- Telegram chat type. Example: channel, supergroup, group.
+    chat_type TEXT NOT NULL DEFAULT '',
+    -- Bot membership status in that chat. Example: administrator, member, left.
+    bot_status TEXT NOT NULL DEFAULT '',
+    -- Whether Telegram reports that the bot can create invite links.
+    can_invite_users BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Whether Telegram reports that the bot can remove/restrict members.
+    can_restrict_members BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Whether Telegram reports generic admin management rights.
+    can_manage_chat BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Last time Telegram sent us a membership update for this chat.
+    last_seen_at TIMESTAMPTZ NOT NULL,
+    -- Last explicit verification timestamp, reserved for later admin checks.
+    last_verified_at TIMESTAMPTZ NULL,
+    -- Row update timestamp.
+    updated_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX idx_telegram_chats_status_seen ON telegram_chats (bot_status, last_seen_at DESC);
+
+COMMENT ON TABLE telegram_chats IS 'Telegram chats discovered from bot membership updates for connector chat selection and invite-link generation.';
+COMMENT ON COLUMN telegram_chats.chat_id IS 'Telegram chat ID in Bot API format, usually negative for groups/channels. Example: -1001234567890.';
+COMMENT ON COLUMN telegram_chats.bot_status IS 'Bot membership status from my_chat_member update. Example: administrator, member, left, kicked.';
+
 -- users stores one internal person record shared across all linked channels.
 CREATE TABLE users (
     -- Internal canonical user id. Example: 42.

@@ -680,6 +680,22 @@
                 <button type="submit" class="action-btn is-send">{{index $.I18N "users.actions.paylink_send"}}</button>
               </form>
               {{end}}
+              {{if .CanSendAccessLink}}
+              <form method="POST" action="{{.AccessLinkURL}}">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="user_id" value="{{$.User.UserID}}">
+                <input type="hidden" name="subscription_id" value="{{.ID}}">
+                <button type="submit" class="action-btn is-edit">{{index $.I18N "users.actions.accesslink_send"}}</button>
+              </form>
+              {{end}}
+              {{if .CanUnbanAccessLink}}
+              <form method="POST" action="{{.UnbanAccessLinkURL}}" onsubmit="return confirm('{{index $.I18N "users.actions.telegram_unban_confirm"}}');">
+                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                <input type="hidden" name="user_id" value="{{$.User.UserID}}">
+                <input type="hidden" name="subscription_id" value="{{.ID}}">
+                <button type="submit" class="action-btn is-send">{{index $.I18N "users.actions.telegram_unban_send"}}</button>
+              </form>
+              {{end}}
               {{if .CanTriggerRebill}}
               <form method="POST" action="{{.RebillURL}}">
                 <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
