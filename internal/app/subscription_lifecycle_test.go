@@ -2251,6 +2251,64 @@ func TestTelegramInviteLinkLifecycle_PaymentActivationPersistsLinkAndExpiryRevok
 	}
 }
 
+func TestTelegramInviteLinkLifecycle_MenuIssuedLinkRevokedBeforeChatRemoval(t *testing.T) {
+	t.Helper()
+
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	connectorID := seedConnector(t, ctx, st, "tg-menu-link-lifecycle")
+	userID := seedTelegramUser(t, ctx, st, 880295)
+	subscriptionID := seedActiveSubscriptionForUser(t, ctx, st, connectorID, userID, 0, "tg-menu-link-lifecycle-payment", now.Add(-time.Minute))
+	if err := st.SaveTelegramInviteLink(ctx, domain.TelegramInviteLink{
+		UserID:         userID,
+		ConnectorID:    connectorID,
+		SubscriptionID: subscriptionID,
+		ChatRef:        "-1003626584986",
+		InviteLink:     "https://t.me/+menu-refresh",
+		ExpiresAt:      ptrTime(now.Add(36 * time.Hour)),
+		CreatedAt:      now.Add(-5 * time.Minute),
+	}); err != nil {
+		t.Fatalf("SaveTelegramInviteLink: %v", err)
+	}
+
+	appCtx := &application{
+		config: config.Config{Telegram: config.TelegramConfig{BotUsername: "test_bot"}},
+		store:  st,
+	}
+	lifecycleSvc := appCtx.subscriptionLifecycleService()
+	order := make([]string, 0, 2)
+	lifecycleSvc.RevokeTelegramInviteLink = func(_ context.Context, chatRef string, inviteLink string) error {
+		order = append(order, "revoke:"+chatRef+":"+inviteLink)
+		return nil
+	}
+	lifecycleSvc.RemoveTelegramChatMember = func(_ context.Context, chatRef string, userID int64) error {
+		order = append(order, "remove:"+chatRef+":"+strconv.FormatInt(userID, 10))
+		return nil
+	}
+	lifecycleSvc.SendUserNotification = func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil }
+
+	lifecycleSvc.ProcessExpiredSubscriptions(ctx)
+
+	if len(order) != 2 {
+		t.Fatalf("revoke/remove order=%v want 2 calls", order)
+	}
+	if order[0] != "revoke:-1003626584986:https://t.me/+menu-refresh" {
+		t.Fatalf("first call=%q want revoke menu-issued link", order[0])
+	}
+	if order[1] != "remove:-1003626584986:880295" {
+		t.Fatalf("second call=%q want remove member", order[1])
+	}
+	revocableAfter, err := st.ListRevocableTelegramInviteLinks(ctx, userID, "-1003626584986")
+	if err != nil {
+		t.Fatalf("ListRevocableTelegramInviteLinks after=%v", err)
+	}
+	if len(revocableAfter) != 0 {
+		t.Fatalf("revocable links after expiry=%d want=0", len(revocableAfter))
+	}
+}
+
 func seedActiveSubscription(t *testing.T, ctx context.Context, st store.Store, connectorID, telegramID int64, paymentToken string, endsAt time.Time) int64 {
 	t.Helper()
 	return seedActiveSubscriptionForUser(t, ctx, st, connectorID, 0, telegramID, paymentToken, endsAt)

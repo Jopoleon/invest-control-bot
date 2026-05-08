@@ -125,6 +125,7 @@ func newApplication(cfg config.Config, st store.Store, opts appInitOptions) (*ap
 		paymentService:     paymentService,
 		robokassaService:   robokassaService,
 	}
+	appCtx.telegramBotHandler.SetTelegramAccessLinkBuilder(appCtx.buildTelegramSubscriptionAccessLink)
 	appCtx.maxAdapter = max.NewAdapter(appCtx.maxBotHandler)
 	appCtx.adminHandler = admin.NewHandler(st, cfg.Security.AdminToken, cfg.Telegram.BotUsername, maxLaunchUsername, publicBase, cfg.Security.EncryptionKey, tgClient, maxSender, func(ctx context.Context, subscriptionID int64) (admin.RebillResult, error) {
 		payload, err := appCtx.triggerRebill(ctx, subscriptionID, "admin_ui")

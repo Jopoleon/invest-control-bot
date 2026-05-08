@@ -10,6 +10,8 @@ import (
 	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 )
 
+const telegramPaymentInviteLinkTTL = 36 * time.Hour
+
 func (a *application) buildTelegramPaymentAccessLink(ctx context.Context, userID int64, connector domain.Connector) (string, error) {
 	return a.buildTelegramPaymentAccessLinkForSubscription(ctx, userID, connector, domain.Subscription{})
 }
@@ -26,26 +28,33 @@ func (a *application) buildTelegramPaymentAccessLink(ctx context.Context, userID
 // are already expired and revoked in Telegram but still not marked in DB due to
 // transient API/database failures.
 func (a *application) buildTelegramPaymentAccessLinkForSubscription(ctx context.Context, userID int64, connector domain.Connector, sub domain.Subscription) (string, error) {
-	if a.telegramClient == nil {
-		return "", nil
-	}
 	if a.resolvePreferredMessengerKind(ctx, userID, "") != messenger.KindTelegram {
 		return "", nil
 	}
+	return a.buildTelegramSubscriptionAccessLink(ctx, userID, connector, sub)
+}
 
+func (a *application) buildTelegramSubscriptionAccessLink(ctx context.Context, userID int64, connector domain.Connector, sub domain.Subscription) (string, error) {
+	if a.telegramClient == nil {
+		return "", nil
+	}
 	chatRef := connector.ResolvedTelegramChatRef()
 	if strings.TrimSpace(chatRef) == "" {
 		return "", nil
 	}
 
 	// Single-use links are safer than exposing the chat/channel URL after
-	// payment. Their TTL is capped by the paid period when we already know the
-	// subscription row, so the button in chat history cannot stay valid much
-	// longer than the access itself.
+	// payment. They are valid long enough for normal onboarding friction but
+	// still short-lived, and they are additionally capped by the paid period
+	// when we already know the subscription row.
 	inviteName := fmt.Sprintf("paid-u%d-c%d", userID, connector.ID)
-	expireAt := time.Now().UTC().Add(24 * time.Hour)
-	if sub.ID > 0 && !sub.EndsAt.IsZero() && sub.EndsAt.After(time.Now().UTC()) {
-		expireAt = sub.EndsAt.UTC()
+	now := time.Now().UTC()
+	expireAt := now.Add(telegramPaymentInviteLinkTTL)
+	if sub.ID > 0 && !sub.EndsAt.IsZero() && sub.EndsAt.After(now) {
+		subEndsAt := sub.EndsAt.UTC()
+		if subEndsAt.Before(expireAt) {
+			expireAt = subEndsAt
+		}
 	}
 	link, err := a.telegramClient.CreateSingleUseInviteLink(ctx, chatRef, inviteName, expireAt)
 	if err != nil {

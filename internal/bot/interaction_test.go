@@ -307,6 +307,50 @@ func TestSendSubscriptionOverview_BuildsResolvedChannelText(t *testing.T) {
 	}
 }
 
+func TestSendSubscriptionOverview_TelegramCreatesFreshInviteLink(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	sender := &fakeSender{}
+	h := NewHandler(st, sender, nil, true, "https://investcontrol.example", "test-encryption-key-123456789012345")
+
+	connectorID := seedAutopayConnector(t, ctx, st, "fresh-sub-link", "fresh-sub-link")
+	paymentID := seedPayment(t, ctx, st, 9107, connectorID, true)
+	subID := seedSubscription(t, ctx, st, 9107, connectorID, paymentID, true)
+
+	var capturedSubID int64
+	var capturedChatRef string
+	h.SetTelegramAccessLinkBuilder(func(_ context.Context, userID int64, connector domain.Connector, sub domain.Subscription) (string, error) {
+		if userID == 0 {
+			t.Fatalf("userID = 0")
+		}
+		capturedSubID = sub.ID
+		capturedChatRef = connector.ResolvedTelegramChatRef()
+		return "https://t.me/+fresh-on-demand", nil
+	})
+
+	h.sendSubscriptionOverview(ctx, 9107, messenger.UserIdentity{Kind: messenger.KindTelegram, ID: 9107})
+
+	if capturedSubID != subID {
+		t.Fatalf("builder subscription id = %d, want %d", capturedSubID, subID)
+	}
+	if capturedChatRef != "@test_channel" {
+		t.Fatalf("builder chat ref = %q, want @test_channel", capturedChatRef)
+	}
+	if len(sender.sent) != 1 {
+		t.Fatalf("sent messages = %d, want 1", len(sender.sent))
+	}
+	text := sender.sent[0].msg.Text
+	if !strings.Contains(text, "https://t.me/+fresh-on-demand") {
+		t.Fatalf("text = %q, want fresh invite link", text)
+	}
+	if strings.Contains(text, "https://t.me/test_channel") {
+		t.Fatalf("text = %q, should not expose stale static channel url when fresh invite link exists", text)
+	}
+	if !strings.Contains(text, "бот выдаст новую") {
+		t.Fatalf("text = %q, want expired-link guidance", text)
+	}
+}
+
 func TestSendSubscriptionOverview_SeparatesFutureRenewal(t *testing.T) {
 	ctx := context.Background()
 	st := memory.New()

@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sort"
 	"strings"
@@ -54,7 +55,7 @@ func (h *Handler) buildSubscriptionOverviewText(ctx context.Context, userIdentit
 		}
 
 		lines = append(lines, botSubscriptionOverviewLines(sub, connector, "")...)
-		lines = append(lines, botSubscriptionAccessLines(connector, userIdentity.Kind)...)
+		lines = append(lines, h.botSubscriptionAccessLines(ctx, sub, connector, userIdentity.Kind)...)
 		lines = append(lines, "")
 	}
 	if len(futureSubs) > 0 {
@@ -69,7 +70,6 @@ func (h *Handler) buildSubscriptionOverviewText(ctx context.Context, userIdentit
 				continue
 			}
 			lines = append(lines, botUpcomingSubscriptionLines(sub, connector)...)
-			lines = append(lines, botSubscriptionAccessLines(connector, userIdentity.Kind)...)
 			lines = append(lines, "")
 		}
 	}
@@ -77,6 +77,25 @@ func (h *Handler) buildSubscriptionOverviewText(ctx context.Context, userIdentit
 		return "", false
 	}
 	return strings.TrimSpace(strings.Join(lines, "\n")), true
+}
+
+func (h *Handler) botSubscriptionAccessLines(ctx context.Context, sub domain.Subscription, connector domain.Connector, kind messenger.Kind) []string {
+	if kind != messenger.KindTelegram || h.telegramAccessLinkBuilder == nil {
+		return botSubscriptionAccessLines(connector, kind)
+	}
+
+	link, err := h.telegramAccessLinkBuilder(ctx, sub.UserID, connector, sub)
+	if err != nil {
+		slog.Error("create telegram access link for subscription menu failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID, "connector_id", connector.ID)
+		return botSubscriptionAccessLines(connector, kind)
+	}
+	if strings.TrimSpace(link) == "" {
+		return botSubscriptionAccessLines(connector, kind)
+	}
+	return []string{
+		fmt.Sprintf("  Канал: %s", strings.TrimSpace(link)),
+		"  Если ссылка успела истечь, снова откройте «Моя подписка» — бот выдаст новую.",
+	}
 }
 
 func splitCurrentAndFutureSubscriptions(subs []domain.Subscription, now time.Time) ([]domain.Subscription, []domain.Subscription) {
