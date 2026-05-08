@@ -11,6 +11,7 @@ import (
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
 	"github.com/Jopoleon/invest-control-bot/internal/store/memory"
+	"github.com/Jopoleon/invest-control-bot/internal/telegram"
 )
 
 func TestUserDetailPage_ShowsMAXComposeHelperForMAXUser(t *testing.T) {
@@ -187,5 +188,86 @@ func TestUserDetailPage_ShowsFutureRenewalAsNextPeriodWithoutSecondRevokeAction(
 	}
 	if got := strings.Count(body, "/admin/subscriptions/revoke?"); got != 1 {
 		t.Fatalf("revoke action count = %d, want 1 current subscription only", got)
+	}
+}
+
+func TestUserDetailPage_ShowsAccessLinkActionForCurrentTelegramSubscription(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	tg, err := telegram.NewClient("", "")
+	if err != nil {
+		t.Fatalf("telegram.NewClient: %v", err)
+	}
+	h := NewHandler(st, "test-admin-token", "test_bot", "id9718272494_bot", "http://localhost:8080", "test-encryption-key-123456789012345", tg, nil, nil)
+	now := time.Now().UTC()
+
+	user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, "464152205", "MishkaSnow")
+	if err != nil {
+		t.Fatalf("GetOrCreateUserByMessenger: %v", err)
+	}
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload: "in-user-detail-access-link",
+		Name:         "Private Telegram",
+		ChatID:       "1003626584986",
+		PriceRUB:     5000,
+		PeriodMode:   domain.ConnectorPeriodModeCalendarMonths,
+		PeriodMonths: 1,
+		IsActive:     true,
+		CreatedAt:    now,
+	}); err != nil {
+		t.Fatalf("CreateConnector: %v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-user-detail-access-link")
+	if err != nil || !found {
+		t.Fatalf("GetConnectorByStartPayload found=%v err=%v", found, err)
+	}
+	if err := st.CreatePayment(ctx, domain.Payment{
+		Provider:    "robokassa",
+		Status:      domain.PaymentStatusPaid,
+		Token:       "user-detail-access-link-payment",
+		UserID:      user.ID,
+		ConnectorID: connector.ID,
+		AmountRUB:   connector.PriceRUB,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}); err != nil {
+		t.Fatalf("CreatePayment: %v", err)
+	}
+	payment, found, err := st.GetPaymentByToken(ctx, "user-detail-access-link-payment")
+	if err != nil || !found {
+		t.Fatalf("GetPaymentByToken found=%v err=%v", found, err)
+	}
+	if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+		UserID:      user.ID,
+		ConnectorID: connector.ID,
+		PaymentID:   payment.ID,
+		Status:      domain.SubscriptionStatusActive,
+		StartsAt:    now.Add(-time.Hour),
+		EndsAt:      now.Add(24 * time.Hour),
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}); err != nil {
+		t.Fatalf("UpsertSubscriptionByPayment: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/users/view?lang=ru&user_id="+strconv.FormatInt(user.ID, 10), nil)
+	rec := httptest.NewRecorder()
+	h.userDetailPage(rec, withAdminAuthorized(req, &authorizedSession{session: domain.AdminSession{ID: 1}}))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "/admin/users/send-access-link?") {
+		t.Fatalf("response does not contain access-link action: %q", body)
+	}
+	if !strings.Contains(body, "Отправить ссылку в чат") {
+		t.Fatalf("response does not contain access-link button label: %q", body)
+	}
+	if !strings.Contains(body, "/admin/users/unban-and-send-access-link?") {
+		t.Fatalf("response does not contain telegram unban action: %q", body)
+	}
+	if !strings.Contains(body, "Разблокировать в Telegram-чате") {
+		t.Fatalf("response does not contain telegram unban button label: %q", body)
 	}
 }

@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -12,6 +13,18 @@ import (
 	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 	"github.com/go-telegram/bot/models"
 )
+
+const adminTelegramAccessInviteLinkTTL = 36 * time.Hour
+
+type adminTelegramAccessTarget struct {
+	user        domain.User
+	account     domain.UserMessengerAccount
+	sub         domain.Subscription
+	connector   domain.Connector
+	chatRef     string
+	telegramID  int64
+	resolvedNow time.Time
+}
 
 func (h *Handler) sendUserMessage(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAuth(w, r) {
@@ -142,6 +155,196 @@ func (h *Handler) sendUserPaymentLink(w http.ResponseWriter, r *http.Request) {
 	_ = now
 	h.logAdminTargetAuditForAccount(r, user, account, connector.ID, domain.AuditActionAdminPaymentLinkSent, "subscription_id="+strconv.FormatInt(subID, 10)+";connector_id="+strconv.FormatInt(connectorID, 10))
 	h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, t(lang, "users.actions.paylink_sent"))
+}
+
+func (h *Handler) sendUserAccessLink(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAuth(w, r) {
+		return
+	}
+	lang := h.resolveLang(w, r)
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		h.unauthorized(w)
+		return
+	}
+	if !h.verifyCSRF(r) {
+		w.WriteHeader(http.StatusForbidden)
+		userID, telegramID := parseUserDetailParams(r.FormValue("user_id"), r.FormValue("telegram_id"))
+		h.renderUserDetailForIDs(r.Context(), w, r, lang, userID, telegramID, t(lang, "csrf.invalid"))
+		return
+	}
+
+	userID, telegramID := parseUserDetailParams(r.FormValue("user_id"), r.FormValue("telegram_id"))
+	subID := parseInt64Default(r.FormValue("subscription_id"))
+	target, ok, err := h.resolveTelegramAccessTarget(r.Context(), userID, telegramID, subID, time.Now().UTC())
+	if err != nil {
+		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
+		return
+	}
+	if !ok {
+		renderUserDetailError(h, w, r, lang, t(lang, "users.actions.accesslink_unavailable"))
+		return
+	}
+
+	expireAt, err := h.createAndSendTelegramAccessLink(r.Context(), lang, target)
+	if err != nil {
+		h.logAdminTargetAuditForAccount(r, target.user, target.account, target.connector.ID, domain.AuditActionAdminAccessLinkSendFailed, formatAuditDetail("reason", err.Error(), 240))
+		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, target.user, err.Error())
+		return
+	}
+
+	details := fmt.Sprintf("subscription_id=%d;connector_id=%d;chat_ref=%s;expires_at=%s", target.sub.ID, target.connector.ID, target.chatRef, expireAt.Format(time.RFC3339))
+	h.logAdminTargetAuditForAccount(r, target.user, target.account, target.connector.ID, domain.AuditActionAdminAccessLinkSent, details)
+	h.renderResolvedUserDetailPage(r.Context(), w, r, lang, target.user, t(lang, "users.actions.accesslink_sent"))
+}
+
+func (h *Handler) unbanUserAndSendAccessLink(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAuth(w, r) {
+		return
+	}
+	lang := h.resolveLang(w, r)
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		h.unauthorized(w)
+		return
+	}
+	if !h.verifyCSRF(r) {
+		w.WriteHeader(http.StatusForbidden)
+		userID, telegramID := parseUserDetailParams(r.FormValue("user_id"), r.FormValue("telegram_id"))
+		h.renderUserDetailForIDs(r.Context(), w, r, lang, userID, telegramID, t(lang, "csrf.invalid"))
+		return
+	}
+
+	userID, telegramID := parseUserDetailParams(r.FormValue("user_id"), r.FormValue("telegram_id"))
+	subID := parseInt64Default(r.FormValue("subscription_id"))
+	target, ok, err := h.resolveTelegramAccessTarget(r.Context(), userID, telegramID, subID, time.Now().UTC())
+	if err != nil {
+		renderUserDetailError(h, w, r, lang, t(lang, "users.detail.load_error"))
+		return
+	}
+	if !ok {
+		renderUserDetailError(h, w, r, lang, t(lang, "users.actions.accesslink_unavailable"))
+		return
+	}
+
+	if err := h.tg.UnbanChatMember(r.Context(), target.chatRef, target.telegramID); err != nil {
+		h.logAdminTargetAuditForAccount(r, target.user, target.account, target.connector.ID, domain.AuditActionAdminTelegramUnbanFailed, formatAuditDetail("reason", err.Error(), 240))
+		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, target.user, t(lang, "users.actions.telegram_unban_failed")+": "+err.Error())
+		return
+	}
+	unbanDetails := fmt.Sprintf("subscription_id=%d;connector_id=%d;chat_ref=%s;telegram_id=%d", target.sub.ID, target.connector.ID, target.chatRef, target.telegramID)
+	h.logAdminTargetAuditForAccount(r, target.user, target.account, target.connector.ID, domain.AuditActionAdminTelegramUnbanned, unbanDetails)
+
+	expireAt, err := h.createAndSendTelegramAccessLink(r.Context(), lang, target)
+	if err != nil {
+		h.logAdminTargetAuditForAccount(r, target.user, target.account, target.connector.ID, domain.AuditActionAdminAccessLinkSendFailed, formatAuditDetail("reason", err.Error(), 240))
+		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, target.user, err.Error())
+		return
+	}
+
+	details := fmt.Sprintf("subscription_id=%d;connector_id=%d;chat_ref=%s;expires_at=%s;after_unban=true", target.sub.ID, target.connector.ID, target.chatRef, expireAt.Format(time.RFC3339))
+	h.logAdminTargetAuditForAccount(r, target.user, target.account, target.connector.ID, domain.AuditActionAdminAccessLinkSent, details)
+	h.renderResolvedUserDetailPage(r.Context(), w, r, lang, target.user, t(lang, "users.actions.telegram_unban_sent"))
+}
+
+func (h *Handler) resolveTelegramAccessTarget(ctx context.Context, userID, telegramID, subID int64, now time.Time) (adminTelegramAccessTarget, bool, error) {
+	var target adminTelegramAccessTarget
+	if subID <= 0 || h.tg == nil {
+		return target, false, nil
+	}
+	user, foundUser, err := h.resolveUser(ctx, userID, telegramID)
+	if err != nil {
+		return target, false, err
+	}
+	if !foundUser {
+		return target, false, nil
+	}
+	account, foundAccount, err := h.resolveMessengerAccount(ctx, user.ID, domain.MessengerKindTelegram)
+	if err != nil {
+		return target, false, err
+	}
+	if !foundAccount {
+		return target, false, nil
+	}
+	parsedTelegramID, err := strconv.ParseInt(strings.TrimSpace(account.MessengerUserID), 10, 64)
+	if err != nil || parsedTelegramID <= 0 {
+		return target, false, nil
+	}
+
+	sub, foundSub, err := h.store.GetSubscriptionByID(ctx, subID)
+	if err != nil {
+		return target, false, err
+	}
+	if !foundSub || sub.UserID != user.ID || sub.Status != domain.SubscriptionStatusActive || sub.StartsAt.After(now) || !sub.EndsAt.After(now) {
+		return target, false, nil
+	}
+	connector, foundConnector, err := h.store.GetConnector(ctx, sub.ConnectorID)
+	if err != nil {
+		return target, false, err
+	}
+	if !foundConnector || !connector.HasAccessFor(domain.MessengerKindTelegram) {
+		return target, false, nil
+	}
+	chatRef := connector.ResolvedTelegramChatRef()
+	if chatRef == "" {
+		return target, false, nil
+	}
+	target = adminTelegramAccessTarget{
+		user:        user,
+		account:     account,
+		sub:         sub,
+		connector:   connector,
+		chatRef:     chatRef,
+		telegramID:  parsedTelegramID,
+		resolvedNow: now,
+	}
+	return target, true, nil
+}
+
+func (h *Handler) createAndSendTelegramAccessLink(ctx context.Context, lang string, target adminTelegramAccessTarget) (time.Time, error) {
+	now := target.resolvedNow
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	expireAt := now.Add(adminTelegramAccessInviteLinkTTL)
+	if target.sub.EndsAt.Before(expireAt) {
+		expireAt = target.sub.EndsAt.UTC()
+	}
+	inviteName := fmt.Sprintf("admin-u%d-s%d", target.user.ID, target.sub.ID)
+	link, err := h.tg.CreateSingleUseInviteLink(ctx, target.chatRef, inviteName, expireAt)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if err := h.store.SaveTelegramInviteLink(ctx, domain.TelegramInviteLink{
+		UserID:         target.user.ID,
+		ConnectorID:    target.connector.ID,
+		SubscriptionID: target.sub.ID,
+		ChatRef:        target.chatRef,
+		InviteLink:     strings.TrimSpace(link),
+		ExpiresAt:      &expireAt,
+		CreatedAt:      now,
+	}); err != nil {
+		return time.Time{}, err
+	}
+
+	msg := messenger.OutgoingMessage{
+		Text: fmt.Sprintf(t(lang, "users.actions.accesslink_text_named"), target.connector.Name, expireAt.In(time.Local).Format("02.01.2006 15:04")),
+		Buttons: [][]messenger.ActionButton{{
+			{Text: t(lang, "users.actions.accesslink_button"), URL: strings.TrimSpace(link)},
+		}},
+	}
+	if err := h.sendViaMessengerAccount(ctx, target.account, msg); err != nil {
+		return time.Time{}, err
+	}
+	return expireAt, nil
 }
 
 func (h *Handler) revokeSubscription(w http.ResponseWriter, r *http.Request) {

@@ -251,14 +251,20 @@ func (c *Client) EnsureWebhook(ctx context.Context, desiredURL, secretToken stri
 		return fmt.Errorf("get webhook info: %w", err)
 	}
 	currentURL := strings.TrimSpace(info.URL)
-	if currentURL == desiredURL {
+	allowedUpdates := []string{
+		models.AllowedUpdateMessage,
+		models.AllowedUpdateCallbackQuery,
+		models.AllowedUpdateMyChatMember,
+	}
+	if currentURL == desiredURL && webhookAllowedUpdatesMatch(info.AllowedUpdates, allowedUpdates) {
 		slog.Info("telegram webhook is up to date", "url", currentURL)
 		return nil
 	}
 
 	ok, err := c.bot.SetWebhook(ctx, &tgbot.SetWebhookParams{
-		URL:         desiredURL,
-		SecretToken: strings.TrimSpace(secretToken),
+		URL:            desiredURL,
+		AllowedUpdates: allowedUpdates,
+		SecretToken:    strings.TrimSpace(secretToken),
 	})
 	if err != nil {
 		return fmt.Errorf("set webhook: %w", err)
@@ -268,6 +274,22 @@ func (c *Client) EnsureWebhook(ctx context.Context, desiredURL, secretToken stri
 	}
 	slog.Info("telegram webhook updated", "from", currentURL, "to", desiredURL)
 	return nil
+}
+
+func webhookAllowedUpdatesMatch(current, desired []string) bool {
+	if len(current) != len(desired) {
+		return false
+	}
+	seen := make(map[string]struct{}, len(current))
+	for _, item := range current {
+		seen[item] = struct{}{}
+	}
+	for _, item := range desired {
+		if _, ok := seen[item]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // EnsureDefaultMenu configures default command list and menu button ("commands") in Telegram client UI.
@@ -325,7 +347,22 @@ func (c *Client) RemoveChatMember(ctx context.Context, chatRef string, userID in
 	if err != nil {
 		return err
 	}
-	_, err = c.bot.UnbanChatMember(ctx, &tgbot.UnbanChatMemberParams{
+	return c.UnbanChatMember(ctx, ref, userID)
+}
+
+// UnbanChatMember removes a user from Telegram chat ban-list without changing
+// active members. Telegram invite links are unusable for banned users, so admin
+// recovery flows must call this before sending a fresh one-time invite.
+func (c *Client) UnbanChatMember(ctx context.Context, chatRef string, userID int64) error {
+	if !c.enabled {
+		slog.Debug("telegram client disabled, skip unbanChatMember", "chat_ref", chatRef, "user_id", userID)
+		return nil
+	}
+	ref := strings.TrimSpace(chatRef)
+	if ref == "" {
+		return fmt.Errorf("unbanChatMember requires chat_ref")
+	}
+	_, err := c.bot.UnbanChatMember(ctx, &tgbot.UnbanChatMemberParams{
 		ChatID:       ref,
 		UserID:       userID,
 		OnlyIfBanned: true,

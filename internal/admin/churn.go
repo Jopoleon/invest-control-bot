@@ -248,6 +248,7 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang string, userFilterI
 		if !item.recurringState.LastAttemptAt.IsZero() {
 			lastRetryAt = item.recurringState.LastAttemptAt.In(time.Local).Format("2006-01-02 15:04:05")
 		}
+		canSendAccessLink := h.canSendTelegramAccessLink(ctx, item.userID, item.connectorID, item.subscriptionID, item.subscriptionStatus)
 		result = append(result, churnIssueView{
 			UserID:             item.userID,
 			DisplayName:        item.displayName,
@@ -277,6 +278,10 @@ func (h *Handler) buildChurnIssues(ctx context.Context, lang string, userFilterI
 			UserDetailURL:      buildUserDetailURL(lang, item.userID),
 			CanSendPayLink:     buildAdminBotStartURL(h.botUsername, h.lookupStartPayload(ctx, item.connectorID)) != "",
 			PaymentLinkURL:     buildConnectorPaymentLinkURL(lang, item.userID, item.connectorID),
+			CanSendAccessLink:  canSendAccessLink,
+			AccessLinkURL:      buildSubscriptionAccessLinkURL(lang, item.userID, item.subscriptionID),
+			CanUnbanAccessLink: canSendAccessLink,
+			UnbanAccessLinkURL: buildSubscriptionUnbanAccessLinkURL(lang, item.userID, item.subscriptionID),
 			CanTriggerRebill:   h.retriggerRebill != nil && item.subscriptionID > 0 && item.autoPayEnabled && item.subscriptionStatus == domain.SubscriptionStatusActive,
 			RebillURL:          buildSubscriptionRebillURL(lang, item.userID, item.subscriptionID),
 		})
@@ -291,6 +296,21 @@ func (h *Handler) lookupStartPayload(ctx context.Context, connectorID int64) str
 		return ""
 	}
 	return connector.StartPayload
+}
+
+func (h *Handler) canSendTelegramAccessLink(ctx context.Context, userID, connectorID, subscriptionID int64, status domain.SubscriptionStatus) bool {
+	if h.tg == nil || userID <= 0 || connectorID <= 0 || subscriptionID <= 0 || status != domain.SubscriptionStatusActive {
+		return false
+	}
+	connector, found, err := h.store.GetConnector(ctx, connectorID)
+	if err != nil || !found || connector.ResolvedTelegramChatRef() == "" {
+		return false
+	}
+	if !connector.HasAccessFor(domain.MessengerKindTelegram) {
+		return false
+	}
+	_, foundAccount, err := h.resolveMessengerAccount(ctx, userID, domain.MessengerKindTelegram)
+	return err == nil && foundAccount
 }
 
 func localizeChurnIssue(lang string, issue churnIssueKind) (string, string) {
@@ -314,6 +334,22 @@ func buildConnectorPaymentLinkURL(lang string, userID, connectorID int64) string
 	params.Set("user_id", strconv.FormatInt(userID, 10))
 	params.Set("connector_id", strconv.FormatInt(connectorID, 10))
 	return "/admin/users/send-payment-link?" + params.Encode()
+}
+
+func buildSubscriptionAccessLinkURL(lang string, userID, subscriptionID int64) string {
+	params := url.Values{}
+	params.Set("lang", lang)
+	params.Set("user_id", strconv.FormatInt(userID, 10))
+	params.Set("subscription_id", strconv.FormatInt(subscriptionID, 10))
+	return "/admin/users/send-access-link?" + params.Encode()
+}
+
+func buildSubscriptionUnbanAccessLinkURL(lang string, userID, subscriptionID int64) string {
+	params := url.Values{}
+	params.Set("lang", lang)
+	params.Set("user_id", strconv.FormatInt(userID, 10))
+	params.Set("subscription_id", strconv.FormatInt(subscriptionID, 10))
+	return "/admin/users/unban-and-send-access-link?" + params.Encode()
 }
 
 func resolveTelegramIdentityFromUserListItem(user domain.UserListItem) (int64, string) {
