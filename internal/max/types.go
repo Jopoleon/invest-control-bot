@@ -174,13 +174,51 @@ type Recipient struct {
 
 // ChatMember is enough for chat membership checks and admin rights inspection.
 type ChatMember struct {
-	UserID      int64    `json:"user_id"`
-	Username    string   `json:"username,omitempty"`
-	IsBot       bool     `json:"is_bot,omitempty"`
-	IsOwner     bool     `json:"is_owner,omitempty"`
-	IsAdmin     bool     `json:"is_admin,omitempty"`
-	Permissions []string `json:"permissions,omitempty"`
-	JoinTime    int64    `json:"join_time,omitempty"`
+	UserID           int64           `json:"user_id"`
+	FirstName        string          `json:"first_name,omitempty"`
+	LastName         string          `json:"last_name,omitempty"`
+	Username         string          `json:"username,omitempty"`
+	IsBot            bool            `json:"is_bot,omitempty"`
+	LastActivityTime int64           `json:"last_activity_time,omitempty"`
+	Name             string          `json:"name,omitempty"`
+	Description      string          `json:"description,omitempty"`
+	AvatarURL        string          `json:"avatar_url,omitempty"`
+	FullAvatarURL    string          `json:"full_avatar_url,omitempty"`
+	LastAccessTime   int64           `json:"last_access_time,omitempty"`
+	IsOwner          bool            `json:"is_owner,omitempty"`
+	IsAdmin          bool            `json:"is_admin,omitempty"`
+	Permissions      []string        `json:"permissions,omitempty"`
+	JoinTime         int64           `json:"join_time,omitempty"`
+	Alias            string          `json:"alias,omitempty"`
+	Raw              json.RawMessage `json:"-"`
+}
+
+func (m *ChatMember) UnmarshalJSON(data []byte) error {
+	type alias ChatMember
+	var decoded alias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*m = ChatMember(decoded)
+	m.Raw = append(m.Raw[:0], data...)
+	return nil
+}
+
+type ChatMembersPage struct {
+	Members []ChatMember    `json:"members"`
+	Marker  *int64          `json:"marker,omitempty"`
+	Raw     json.RawMessage `json:"-"`
+}
+
+func (p *ChatMembersPage) UnmarshalJSON(data []byte) error {
+	type alias ChatMembersPage
+	var decoded alias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*p = ChatMembersPage(decoded)
+	p.Raw = append(p.Raw[:0], data...)
+	return nil
 }
 
 type MessageBody struct {

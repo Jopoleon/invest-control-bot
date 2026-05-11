@@ -244,6 +244,7 @@ func (h *Handler) renderResolvedUserDetailPage(ctx context.Context, w http.Respo
 			RebillURL:          buildSubscriptionRebillURL(lang, item.ID, s.ID),
 		})
 	}
+	data.ChatAccesses = h.buildChatAccessViews(ctx, lang, item, accounts, subs, now)
 
 	data.Events = make([]auditEventView, 0, len(events))
 	for _, event := range events {

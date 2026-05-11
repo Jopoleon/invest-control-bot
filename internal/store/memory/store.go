@@ -41,7 +41,10 @@ type Store struct {
 	nextSubscrID           int64
 	telegramInviteLinks    map[int64]domain.TelegramInviteLink
 	telegramChats          map[string]domain.TelegramChat
+	messengerChatUsers     map[string]domain.MessengerChatUser
+	messengerChatChecks    []domain.MessengerChatUserCheck
 	nextTelegramInviteID   int64
+	nextMessengerCheckID   int64
 	nextRecurringConsentID int64
 }
 
@@ -72,7 +75,10 @@ func New() *Store {
 		nextSubscrID:           1,
 		telegramInviteLinks:    make(map[int64]domain.TelegramInviteLink),
 		telegramChats:          make(map[string]domain.TelegramChat),
+		messengerChatUsers:     make(map[string]domain.MessengerChatUser),
+		messengerChatChecks:    make([]domain.MessengerChatUserCheck, 0),
 		nextTelegramInviteID:   1,
+		nextMessengerCheckID:   1,
 		nextRecurringConsentID: 1,
 	}
 }

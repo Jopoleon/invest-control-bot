@@ -32,6 +32,15 @@ Go backend для платного доступа к Telegram/MAX чатам с:
 - `migrations` - схема БД
 - `docs` - подробная документация
 
+## Документация И Контекст Для Разработки
+
+- `AGENTS.md` - рабочий контракт для Codex/AI-сессий.
+- `docs/README.md` - карта документации.
+- `docs/context/project-context.md` - долговременный контекст и инварианты.
+- `docs/context/progress.md` - текущее состояние, риски и следующие задачи.
+- `docs/context/session-log.md` - правила и индекс хронологических session logs.
+- `docs/planning/implementation-plan.md` - текущий planning entrypoint.
+
 ## Быстрый Старт
 1. Скопировать `.env.example` в `.env`
 2. Заполнить env

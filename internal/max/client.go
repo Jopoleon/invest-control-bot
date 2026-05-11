@@ -158,6 +158,28 @@ func (c *Client) GetMyChatMember(ctx context.Context, chatID int64) (ChatMember,
 	return member, nil
 }
 
+// GetChatMembers returns selected MAX chat members. Passing userIDs asks MAX for
+// exact users and avoids paginating the whole chat; an empty result means the
+// requested user is not currently visible as a chat participant.
+func (c *Client) GetChatMembers(ctx context.Context, chatID int64, userIDs []int64) (ChatMembersPage, error) {
+	var page ChatMembersPage
+	if chatID == 0 {
+		return ChatMembersPage{}, fmt.Errorf("get chat members requires chat_id")
+	}
+	values := url.Values{}
+	if len(userIDs) > 0 {
+		for _, userID := range userIDs {
+			if userID > 0 {
+				values.Add("user_ids", strconv.FormatInt(userID, 10))
+			}
+		}
+	}
+	if err := c.doJSON(ctx, http.MethodGet, "/chats/"+strconv.FormatInt(chatID, 10)+"/members", values, nil, &page); err != nil {
+		return ChatMembersPage{}, err
+	}
+	return page, nil
+}
+
 // AddChatMembers adds one or more users to the target group chat.
 func (c *Client) AddChatMembers(ctx context.Context, chatID int64, userIDs []int64) error {
 	if chatID == 0 {

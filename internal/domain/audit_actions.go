@@ -49,6 +49,8 @@ const (
 	AuditActionAdminAccessLinkSent            = "admin_access_link_sent"
 	AuditActionAdminTelegramUnbanFailed       = "admin_telegram_unban_failed"
 	AuditActionAdminTelegramUnbanned          = "admin_telegram_unbanned"
+	AuditActionAdminChatStatusRefreshFailed   = "admin_chat_status_refresh_failed"
+	AuditActionAdminChatStatusRefreshed       = "admin_chat_status_refreshed"
 	AuditActionAdminConnectorUpdated          = "admin_connector_updated"
 	AuditActionAdminSubscriptionRevokeFailed  = "admin_subscription_revoke_chat_failed"
 	AuditActionAdminSubscriptionRevokedChat   = "admin_subscription_revoked_from_chat"

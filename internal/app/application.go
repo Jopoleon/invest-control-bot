@@ -12,6 +12,7 @@ import (
 
 	"github.com/Jopoleon/invest-control-bot/internal/admin"
 	"github.com/Jopoleon/invest-control-bot/internal/bot"
+	"github.com/Jopoleon/invest-control-bot/internal/chatstatus"
 	"github.com/Jopoleon/invest-control-bot/internal/config"
 	"github.com/Jopoleon/invest-control-bot/internal/max"
 	"github.com/Jopoleon/invest-control-bot/internal/messenger"
@@ -133,6 +134,11 @@ func newApplication(cfg config.Config, st store.Store, opts appInitOptions) (*ap
 			return admin.RebillResult{}, err
 		}
 		return admin.RebillResult{InvoiceID: payload.InvoiceID, Existing: payload.Existing}, nil
+	})
+	appCtx.adminHandler.SetChatStatusService(chatstatus.Service{
+		Store:    st,
+		Telegram: tgClient,
+		MAX:      maxClient,
 	})
 	return appCtx, nil
 }

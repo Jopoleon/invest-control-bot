@@ -126,6 +126,16 @@ type TelegramChatStore interface {
 	GetTelegramChat(ctx context.Context, chatID string) (domain.TelegramChat, bool, error)
 }
 
+// MessengerChatUserStore manages latest and historical chat membership
+// diagnostics across Telegram and MAX.
+type MessengerChatUserStore interface {
+	UpsertMessengerChatUser(ctx context.Context, user domain.MessengerChatUser) error
+	GetMessengerChatUser(ctx context.Context, kind domain.MessengerKind, chatRef, messengerUserID string) (domain.MessengerChatUser, bool, error)
+	ListMessengerChatUsersByUser(ctx context.Context, userID int64) ([]domain.MessengerChatUser, error)
+	SaveMessengerChatUserCheck(ctx context.Context, check domain.MessengerChatUserCheck) error
+	ListMessengerChatUserChecks(ctx context.Context, kind domain.MessengerKind, chatRef, messengerUserID string, limit int) ([]domain.MessengerChatUserCheck, error)
+}
+
 // Store describes persistence operations required by bot/admin flows.
 type Store interface {
 	ConnectorStore
@@ -139,4 +149,5 @@ type Store interface {
 	SubscriptionStore
 	TelegramInviteLinkStore
 	TelegramChatStore
+	MessengerChatUserStore
 }

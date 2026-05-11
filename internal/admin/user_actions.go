@@ -15,6 +15,7 @@ import (
 )
 
 const adminTelegramAccessInviteLinkTTL = 36 * time.Hour
+const adminMessengerActionTimeout = 12 * time.Second
 
 type adminTelegramAccessTarget struct {
 	user        domain.User
@@ -69,7 +70,9 @@ func (h *Handler) sendUserMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now().UTC()
-	if err := h.sendViaMessengerAccount(r.Context(), account, messenger.OutgoingMessage{Text: text}); err != nil {
+	actionCtx, cancel := context.WithTimeout(r.Context(), adminMessengerActionTimeout)
+	defer cancel()
+	if err := h.sendViaMessengerAccount(actionCtx, account, messenger.OutgoingMessage{Text: text}); err != nil {
 		h.logAdminTargetAuditForAccount(r, user, account, 0, domain.AuditActionAdminMessageSendFailed, formatAuditDetail("reason", err.Error(), 240))
 		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, err.Error())
 		return
@@ -145,7 +148,9 @@ func (h *Handler) sendUserPaymentLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now().UTC()
-	if err := h.sendViaMessengerAccount(r.Context(), account, msg); err != nil {
+	actionCtx, cancel := context.WithTimeout(r.Context(), adminMessengerActionTimeout)
+	defer cancel()
+	if err := h.sendViaMessengerAccount(actionCtx, account, msg); err != nil {
 		_ = now
 		h.logAdminTargetAuditForAccount(r, user, account, connector.ID, domain.AuditActionAdminPaymentLinkSendFailed, formatAuditDetail("reason", err.Error(), 240))
 		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, err.Error())
@@ -190,7 +195,9 @@ func (h *Handler) sendUserAccessLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expireAt, err := h.createAndSendTelegramAccessLink(r.Context(), lang, target)
+	actionCtx, cancel := context.WithTimeout(r.Context(), adminMessengerActionTimeout)
+	defer cancel()
+	expireAt, err := h.createAndSendTelegramAccessLink(actionCtx, lang, target)
 	if err != nil {
 		h.logAdminTargetAuditForAccount(r, target.user, target.account, target.connector.ID, domain.AuditActionAdminAccessLinkSendFailed, formatAuditDetail("reason", err.Error(), 240))
 		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, target.user, err.Error())
@@ -235,7 +242,9 @@ func (h *Handler) unbanUserAndSendAccessLink(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if err := h.tg.UnbanChatMember(r.Context(), target.chatRef, target.telegramID); err != nil {
+	actionCtx, cancel := context.WithTimeout(r.Context(), adminMessengerActionTimeout)
+	defer cancel()
+	if err := h.tg.UnbanChatMember(actionCtx, target.chatRef, target.telegramID); err != nil {
 		h.logAdminTargetAuditForAccount(r, target.user, target.account, target.connector.ID, domain.AuditActionAdminTelegramUnbanFailed, formatAuditDetail("reason", err.Error(), 240))
 		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, target.user, t(lang, "users.actions.telegram_unban_failed")+": "+err.Error())
 		return
@@ -243,7 +252,7 @@ func (h *Handler) unbanUserAndSendAccessLink(w http.ResponseWriter, r *http.Requ
 	unbanDetails := fmt.Sprintf("subscription_id=%d;connector_id=%d;chat_ref=%s;telegram_id=%d", target.sub.ID, target.connector.ID, target.chatRef, target.telegramID)
 	h.logAdminTargetAuditForAccount(r, target.user, target.account, target.connector.ID, domain.AuditActionAdminTelegramUnbanned, unbanDetails)
 
-	expireAt, err := h.createAndSendTelegramAccessLink(r.Context(), lang, target)
+	expireAt, err := h.createAndSendTelegramAccessLink(actionCtx, lang, target)
 	if err != nil {
 		h.logAdminTargetAuditForAccount(r, target.user, target.account, target.connector.ID, domain.AuditActionAdminAccessLinkSendFailed, formatAuditDetail("reason", err.Error(), 240))
 		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, target.user, err.Error())
@@ -488,7 +497,9 @@ func (h *Handler) triggerSubscriptionRebill(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	result, err := h.retriggerRebill(r.Context(), subID)
+	actionCtx, cancel := context.WithTimeout(r.Context(), adminMessengerActionTimeout)
+	defer cancel()
+	result, err := h.retriggerRebill(actionCtx, subID)
 	if err != nil {
 		h.renderResolvedUserDetailPage(r.Context(), w, r, lang, user, err.Error())
 		return

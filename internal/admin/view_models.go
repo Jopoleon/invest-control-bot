@@ -199,6 +199,30 @@ type subscriptionView struct {
 	RebillURL          string
 }
 
+type chatAccessView struct {
+	UserID             int64
+	SubscriptionID     int64
+	ConnectorID        int64
+	Connector          string
+	MessengerKind      string
+	MessengerLabel     string
+	ChatRef            string
+	MessengerUserID    string
+	EntitlementLabel   string
+	EntitlementClass   string
+	Status             string
+	StatusLabel        string
+	StatusClass        string
+	CheckedAt          string
+	LastError          string
+	RefreshURL         string
+	CanRefresh         bool
+	CanSendAccessLink  bool
+	AccessLinkURL      string
+	CanUnbanAccessLink bool
+	UnbanAccessLinkURL string
+}
+
 type billingPageData struct {
 	basePageData
 
@@ -296,6 +320,7 @@ type userDetailPageData struct {
 	RecurringConsents []recurringConsentView
 	Payments          []paymentView
 	Subscriptions     []subscriptionView
+	ChatAccesses      []chatAccessView
 	Events            []auditEventView
 }
 

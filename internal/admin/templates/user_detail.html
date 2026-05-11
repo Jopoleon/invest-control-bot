@@ -7,351 +7,7 @@
   <link rel="stylesheet" href="/admin/assets/css/pico.min.css">
   <link rel="stylesheet" href="/admin/assets/css/admin.css">
   <link rel="stylesheet" href="/admin/assets/css/gridjs-mermaid.min.css">
-  <style>
-    :root {
-      --pico-font-family: "Manrope", "Segoe UI", sans-serif;
-      --pico-font-size: 87.5%;
-      --pico-spacing: .8rem;
-      --pico-form-element-spacing-vertical: .45rem;
-      --pico-form-element-spacing-horizontal: .6rem;
-      --card-border: rgba(36, 56, 89, .08);
-      --card-shadow: 0 18px 48px rgba(24, 39, 75, .08);
-      --hero-bg: linear-gradient(135deg, #11243d, #1d3f63 48%, #d7e6f7 135%);
-      --panel-bg: rgba(255, 255, 255, .88);
-    }
-    body {
-      position: relative;
-      min-height: 100vh;
-      background: var(--admin-page-bg);
-      background-attachment: fixed;
-    }
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      z-index: 0;
-      pointer-events: none;
-      background-image: url("/admin/assets/img/admin-doodles-clean-bg.png");
-      background-size: 900px 900px;
-      background-position: top 1.5rem right 1.5rem;
-      background-repeat: repeat;
-      opacity: .36;
-    }
-    main.container { position: relative; z-index: 1; max-width: 1380px; }
-    .topbar { display: flex; justify-content: space-between; align-items: center; gap: .75rem; flex-wrap: wrap; margin: 1rem 0; }
-    .topbar nav ul { align-items: center; }
-    .langs a[aria-current="true"] { font-weight: 700; text-decoration: underline; }
-    article {
-      border: 1px solid var(--card-border);
-      border-radius: 1.15rem;
-      background: var(--panel-bg);
-      box-shadow: var(--card-shadow);
-      backdrop-filter: blur(10px);
-    }
-    .notice { padding: .75rem 1rem; border: 1px solid #ffd8a8; border-radius: .75rem; background: #fff4e6; color: #8f4b00; margin: .75rem 0 0; font-weight: 600; }
-    .hero {
-      padding: 1.2rem 1.3rem 1.35rem;
-      color: #f7fbff;
-      background: var(--hero-bg);
-      overflow: hidden;
-      position: relative;
-    }
-    .hero::after {
-      content: "";
-      position: absolute;
-      inset: auto -10% -35% auto;
-      width: 280px;
-      height: 280px;
-      border-radius: 50%;
-      background: rgba(255, 255, 255, .08);
-      filter: blur(2px);
-    }
-    .hero-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 1rem;
-      flex-wrap: wrap;
-      position: relative;
-      z-index: 1;
-    }
-    .back-link {
-      display: inline-flex;
-      align-items: center;
-      gap: .35rem;
-      padding: .45rem .75rem;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, .12);
-      color: #f7fbff;
-      text-decoration: none;
-      font-weight: 700;
-    }
-    .hero h1 {
-      margin: .65rem 0 .35rem;
-      font-size: clamp(1.7rem, 3vw, 2.35rem);
-      line-height: 1.05;
-      letter-spacing: -.03em;
-      color: #fff;
-      position: relative;
-      z-index: 1;
-    }
-    .hero-subtitle {
-      margin: 0;
-      max-width: 58rem;
-      color: rgba(247, 251, 255, .84);
-      position: relative;
-      z-index: 1;
-    }
-    .hero-tags,
-    .summary-grid,
-    .profile-grid {
-      display: grid;
-      gap: .9rem;
-    }
-    .hero-tags {
-      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-      margin-top: 1rem;
-      position: relative;
-      z-index: 1;
-    }
-    .hero-tag,
-    .summary-card,
-    .profile-card {
-      padding: .95rem 1rem;
-      border: 1px solid var(--card-border);
-      border-radius: 1rem;
-      background: rgba(255, 255, 255, .82);
-      color: #15314f;
-    }
-    .hero-tag small,
-    .summary-card small,
-    .profile-card small {
-      display: block;
-      margin-bottom: .35rem;
-      color: #5b6b7f;
-      text-transform: uppercase;
-      letter-spacing: .04em;
-      font-size: .72rem;
-      font-weight: 700;
-    }
-    .hero-tag strong,
-    .summary-card strong,
-    .profile-card strong,
-    .profile-card span {
-      word-break: break-word;
-    }
-    .summary-grid {
-      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-    }
-    .summary-card strong {
-      display: block;
-      font-size: 1.5rem;
-      line-height: 1;
-      color: #10243a;
-    }
-    .profile-grid {
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    }
-    .section-card {
-      padding: 1.15rem 1.2rem 1.25rem;
-    }
-    .section-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: .75rem;
-      flex-wrap: wrap;
-      margin-bottom: .85rem;
-    }
-    .section-head h3 {
-      margin: 0;
-      letter-spacing: -.02em;
-    }
-    .action-grid {
-      display: grid;
-      grid-template-columns: 1.4fr .9fr;
-      gap: 1rem;
-    }
-    .action-card {
-      padding: 1rem;
-      border: 1px solid #dbe6f1;
-      border-radius: .95rem;
-      background: rgba(255, 255, 255, .92);
-    }
-    .action-card h4 {
-      margin: 0 0 .75rem;
-    }
-    .action-card form {
-      margin: 0;
-    }
-    .action-card textarea {
-      min-height: 136px;
-      resize: vertical;
-    }
-    .action-note {
-      color: #5b6b7f;
-      font-size: .88rem;
-    }
-    .compose-tools {
-      display: flex;
-      flex-wrap: wrap;
-      gap: .65rem;
-      margin-top: .75rem;
-      align-items: center;
-    }
-    .compose-tools [role="button"],
-    .compose-tools button {
-      margin-bottom: 0;
-    }
-    .section-kicker {
-      display: inline-flex;
-      align-items: center;
-      padding: .35rem .7rem;
-      border-radius: 999px;
-      background: #edf4fb;
-      color: #294866;
-      font-size: .76rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: .05em;
-    }
-    .table-wrap { overflow: auto; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: .8rem; }
-    #paymentsSource, #subsSource, #eventsSource, #consentsSource, #recurringConsentsSource { display: none; }
-    .gridjs-wrapper {
-      border: 1px solid #dbe6f1;
-      border-radius: .95rem;
-      overflow: hidden;
-      background: rgba(255, 255, 255, .92);
-    }
-    #consentsGrid .gridjs-container,
-    #recurringConsentsGrid .gridjs-container,
-    #subsGrid .gridjs-container,
-    #paymentsGrid .gridjs-container,
-    #eventsGrid .gridjs-container { width: 100%; }
-    #consentsGrid table.gridjs-table,
-    #recurringConsentsGrid table.gridjs-table,
-    #subsGrid table.gridjs-table,
-    #paymentsGrid table.gridjs-table,
-    #eventsGrid table.gridjs-table {
-      width: 100%;
-      table-layout: auto;
-    }
-    #consentsGrid .gridjs-wrapper table th,
-    #consentsGrid .gridjs-wrapper table td,
-    #recurringConsentsGrid .gridjs-wrapper table th,
-    #recurringConsentsGrid .gridjs-wrapper table td,
-    #subsGrid .gridjs-wrapper table th,
-    #subsGrid .gridjs-wrapper table td,
-    #paymentsGrid .gridjs-wrapper table th,
-    #paymentsGrid .gridjs-wrapper table td,
-    #eventsGrid .gridjs-wrapper table th,
-    #eventsGrid .gridjs-wrapper table td {
-      white-space: normal;
-      vertical-align: top;
-      word-break: break-word;
-      overflow-wrap: anywhere;
-    }
-    #consentsGrid .gridjs-wrapper table td:nth-child(2),
-    #consentsGrid .gridjs-wrapper table td:nth-child(4),
-    #recurringConsentsGrid .gridjs-wrapper table td:nth-child(2),
-    #subsGrid .gridjs-wrapper table td:nth-child(1),
-    #subsGrid .gridjs-wrapper table td:nth-child(2),
-    #subsGrid .gridjs-wrapper table td:nth-child(3),
-    #subsGrid .gridjs-wrapper table td:nth-child(5),
-    #subsGrid .gridjs-wrapper table td:nth-child(6),
-    #subsGrid .gridjs-wrapper table td:nth-child(7),
-    #subsGrid .gridjs-wrapper table td:nth-child(8),
-    #subsGrid .gridjs-wrapper table td:nth-child(9),
-    #paymentsGrid .gridjs-wrapper table td:nth-child(1),
-    #paymentsGrid .gridjs-wrapper table td:nth-child(3),
-    #paymentsGrid .gridjs-wrapper table td:nth-child(4),
-    #paymentsGrid .gridjs-wrapper table td:nth-child(6),
-    #paymentsGrid .gridjs-wrapper table td:nth-child(7),
-    #paymentsGrid .gridjs-wrapper table td:nth-child(8),
-    #paymentsGrid .gridjs-wrapper table td:nth-child(9),
-    #eventsGrid .gridjs-wrapper table td:nth-child(1) {
-      white-space: nowrap;
-    }
-    #consentsGrid .gridjs-wrapper table td:nth-child(1),
-    #recurringConsentsGrid .gridjs-wrapper table td:nth-child(1),
-    #subsGrid .gridjs-wrapper table td:nth-child(4),
-    #paymentsGrid .gridjs-wrapper table td:nth-child(5),
-    #eventsGrid .gridjs-wrapper table td:nth-child(2),
-    #eventsGrid .gridjs-wrapper table td:nth-child(3),
-    #eventsGrid .gridjs-wrapper table td:nth-child(4) {
-      min-width: 12rem;
-    }
-    #subsGrid .gridjs-wrapper table td:nth-child(10) {
-      min-width: 13rem;
-    }
-    .gridjs-head {
-      padding: .4rem .2rem .8rem;
-    }
-    .gridjs-search-input {
-      border-radius: .8rem;
-    }
-    .gridjs-pagination {
-      padding: .7rem .2rem 0;
-    }
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: .35rem;
-      padding: .18rem .48rem;
-      border-radius: .7rem;
-      font-size: .7rem;
-      font-weight: 700;
-      line-height: 1;
-      letter-spacing: .04em;
-      text-transform: uppercase;
-      border: 0;
-    }
-    .badge::before {
-      content: "";
-      width: .42rem;
-      height: .42rem;
-      border-radius: 999px;
-      background: currentColor;
-      opacity: .9;
-    }
-    .badge.is-success { background: #edf8f2; color: #17663a; }
-    .badge.is-warning { background: #fff7e7; color: #8a5a00; }
-    .badge.is-danger { background: #fff0f0; color: #b42318; }
-    .badge.is-muted { background: #f1f4f8; color: #5f7083; }
-    .badge.is-accent { background: #eef4ff; color: #1b57b7; }
-    .gridjs-footer {
-      background: #f7fafc;
-      color: #405266;
-    }
-    .gridjs-summary {
-      color: #405266;
-    }
-    .gridjs-pages button {
-      color: #24354d;
-      background: #fff;
-      border-color: #d6e0ea;
-    }
-    .gridjs-pages button:hover {
-      background: #edf4fb;
-    }
-    .gridjs-pages button.gridjs-currentPage {
-      color: #0f3f88;
-      background: #e7f0ff;
-      border-color: #b9cffb;
-    }
-    @media (max-width: 720px) {
-      .hero {
-        padding: 1rem;
-      }
-      .section-card {
-        padding: .95rem;
-      }
-      .action-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-  </style>
+  <link rel="stylesheet" href="/admin/assets/css/user-detail.css">
 </head>
 <body>
 <main class="container">
@@ -368,24 +24,20 @@
     <p class="hero-subtitle">
       Операционная карточка пользователя: профиль, подписки, платежи и история действий в одном месте.
     </p>
-    <div class="hero-tags">
-      <div class="hero-tag">
+    <div class="hero-key-strip">
+      <div class="hero-key-item">
         <small>{{index .I18N "users.table.user_id"}}</small>
         <strong class="mono">{{.User.UserID}}</strong>
       </div>
-      <div class="hero-tag">
+      <div class="hero-key-item is-wide">
         <small>{{index .I18N "users.detail.primary_account"}}</small>
         <strong class="mono">{{.User.PrimaryAccount}}</strong>
       </div>
-      <div class="hero-tag">
-        <small>{{index .I18N "users.detail.linked_accounts"}}</small>
-        <strong>{{len .User.LinkedAccounts}}</strong>
-      </div>
-      <div class="hero-tag">
+      <div class="hero-key-item">
         <small>{{index .I18N "users.table.autopay"}}</small>
         <strong><span class="badge {{.User.AutoPayClass}}">{{.User.AutoPay}}</span></strong>
       </div>
-      <div class="hero-tag">
+      <div class="hero-key-item">
         <small>{{index .I18N "users.table.updated"}}</small>
         <strong class="mono">{{.User.UpdatedAt}}</strong>
       </div>
@@ -393,53 +45,88 @@
     {{if .Notice}}<div class="notice">{{.Notice}}</div>{{end}}
   </article>
 
-  <article class="section-card">
+  <article class="section-card contact-summary-card">
+    <div class="section-head">
+      <h3>{{index .I18N "common.contacts"}}</h3>
+      <span class="section-kicker">{{index .I18N "common.contacts"}}</span>
+    </div>
+    <div class="contact-summary-grid">
+      <div class="contact-summary-item">
+        <small>{{index .I18N "users.table.full_name"}}</small>
+        <span>{{.User.FullName}}</span>
+      </div>
+      <div class="contact-summary-item">
+        <small>{{index .I18N "users.table.phone"}}</small>
+        <span>{{.User.Phone}}</span>
+      </div>
+      <div class="contact-summary-item">
+        <small>{{index .I18N "users.table.email"}}</small>
+        <span>{{.User.Email}}</span>
+      </div>
+      <div class="contact-summary-item">
+        <small>{{index .I18N "users.detail.linked_accounts"}}</small>
+        <span>
+          {{if .User.LinkedAccounts}}
+            {{range .User.LinkedAccounts}}<span class="mono account-line">{{.Display}}</span>{{end}}
+          {{else}}—{{end}}
+        </span>
+      </div>
+      <div class="contact-summary-item">
+        <small>{{index .I18N "users.actions.message"}}</small>
+        <span>{{if .User.CanDirectMessage}}<span class="mono">{{.User.DirectMessageTarget}}</span>{{else}}—{{end}}</span>
+      </div>
+      {{if .AutopayCancelURL}}
+      <div class="contact-summary-item">
+        <small>{{index .I18N "users.actions.autopay_cancel_page"}}</small>
+        <span><a href="{{.AutopayCancelURL}}" target="_blank" rel="noreferrer">{{index .I18N "common.open"}}</a></span>
+      </div>
+      {{end}}
+    </div>
+  </article>
+
+  <article class="section-card user-metrics-card">
     <div class="section-head">
       <h3>{{index .I18N "users.detail.profile"}}</h3>
       <span class="section-kicker">{{index .I18N "users.detail.profile"}}</span>
     </div>
-    <div class="summary-grid">
-      <div class="summary-card">
+    <div class="profile-grid is-compact user-metrics-grid">
+      <div class="profile-card">
         <small>{{index .I18N "users.detail.subscriptions_total"}}</small>
-        <strong>{{len .Subscriptions}}</strong>
+        <span>{{len .Subscriptions}}</span>
       </div>
-      <div class="summary-card">
+      <div class="profile-card">
         <small>{{index .I18N "users.detail.current_periods"}}</small>
-        <strong>{{.CurrentPeriods}}</strong>
+        <span>{{.CurrentPeriods}}</span>
       </div>
-      <div class="summary-card">
+      <div class="profile-card">
         <small>{{index .I18N "users.detail.next_periods"}}</small>
-        <strong>{{.NextPeriods}}</strong>
+        <span>{{.NextPeriods}}</span>
       </div>
-      <div class="summary-card">
+      <div class="profile-card">
         <small>{{index .I18N "users.detail.payments"}}</small>
-        <strong>{{len .Payments}}</strong>
+        <span>{{len .Payments}}</span>
       </div>
-      <div class="summary-card">
+      <div class="profile-card">
         <small>{{index .I18N "users.detail.events"}}</small>
-        <strong>{{len .Events}}</strong>
+        <span>{{len .Events}}</span>
       </div>
-      <div class="summary-card">
+      <div class="profile-card">
         <small>{{index .I18N "users.detail.consents"}}</small>
-        <strong>{{len .Consents}}</strong>
+        <span>{{len .Consents}}</span>
       </div>
-      <div class="summary-card">
+      <div class="profile-card">
         <small>{{index .I18N "users.detail.recurring_consents"}}</small>
-        <strong>{{len .RecurringConsents}}</strong>
-      </div>
-      <div class="summary-card">
-        <small>{{index .I18N "users.recurring.summary_status"}}</small>
-        <strong><span class="badge {{.RecurringSummary.StatusClass}}">{{.RecurringSummary.StatusLabel}}</span></strong>
+        <span>{{len .RecurringConsents}}</span>
       </div>
     </div>
   </article>
 
-  <article class="section-card">
+  <article class="section-card autopay-summary-card">
     <div class="section-head">
       <h3>{{index .I18N "users.recurring.summary_title"}}</h3>
       <span class="section-kicker">{{index .I18N "users.recurring.summary_title"}}</span>
     </div>
-    <div class="profile-grid">
+    <div class="profile-grid is-compact autopay-summary-grid">
       <div class="profile-card">
         <small>{{index .I18N "users.recurring.summary_status"}}</small>
         <span><span class="badge {{.RecurringSummary.StatusClass}}">{{.RecurringSummary.StatusLabel}}</span></span>
@@ -509,7 +196,7 @@
         <h4>{{index .I18N "users.actions.paylink"}}</h4>
         <span class="help-tip" tabindex="0" data-tip="{{index .I18N "users.actions.paylink_hint"}}">?</span>
         {{if .AutopayCancelURL}}
-        <div style="margin-top: 1rem; display: grid; gap: 0.75rem;">
+        <div class="autopay-action-stack">
           <a href="{{.AutopayCancelURL}}" target="_blank" rel="noreferrer" role="button" class="secondary">{{index .I18N "users.actions.autopay_cancel_page"}}</a>
           <small>{{index .I18N "users.actions.autopay_cancel_hint"}} {{index .I18N "users.actions.autopay_cancel_transport"}} <span class="mono">{{index .I18N "common.messenger.telegram"}}</span>.</small>
         </div>
@@ -584,57 +271,70 @@
 
   <article class="section-card">
     <div class="section-head">
-      <h3>{{index .I18N "users.detail.profile"}}</h3>
-      <span class="section-kicker">{{index .I18N "common.contacts"}}</span>
+      <div>
+        <h3>{{index .I18N "users.chat_access.title"}} ({{len .ChatAccesses}})</h3>
+        <small class="action-note">{{index .I18N "users.chat_access.subtitle"}}</small>
+      </div>
+      <span class="section-kicker">{{index .I18N "common.access"}}</span>
     </div>
-    <div class="profile-grid">
-      <div class="profile-card">
-        <small>{{index .I18N "users.table.user_id"}}</small>
-        <strong class="mono">{{.User.UserID}}</strong>
-      </div>
-      <div class="profile-card">
-        <small>{{index .I18N "users.detail.primary_account"}}</small>
-        <span class="mono">{{.User.PrimaryAccount}}</span>
-      </div>
-      <div class="profile-card">
-        <small>{{index .I18N "users.detail.linked_accounts"}}</small>
-        <span>
-          {{if .User.LinkedAccounts}}
-            {{range .User.LinkedAccounts}}<div class="mono">{{.Display}}</div>{{end}}
-          {{else}}—{{end}}
-        </span>
-      </div>
-      <div class="profile-card">
-        <small>{{index .I18N "users.actions.message"}}</small>
-        <span>{{if .User.CanDirectMessage}}<span class="mono">{{.User.DirectMessageTarget}}</span>{{else}}—{{end}}</span>
-      </div>
-      {{if .AutopayCancelURL}}
-      <div class="profile-card">
-        <small>{{index .I18N "users.actions.autopay_cancel_page"}}</small>
-        <span><a href="{{.AutopayCancelURL}}" target="_blank" rel="noreferrer">{{index .I18N "common.open"}}</a></span>
-      </div>
+    {{if .ChatAccesses}}
+    <div class="chat-access-grid">
+      {{range .ChatAccesses}}
+      <section class="chat-access-card">
+        <header>
+          <div>
+            <h4>{{.Connector}}</h4>
+            <div class="chat-access-badges">
+              <span class="badge is-accent">{{.MessengerLabel}}</span>
+              <span class="badge {{.EntitlementClass}}">{{.EntitlementLabel}}</span>
+              <span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>
+            </div>
+          </div>
+        </header>
+        <dl class="chat-access-meta">
+          <dt>{{index $.I18N "users.chat_access.subscription"}}</dt>
+          <dd class="mono">{{.SubscriptionID}}</dd>
+          <dt>{{index $.I18N "users.chat_access.chat"}}</dt>
+          <dd class="mono">{{.ChatRef}}</dd>
+          <dt>{{index $.I18N "users.chat_access.user"}}</dt>
+          <dd class="mono">{{.MessengerUserID}}</dd>
+          <dt>{{index $.I18N "users.chat_access.checked_at"}}</dt>
+          <dd class="mono">{{.CheckedAt}}</dd>
+        </dl>
+        {{if .LastError}}<div class="chat-access-error">{{.LastError}}</div>{{end}}
+        <div class="chat-access-actions">
+          {{if .CanRefresh}}
+          <form method="POST" action="{{.RefreshURL}}">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <input type="hidden" name="user_id" value="{{$.User.UserID}}">
+            <input type="hidden" name="subscription_id" value="{{.SubscriptionID}}">
+            <input type="hidden" name="messenger_kind" value="{{.MessengerKind}}">
+            <button type="submit" class="action-btn is-edit">{{index $.I18N "users.chat_access.refresh"}}</button>
+          </form>
+          {{end}}
+          {{if .CanSendAccessLink}}
+          <form method="POST" action="{{.AccessLinkURL}}">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <input type="hidden" name="user_id" value="{{$.User.UserID}}">
+            <input type="hidden" name="subscription_id" value="{{.SubscriptionID}}">
+            <button type="submit" class="action-btn is-send">{{index $.I18N "users.actions.accesslink_send"}}</button>
+          </form>
+          {{end}}
+          {{if .CanUnbanAccessLink}}
+          <form method="POST" action="{{.UnbanAccessLinkURL}}" onsubmit="return confirm('{{index $.I18N "users.actions.telegram_unban_confirm"}}');">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <input type="hidden" name="user_id" value="{{$.User.UserID}}">
+            <input type="hidden" name="subscription_id" value="{{.SubscriptionID}}">
+            <button type="submit" class="action-btn is-delete">{{index $.I18N "users.actions.telegram_unban_send"}}</button>
+          </form>
+          {{end}}
+        </div>
+      </section>
       {{end}}
-      <div class="profile-card">
-        <small>{{index .I18N "users.table.full_name"}}</small>
-        <span>{{.User.FullName}}</span>
-      </div>
-      <div class="profile-card">
-        <small>{{index .I18N "users.table.phone"}}</small>
-        <span>{{.User.Phone}}</span>
-      </div>
-      <div class="profile-card">
-        <small>{{index .I18N "users.table.email"}}</small>
-        <span>{{.User.Email}}</span>
-      </div>
-      <div class="profile-card">
-        <small>{{index .I18N "users.table.autopay"}}</small>
-        <span>{{.User.AutoPay}}</span>
-      </div>
-      <div class="profile-card">
-        <small>{{index .I18N "users.table.updated"}}</small>
-        <span class="mono">{{.User.UpdatedAt}}</span>
-      </div>
     </div>
+    {{else}}
+    <small>{{index .I18N "users.chat_access.empty"}}</small>
+    {{end}}
   </article>
 
   <article class="section-card">
@@ -642,76 +342,106 @@
       <h3>{{index .I18N "users.detail.subscriptions"}} ({{len .Subscriptions}})</h3>
       <span class="section-kicker">{{index .I18N "common.access"}}</span>
     </div>
+    {{if .Subscriptions}}
+    <div class="subscription-operational-actions" aria-label="{{index .I18N "users.revoke.action"}}">
+      {{range .Subscriptions}}
+      {{if or .CanSendPayLink .CanSendAccessLink .CanUnbanAccessLink .CanTriggerRebill .CanRevoke}}
+      <section class="subscription-action-card">
+        <div class="subscription-action-title">
+          <strong>{{.Connector}}</strong>
+          <div class="subscription-action-badges">
+            <span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>
+            <span class="badge {{.AccessClass}}">{{.AccessLabel}}</span>
+            <span class="badge {{.AutoPayClass}}">{{.AutoPayLabel}}</span>
+          </div>
+          <small>ID {{.ID}} · {{index $.I18N "billing.table.subscription.payment"}} {{.PaymentID}}</small>
+        </div>
+        <details class="subscription-action-menu">
+          <summary aria-label="{{index $.I18N "users.revoke.action"}}">⋯</summary>
+          <div class="subscription-action-dropdown">
+            {{if .CanSendAccessLink}}
+            <form method="POST" action="{{.AccessLinkURL}}">
+              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+              <input type="hidden" name="user_id" value="{{$.User.UserID}}">
+              <input type="hidden" name="subscription_id" value="{{.ID}}">
+              <button type="submit" class="action-btn is-edit">{{index $.I18N "users.actions.accesslink_send"}}</button>
+            </form>
+            {{end}}
+            {{if .CanUnbanAccessLink}}
+            <form method="POST" action="{{.UnbanAccessLinkURL}}" onsubmit="return confirm('{{index $.I18N "users.actions.telegram_unban_confirm"}}');">
+              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+              <input type="hidden" name="user_id" value="{{$.User.UserID}}">
+              <input type="hidden" name="subscription_id" value="{{.ID}}">
+              <button type="submit" class="action-btn is-send">{{index $.I18N "users.actions.telegram_unban_send"}}</button>
+            </form>
+            {{end}}
+            {{if .CanSendPayLink}}
+            <form method="POST" action="{{.PaymentLinkURL}}">
+              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+              <input type="hidden" name="user_id" value="{{$.User.UserID}}">
+              <input type="hidden" name="subscription_id" value="{{.ID}}">
+              <button type="submit" class="action-btn is-send">{{index $.I18N "users.actions.paylink_send"}}</button>
+            </form>
+            {{end}}
+            {{if .CanTriggerRebill}}
+            <form method="POST" action="{{.RebillURL}}">
+              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+              <input type="hidden" name="user_id" value="{{$.User.UserID}}">
+              <input type="hidden" name="subscription_id" value="{{.ID}}">
+              <button type="submit" class="action-btn is-edit">{{index $.I18N "users.actions.rebill_send"}}</button>
+            </form>
+            {{end}}
+            {{if .CanRevoke}}
+            <form method="POST" action="{{.RevokeURL}}" onsubmit="return confirm('{{index $.I18N "users.revoke.confirm"}}');">
+              <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+              <input type="hidden" name="user_id" value="{{$.User.UserID}}">
+              <input type="hidden" name="subscription_id" value="{{.ID}}">
+              <button type="submit" class="action-btn is-delete">{{index $.I18N "users.revoke.button"}}</button>
+            </form>
+            {{end}}
+          </div>
+        </details>
+      </section>
+      {{end}}
+      {{end}}
+    </div>
+    {{end}}
     <div class="table-wrap">
       <div id="subsGrid"></div>
       <table id="subsSource">
         <thead>
           <tr>
             <th>{{index .I18N "billing.table.subscription.id"}}</th>
-            <th>{{index .I18N "billing.table.subscription.status"}}</th>
-            <th>{{index .I18N "billing.table.subscription.autopay"}}</th>
             <th>{{index .I18N "billing.table.subscription.connector"}}</th>
-            <th>{{index .I18N "billing.table.subscription.payment"}}</th>
             <th>{{index .I18N "billing.table.subscription.access"}}</th>
-            <th>{{index .I18N "billing.table.subscription.starts"}}</th>
-            <th>{{index .I18N "billing.table.subscription.ends"}}</th>
-            <th>{{index .I18N "billing.table.subscription.created"}}</th>
-            <th>{{index .I18N "users.revoke.action"}}</th>
+            <th>{{index .I18N "billing.table.subscription.starts"}} / {{index .I18N "billing.table.subscription.ends"}}</th>
           </tr>
         </thead>
         <tbody>
         {{range .Subscriptions}}
           <tr>
-            <td class="mono">{{.ID}}</td>
-            <td><span class="badge {{.StatusClass}}">{{.StatusLabel}}</span></td>
-            <td><span class="badge {{.AutoPayClass}}">{{.AutoPayLabel}}</span></td>
-            <td>{{.Connector}}</td>
-            <td class="mono">{{.PaymentID}}</td>
+            <td class="mono">
+              <div class="subscription-meta-stack">
+                <strong>{{.ID}}</strong>
+                <span>{{index $.I18N "billing.table.subscription.payment"}} {{.PaymentID}}</span>
+              </div>
+            </td>
+            <td>
+              <div class="subscription-meta-stack">
+                <strong>{{.Connector}}</strong>
+                <div class="subscription-meta-row">
+                  <span class="badge {{.StatusClass}}">{{.StatusLabel}}</span>
+                  <span class="badge {{.AutoPayClass}}">{{.AutoPayLabel}}</span>
+                </div>
+              </div>
+            </td>
             <td><span class="badge {{.AccessClass}}">{{.AccessLabel}}</span></td>
-            <td class="mono">{{.StartsAt}}</td>
-            <td class="mono">{{.EndsAt}}</td>
-            <td class="mono">{{.CreatedAt}}</td>
-            <td class="row-actions">
-              {{if .CanSendPayLink}}
-              <form method="POST" action="{{.PaymentLinkURL}}">
-                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                <input type="hidden" name="user_id" value="{{$.User.UserID}}">
-                <input type="hidden" name="subscription_id" value="{{.ID}}">
-                <button type="submit" class="action-btn is-send">{{index $.I18N "users.actions.paylink_send"}}</button>
-              </form>
-              {{end}}
-              {{if .CanSendAccessLink}}
-              <form method="POST" action="{{.AccessLinkURL}}">
-                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                <input type="hidden" name="user_id" value="{{$.User.UserID}}">
-                <input type="hidden" name="subscription_id" value="{{.ID}}">
-                <button type="submit" class="action-btn is-edit">{{index $.I18N "users.actions.accesslink_send"}}</button>
-              </form>
-              {{end}}
-              {{if .CanUnbanAccessLink}}
-              <form method="POST" action="{{.UnbanAccessLinkURL}}" onsubmit="return confirm('{{index $.I18N "users.actions.telegram_unban_confirm"}}');">
-                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                <input type="hidden" name="user_id" value="{{$.User.UserID}}">
-                <input type="hidden" name="subscription_id" value="{{.ID}}">
-                <button type="submit" class="action-btn is-send">{{index $.I18N "users.actions.telegram_unban_send"}}</button>
-              </form>
-              {{end}}
-              {{if .CanTriggerRebill}}
-              <form method="POST" action="{{.RebillURL}}">
-                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                <input type="hidden" name="user_id" value="{{$.User.UserID}}">
-                <input type="hidden" name="subscription_id" value="{{.ID}}">
-                <button type="submit" class="action-btn is-edit">{{index $.I18N "users.actions.rebill_send"}}</button>
-              </form>
-              {{end}}
-              {{if .CanRevoke}}
-              <form method="POST" action="{{.RevokeURL}}" onsubmit="return confirm('{{index $.I18N "users.revoke.confirm"}}');">
-                <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
-                <input type="hidden" name="user_id" value="{{$.User.UserID}}">
-                <input type="hidden" name="subscription_id" value="{{.ID}}">
-                <button type="submit" class="action-btn is-delete">{{index $.I18N "users.revoke.button"}}</button>
-              </form>
-              {{end}}
+            <td>
+              <div class="subscription-date-stack">
+                <span><small>{{index $.I18N "billing.table.subscription.starts"}}</small><span class="mono">{{.StartsAt}}</span></span>
+                <span><small>{{index $.I18N "billing.table.subscription.ends"}}</small><span class="mono">{{.EndsAt}}</span></span>
+                <span><small>{{index $.I18N "billing.table.subscription.created"}}</small><span class="mono">{{.CreatedAt}}</span></span>
+              </div>
             </td>
           </tr>
         {{end}}

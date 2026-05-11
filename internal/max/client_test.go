@@ -346,3 +346,40 @@ func TestClientGetMyChatMemberCallsMembershipEndpoint(t *testing.T) {
 		t.Fatalf("member = %+v", member)
 	}
 }
+
+func TestClientGetChatMembersFiltersByUserIDsAndKeepsRawPayload(t *testing.T) {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %s, want GET", r.Method)
+		}
+		if r.URL.Path != "/chats/-72598909498032/members" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		if got := r.URL.Query()["user_ids"]; len(got) != 2 || got[0] != "193465776" || got[1] != "193465777" {
+			t.Fatalf("user_ids = %v", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"members":[{"user_id":193465776,"first_name":"Fedor","username":"fedor","is_admin":true,"permissions":["add_remove_members"],"join_time":1770000000}],"marker":null}`))
+	}))
+	defer server.Close()
+
+	client := NewClient("test-token", server.Client())
+	client.SetBaseURL(server.URL)
+
+	page, err := client.GetChatMembers(context.Background(), -72598909498032, []int64{193465776, 193465777})
+	if err != nil {
+		t.Fatalf("GetChatMembers: %v", err)
+	}
+	if len(page.Members) != 1 {
+		t.Fatalf("members=%d want 1", len(page.Members))
+	}
+	member := page.Members[0]
+	if member.UserID != 193465776 || !member.IsAdmin || member.FirstName != "Fedor" || member.JoinTime != 1770000000 {
+		t.Fatalf("member=%+v", member)
+	}
+	if len(member.Raw) == 0 || len(page.Raw) == 0 {
+		t.Fatalf("raw payloads should be preserved: page=%q member=%q", string(page.Raw), string(member.Raw))
+	}
+}

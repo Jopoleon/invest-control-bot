@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Jopoleon/invest-control-bot/internal/chatstatus"
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
 	"github.com/Jopoleon/invest-control-bot/internal/messenger"
 	"github.com/Jopoleon/invest-control-bot/internal/recurringlink"
@@ -26,6 +27,7 @@ type Handler struct {
 	encryptionKey   string
 	tg              *telegram.Client
 	maxSender       messenger.Sender
+	chatStatus      *chatstatus.Service
 	renderer        *renderer
 	retriggerRebill func(ctx context.Context, subscriptionID int64) (RebillResult, error)
 
@@ -57,6 +59,12 @@ func NewHandler(st store.Store, adminToken, botUsername, maxBotUsername, publicB
 
 		loginRateLimiter: newLoginRateLimiter(),
 	}
+}
+
+// SetChatStatusService wires optional transport-specific membership probes into
+// the admin panel without making every admin test construct Telegram/MAX clients.
+func (h *Handler) SetChatStatusService(service chatstatus.Service) {
+	h.chatStatus = &service
 }
 
 func (h *Handler) buildAutopayCancelURL(telegramID int64) string {
@@ -151,6 +159,7 @@ func (h *Handler) Register(router chi.Router) {
 		r.HandleFunc("/users/send-payment-link", h.sendUserPaymentLink)
 		r.HandleFunc("/users/send-access-link", h.sendUserAccessLink)
 		r.HandleFunc("/users/unban-and-send-access-link", h.unbanUserAndSendAccessLink)
+		r.HandleFunc("/users/refresh-chat-status", h.refreshUserChatStatus)
 		r.HandleFunc("/subscriptions/revoke", h.revokeSubscription)
 		r.HandleFunc("/subscriptions/rebill", h.triggerSubscriptionRebill)
 		r.HandleFunc("/billing", h.billingPage)

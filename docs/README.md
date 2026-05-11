@@ -1,6 +1,31 @@
 # Документация Проекта
 
-Документация разложена по назначению. Актуальное состояние проекта сначала смотреть в [README.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/README.md) и [AGENTS.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/AGENTS.md).
+Документация разложена по назначению. Для обычного входа в проект сначала
+смотреть [README.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/README.md).
+Для Codex/AI-сессий главным контрактом остается
+[AGENTS.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/AGENTS.md).
+
+## Быстрый Порядок Чтения Для AI/Codex
+
+1. [context/project-context.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/context/project-context.md)
+2. [context/progress.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/context/progress.md)
+3. [context/session-log.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/context/session-log.md)
+4. Latest session log under [context/session-log/](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/context/session-log)
+5. [planning/implementation-plan.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/planning/implementation-plan.md)
+6. Relevant `OVERVIEW.md` for the touched code zone
+7. Payment/recurring/messenger/ops docs relevant to the task
+
+## Context / Project Memory
+
+- [context/project-context.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/context/project-context.md) - durable facts: what the system is, architecture, invariants, source-of-truth rules.
+- [context/progress.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/context/progress.md) - current checkpoint, active risks, next concrete tasks.
+- [context/session-log.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/context/session-log.md) - chronological session-log index and rules.
+- [context/session-log/session-log-01-current.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/context/session-log/session-log-01-current.md) - current session chronology file.
+
+## Planning
+
+- [planning/implementation-plan.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/planning/implementation-plan.md) - current structured planning entrypoint.
+- [../IMPLEMENTATION_PLAN.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/IMPLEMENTATION_PLAN.md) - historical/root implementation roadmap and older decisions.
 
 ## Product / Payments
 
@@ -33,6 +58,28 @@
 ## Backlog
 
 - [backlog/todo.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/backlog/todo.md) - актуальный рабочий TODO.
+
+## Zone Overviews
+
+Короткие `OVERVIEW.md` помогают быстро понять ownership и invariants зоны кода:
+
+- [../internal/app/OVERVIEW.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/internal/app/OVERVIEW.md)
+- [../internal/bot/OVERVIEW.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/internal/bot/OVERVIEW.md)
+- [../internal/payment/OVERVIEW.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/internal/payment/OVERVIEW.md)
+- [../internal/store/OVERVIEW.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/internal/store/OVERVIEW.md)
+
+## Templates
+
+- [templates/ai-project-memory-prompt.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/templates/ai-project-memory-prompt.md) - reusable prompt for setting up this style of AI/Codex project memory in another repository.
+
+## Что Обновлять После Работы
+
+- Meaningful code/product changes: append the latest session log.
+- Current status or next tasks changed: update `docs/context/progress.md`.
+- Durable project fact changed: update `docs/context/project-context.md`.
+- Recurring/payment behavior changed: update `docs/payments/*`.
+- Messenger identity/transport boundaries changed: update architecture docs and context.
+- Migration behavior changed: update `docs/ops/migrations.md` and relevant context.
 
 ## Archive
 

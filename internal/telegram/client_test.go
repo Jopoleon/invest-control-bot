@@ -2,6 +2,9 @@ package telegram
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -113,4 +116,80 @@ func TestNewClientWithOptions_DisabledModeIgnoresRelaySettings(t *testing.T) {
 	if client == nil || client.Enabled() {
 		t.Fatalf("disabled client expected")
 	}
+}
+
+func TestSendMessageIncludesChatAndRelayErrorContext(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "/sendMessage") {
+			t.Fatalf("path=%q want sendMessage", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"ok":false,"error_code":502,"description":"Telegram relay upstream timeout after 8000ms","error":"upstream_timeout","timeout_ms":8000}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClientWithOptions("123:test", "", ClientOptions{ServerURL: server.URL})
+	if err != nil {
+		t.Fatalf("NewClientWithOptions: %v", err)
+	}
+
+	err = client.SendMessage(context.Background(), 5606385118, "hello", nil)
+	if err == nil {
+		t.Fatal("expected send error")
+	}
+	text := err.Error()
+	if !strings.Contains(text, "telegram sendMessage chat_id=5606385118") {
+		t.Fatalf("error lacks chat context: %q", text)
+	}
+	if !strings.Contains(text, "Telegram relay upstream timeout") {
+		t.Fatalf("error lacks relay root cause: %q", text)
+	}
+}
+
+func TestClientGetChatMemberReturnsStatusPermissionsAndRawPayload(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "/getChatMember") {
+			t.Fatalf("path=%q want getChatMember", r.URL.Path)
+		}
+		if err := r.ParseMultipartForm(1024 * 1024); err != nil {
+			t.Fatalf("ParseMultipartForm: %v", err)
+		}
+		if got := r.FormValue("chat_id"); got != "-1003222018503" {
+			t.Fatalf("chat_id=%q", got)
+		}
+		if got := r.FormValue("user_id"); got != "5228612359" {
+			t.Fatalf("user_id=%q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"result":{"status":"administrator","user":{"id":5228612359,"is_bot":false,"username":"vva8669"},"can_manage_chat":true,"can_invite_users":true,"can_restrict_members":true,"can_delete_messages":false,"can_manage_video_chats":false,"can_promote_members":false,"can_change_info":false,"is_anonymous":false}}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClientWithOptions("123:test", "", ClientOptions{ServerURL: server.URL})
+	if err != nil {
+		t.Fatalf("NewClientWithOptions: %v", err)
+	}
+	member, err := client.GetChatMember(context.Background(), "-1003222018503", 5228612359)
+	if err != nil {
+		t.Fatalf("GetChatMember: %v", err)
+	}
+	if member.Status != "administrator" || member.UserID != 5228612359 || member.Username != "vva8669" {
+		t.Fatalf("member=%+v", member)
+	}
+	if !containsString(member.Permissions, "can_invite_users") || !containsString(member.Permissions, "can_restrict_members") {
+		t.Fatalf("permissions=%v", member.Permissions)
+	}
+	if len(member.Raw) == 0 {
+		t.Fatalf("raw payload should be preserved")
+	}
+}
+
+func containsString(items []string, needle string) bool {
+	for _, item := range items {
+		if item == needle {
+			return true
+		}
+	}
+	return false
 }

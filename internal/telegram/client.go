@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -27,6 +28,17 @@ type ChatInfo struct {
 	Username string
 	Title    string
 	Type     string
+}
+
+// ChatMemberInfo is the normalized subset of Telegram ChatMember we need for
+// admin diagnostics while keeping the raw provider payload for investigations.
+type ChatMemberInfo struct {
+	Status      string
+	UserID      int64
+	Username    string
+	IsBot       bool
+	Permissions []string
+	Raw         []byte
 }
 
 // Client wraps go-telegram/bot and provides minimal operations used by business logic.
@@ -160,6 +172,111 @@ func (c *Client) ResolveChat(ctx context.Context, chatRef string) (ChatInfo, err
 	}, nil
 }
 
+// GetChatMember returns Telegram's current membership state for one user in one
+// chat. The method is reliable for arbitrary users only when the bot is an
+// administrator of the target chat, which matches our paid-access requirement.
+func (c *Client) GetChatMember(ctx context.Context, chatRef string, userID int64) (ChatMemberInfo, error) {
+	if !c.enabled {
+		slog.Debug("telegram client disabled, skip getChatMember", "chat_ref", chatRef, "user_id", userID)
+		return ChatMemberInfo{}, nil
+	}
+	ref := strings.TrimSpace(chatRef)
+	if ref == "" {
+		return ChatMemberInfo{}, fmt.Errorf("getChatMember requires chat_ref")
+	}
+	if userID <= 0 {
+		return ChatMemberInfo{}, fmt.Errorf("getChatMember requires user_id")
+	}
+	member, err := c.bot.GetChatMember(ctx, &tgbot.GetChatMemberParams{ChatID: ref, UserID: userID})
+	if err != nil {
+		return ChatMemberInfo{}, err
+	}
+	raw, _ := json.Marshal(member)
+	return telegramChatMemberInfo(member, raw), nil
+}
+
+func telegramChatMemberInfo(member *models.ChatMember, raw []byte) ChatMemberInfo {
+	if member == nil {
+		return ChatMemberInfo{Raw: append([]byte(nil), raw...)}
+	}
+	info := ChatMemberInfo{
+		Status: string(member.Type),
+		Raw:    append([]byte(nil), raw...),
+	}
+	switch {
+	case member.Owner != nil && member.Owner.User != nil:
+		info.UserID = member.Owner.User.ID
+		info.Username = member.Owner.User.Username
+		info.IsBot = member.Owner.User.IsBot
+		info.Permissions = []string{"owner"}
+	case member.Administrator != nil:
+		info.UserID = member.Administrator.User.ID
+		info.Username = member.Administrator.User.Username
+		info.IsBot = member.Administrator.User.IsBot
+		info.Permissions = telegramAdminPermissions(*member.Administrator)
+	case member.Member != nil && member.Member.User != nil:
+		info.UserID = member.Member.User.ID
+		info.Username = member.Member.User.Username
+		info.IsBot = member.Member.User.IsBot
+	case member.Restricted != nil && member.Restricted.User != nil:
+		info.UserID = member.Restricted.User.ID
+		info.Username = member.Restricted.User.Username
+		info.IsBot = member.Restricted.User.IsBot
+		info.Permissions = telegramRestrictedPermissions(*member.Restricted)
+	case member.Left != nil && member.Left.User != nil:
+		info.UserID = member.Left.User.ID
+		info.Username = member.Left.User.Username
+		info.IsBot = member.Left.User.IsBot
+	case member.Banned != nil && member.Banned.User != nil:
+		info.UserID = member.Banned.User.ID
+		info.Username = member.Banned.User.Username
+		info.IsBot = member.Banned.User.IsBot
+	}
+	return info
+}
+
+func telegramAdminPermissions(member models.ChatMemberAdministrator) []string {
+	perms := make([]string, 0, 12)
+	add := func(ok bool, name string) {
+		if ok {
+			perms = append(perms, name)
+		}
+	}
+	add(member.CanManageChat, "can_manage_chat")
+	add(member.CanDeleteMessages, "can_delete_messages")
+	add(member.CanManageVideoChats, "can_manage_video_chats")
+	add(member.CanRestrictMembers, "can_restrict_members")
+	add(member.CanPromoteMembers, "can_promote_members")
+	add(member.CanChangeInfo, "can_change_info")
+	add(member.CanInviteUsers, "can_invite_users")
+	add(member.CanPostMessages, "can_post_messages")
+	add(member.CanEditMessages, "can_edit_messages")
+	add(member.CanPinMessages, "can_pin_messages")
+	add(member.CanManageTopics, "can_manage_topics")
+	add(member.CanManageDirectMessages, "can_manage_direct_messages")
+	return perms
+}
+
+func telegramRestrictedPermissions(member models.ChatMemberRestricted) []string {
+	perms := make([]string, 0, 10)
+	add := func(ok bool, name string) {
+		if ok {
+			perms = append(perms, name)
+		}
+	}
+	add(member.CanSendMessages, "can_send_messages")
+	add(member.CanSendAudios, "can_send_audios")
+	add(member.CanSendDocuments, "can_send_documents")
+	add(member.CanSendPhotos, "can_send_photos")
+	add(member.CanSendVideos, "can_send_videos")
+	add(member.CanSendVideoNotes, "can_send_video_notes")
+	add(member.CanSendVoiceNotes, "can_send_voice_notes")
+	add(member.CanSendPolls, "can_send_polls")
+	add(member.CanInviteUsers, "can_invite_users")
+	add(member.CanPinMessages, "can_pin_messages")
+	return perms
+}
+
 // SendMessage sends plain text message with optional inline keyboard.
 func (c *Client) SendMessage(ctx context.Context, chatID int64, text string, keyboard *models.InlineKeyboardMarkup) error {
 	if !c.enabled {
@@ -176,7 +293,16 @@ func (c *Client) SendMessage(ctx context.Context, chatID int64, text string, key
 	}
 
 	_, err := c.bot.SendMessage(ctx, params)
-	return err
+	if err != nil {
+		slog.Warn("telegram sendMessage failed",
+			"chat_id", chatID,
+			"text_len", len([]rune(text)),
+			"has_keyboard", keyboard != nil,
+			"error", err,
+		)
+		return fmt.Errorf("telegram sendMessage chat_id=%d: %w", chatID, err)
+	}
+	return nil
 }
 
 // SendMessage implements messenger.Sender for Telegram transport.
@@ -392,7 +518,13 @@ func (c *Client) CreateSingleUseInviteLink(ctx context.Context, chatRef string, 
 
 	link, err := c.bot.CreateChatInviteLink(ctx, params)
 	if err != nil {
-		return "", err
+		slog.Warn("telegram createChatInviteLink failed",
+			"chat_ref", ref,
+			"name", strings.TrimSpace(name),
+			"expire_at", expireAt.UTC().Format(time.RFC3339),
+			"error", err,
+		)
+		return "", fmt.Errorf("telegram createChatInviteLink chat_ref=%s name=%s: %w", ref, strings.TrimSpace(name), err)
 	}
 	if link == nil {
 		return "", nil

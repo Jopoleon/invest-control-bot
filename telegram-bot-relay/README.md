@@ -100,6 +100,13 @@ The Worker:
 - checks that `<TOKEN>` equals `TELEGRAM_BOT_TOKEN`
 - forwards the request to `https://api.telegram.org/bot<TOKEN>/getMe`
 - returns Telegram response to the app
+- aborts slow upstream requests after 8 seconds and returns JSON `502` with
+  `error_code: 502` and a readable `description`
+
+For Bot API routes the Worker intentionally returns Telegram-shaped error JSON.
+The Go Telegram SDK expects `ok`, `error_code`, and `description`; returning a
+custom-only payload makes application logs collapse to unhelpful errors such as
+`error response from telegram for method sendMessage, 0`.
 
 Requests with any other bot token return `403`.
 
@@ -118,6 +125,8 @@ The Worker:
 - forwards the original update body to `TELEGRAM_WEBHOOK_ORIGIN_URL`
 - forwards the same secret header to the app
 - returns the app response back to Telegram
+- aborts slow origin/upstream requests after 8 seconds and returns JSON `502`
+  instead of letting the request hang until the caller times out
 
 This keeps the app webhook handler unchanged.
 
@@ -199,6 +208,34 @@ curl -i "https://telegram-bot-relay.egortictac3.workers.dev/telegram/webhook"
 
 Expected: `405`.
 
+If Telegram or the origin is unreachable from the Worker, the relay should fail
+fast. Bot API proxy routes return Telegram-compatible errors, for example:
+
+```json
+{
+  "ok": false,
+  "error_code": 502,
+  "description": "Telegram relay upstream timeout after 8000ms",
+  "error": "upstream_timeout",
+  "timeout_ms": 8000
+}
+```
+
+Webhook/origin routes return generic Worker errors, for example:
+
+```json
+{"ok":false,"error":"upstream_timeout","timeout_ms":8000}
+```
+
+or:
+
+```json
+{"ok":false,"error":"upstream_fetch_failed","message":"..."}
+```
+
+This is intentional. The app can then enter degraded Telegram startup mode
+quickly instead of waiting for a long network timeout.
+
 ## Current Incident Pattern
 
 The observed failure on `2026-04-28`:
@@ -210,4 +247,3 @@ The observed failure on `2026-04-28`:
 - nginx/app logs did not show Telegram POST requests
 
 That means outbound relay was working, but inbound Telegram-to-origin webhook delivery was failing. The fix is to set `TELEGRAM_WEBHOOK_PUBLIC_URL` to the Worker `/telegram/webhook` route and let Worker forward updates to the origin.
-

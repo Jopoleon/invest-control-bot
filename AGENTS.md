@@ -44,6 +44,21 @@ Useful recurring/ops logs to recognize quickly:
 - `robokassa rebill response`
 - `stale pending rebill without callback`
 
+## Mandatory Read Order For Agents
+
+Before substantial work, read:
+
+1. `docs/context/project-context.md`
+2. `docs/context/progress.md`
+3. `docs/context/session-log.md`
+4. latest file under `docs/context/session-log/`
+5. `docs/planning/implementation-plan.md`
+6. relevant `OVERVIEW.md` for the code zone being touched
+7. relevant payment, recurring, messenger, migration, or ops docs for the task
+
+Use `README.md` and `docs/README.md` as navigation entrypoints, but prefer the
+context files above for current AI-session memory.
+
 ## Current Architectural State
 
 ### Stable layers
@@ -320,6 +335,11 @@ Important practical rule:
 ## Docs To Keep In Sync
 
 When you make meaningful product or architecture changes, update the relevant docs:
+- `docs/context/project-context.md`
+- `docs/context/progress.md`
+- `docs/context/session-log.md`
+- latest file under `docs/context/session-log/`
+- `docs/planning/implementation-plan.md`
 - `README.md`
 - `IMPLEMENTATION_PLAN.md`
 - `docs/README.md`
@@ -333,6 +353,22 @@ When you make meaningful product or architecture changes, update the relevant do
 - `docs/backlog/todo.md`
 
 If a change affects recurring behavior, update recurring docs immediately.
+
+## Session Memory Discipline
+
+After meaningful work:
+- append to the latest chronological session log under `docs/context/session-log/`;
+- update `docs/context/progress.md` if current status, risks, blockers, or next tasks changed;
+- update `docs/context/project-context.md` only when a durable project fact changed;
+- record not only what changed, but what was learned, what assumptions were made,
+  what was verified, and what remains unverified.
+
+For documentation-only work, say explicitly when Go tests were skipped because no
+production code changed. For non-trivial code changes, run:
+
+```bash
+GOCACHE=/tmp/go-build go test ./...
+```
 
 ## Known Practical Constraints
 

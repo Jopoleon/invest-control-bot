@@ -261,13 +261,13 @@ func TestUserDetailPage_ShowsAccessLinkActionForCurrentTelegramSubscription(t *t
 	if !strings.Contains(body, "/admin/users/send-access-link?") {
 		t.Fatalf("response does not contain access-link action: %q", body)
 	}
-	if !strings.Contains(body, "Отправить ссылку в чат") {
+	if !strings.Contains(body, "Отправить ссылку в Telegram-чат") {
 		t.Fatalf("response does not contain access-link button label: %q", body)
 	}
 	if !strings.Contains(body, "/admin/users/unban-and-send-access-link?") {
 		t.Fatalf("response does not contain telegram unban action: %q", body)
 	}
-	if !strings.Contains(body, "Разблокировать в Telegram-чате") {
+	if !strings.Contains(body, "Разблокировать и отправить ссылку") {
 		t.Fatalf("response does not contain telegram unban button label: %q", body)
 	}
 }

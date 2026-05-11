@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"database/sql"
+	"encoding/json"
 
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
 	"github.com/jmoiron/sqlx"
@@ -113,6 +114,101 @@ func scanTelegramChat(scanner rowScanner) (domain.TelegramChat, error) {
 	if err != nil {
 		return domain.TelegramChat{}, err
 	}
+	return item, nil
+}
+
+func scanMessengerChatUser(scanner rowScanner) (domain.MessengerChatUser, error) {
+	var (
+		item         domain.MessengerChatUser
+		kind         string
+		status       string
+		permissions  []byte
+		lastJoinedAt sql.NullTime
+		lastLeftAt   sql.NullTime
+		lastKickedAt sql.NullTime
+		lastUnbanned sql.NullTime
+		userID       sql.NullInt64
+	)
+	err := scanner.Scan(
+		&kind,
+		&item.ChatRef,
+		&item.MessengerUserID,
+		&userID,
+		&status,
+		&item.IsMember,
+		&item.IsBanned,
+		&item.IsRestricted,
+		&item.IsAdmin,
+		&item.IsOwner,
+		&permissions,
+		&item.CheckedAt,
+		&lastJoinedAt,
+		&lastLeftAt,
+		&lastKickedAt,
+		&lastUnbanned,
+		&item.LastError,
+		&item.UpdatedAt,
+	)
+	if err != nil {
+		return domain.MessengerChatUser{}, err
+	}
+	item.MessengerKind = domain.MessengerKind(kind)
+	item.Status = domain.MessengerChatUserStatus(status)
+	item.UserID = userID.Int64
+	if len(permissions) > 0 {
+		if err := json.Unmarshal(permissions, &item.Permissions); err != nil {
+			return domain.MessengerChatUser{}, err
+		}
+	}
+	if lastJoinedAt.Valid {
+		item.LastJoinedAt = &lastJoinedAt.Time
+	}
+	if lastLeftAt.Valid {
+		item.LastLeftAt = &lastLeftAt.Time
+	}
+	if lastKickedAt.Valid {
+		item.LastKickedAt = &lastKickedAt.Time
+	}
+	if lastUnbanned.Valid {
+		item.LastUnbannedAt = &lastUnbanned.Time
+	}
+	return item, nil
+}
+
+func scanMessengerChatUserCheck(scanner rowScanner) (domain.MessengerChatUserCheck, error) {
+	var (
+		item           domain.MessengerChatUserCheck
+		kind           string
+		status         string
+		userID         sql.NullInt64
+		connectorID    sql.NullInt64
+		subscriptionID sql.NullInt64
+		rawJSON        []byte
+	)
+	err := scanner.Scan(
+		&item.ID,
+		&kind,
+		&item.ChatRef,
+		&item.MessengerUserID,
+		&userID,
+		&connectorID,
+		&subscriptionID,
+		&item.Source,
+		&status,
+		&item.OK,
+		&rawJSON,
+		&item.RawError,
+		&item.CheckedAt,
+	)
+	if err != nil {
+		return domain.MessengerChatUserCheck{}, err
+	}
+	item.MessengerKind = domain.MessengerKind(kind)
+	item.Status = domain.MessengerChatUserStatus(status)
+	item.UserID = userID.Int64
+	item.ConnectorID = connectorID.Int64
+	item.SubscriptionID = subscriptionID.Int64
+	item.RawJSON = append(item.RawJSON[:0], rawJSON...)
 	return item, nil
 }
 

@@ -59,6 +59,69 @@ type TelegramChat struct {
 	UpdatedAt          time.Time  `db:"updated_at" json:"updated_at"`
 }
 
+// MessengerChatUserStatus is our normalized cross-messenger interpretation of
+// an external chat membership check. Telegram exposes explicit states like
+// "kicked"; MAX currently exposes membership records, so some MAX statuses are
+// best-effort projections from list-member responses and mutation errors.
+type MessengerChatUserStatus string
+
+const (
+	MessengerChatUserStatusUnknown       MessengerChatUserStatus = "unknown"
+	MessengerChatUserStatusMember        MessengerChatUserStatus = "member"
+	MessengerChatUserStatusAdministrator MessengerChatUserStatus = "administrator"
+	MessengerChatUserStatusOwner         MessengerChatUserStatus = "owner"
+	MessengerChatUserStatusRestricted    MessengerChatUserStatus = "restricted"
+	MessengerChatUserStatusLeft          MessengerChatUserStatus = "left"
+	MessengerChatUserStatusNotMember     MessengerChatUserStatus = "not_member"
+	MessengerChatUserStatusBanned        MessengerChatUserStatus = "banned"
+	MessengerChatUserStatusError         MessengerChatUserStatus = "error"
+)
+
+// MessengerChatUser stores the latest known membership state for one external
+// messenger user in one external chat. It is a cache/diagnostic projection, not
+// the source of truth for paid access; subscriptions remain authoritative for
+// entitlement decisions.
+type MessengerChatUser struct {
+	MessengerKind   MessengerKind           `db:"messenger_kind" json:"messenger_kind"`
+	ChatRef         string                  `db:"chat_ref" json:"chat_ref"`
+	MessengerUserID string                  `db:"messenger_user_id" json:"messenger_user_id"`
+	UserID          int64                   `db:"user_id" json:"user_id"`
+	Status          MessengerChatUserStatus `db:"status" json:"status"`
+	IsMember        bool                    `db:"is_member" json:"is_member"`
+	IsBanned        bool                    `db:"is_banned" json:"is_banned"`
+	IsRestricted    bool                    `db:"is_restricted" json:"is_restricted"`
+	IsAdmin         bool                    `db:"is_admin" json:"is_admin"`
+	IsOwner         bool                    `db:"is_owner" json:"is_owner"`
+	Permissions     []string                `db:"permissions" json:"permissions"`
+	CheckedAt       time.Time               `db:"checked_at" json:"checked_at"`
+	LastJoinedAt    *time.Time              `db:"last_joined_at" json:"last_joined_at,omitempty"`
+	LastLeftAt      *time.Time              `db:"last_left_at" json:"last_left_at,omitempty"`
+	LastKickedAt    *time.Time              `db:"last_kicked_at" json:"last_kicked_at,omitempty"`
+	LastUnbannedAt  *time.Time              `db:"last_unbanned_at" json:"last_unbanned_at,omitempty"`
+	LastError       string                  `db:"last_error" json:"last_error"`
+	UpdatedAt       time.Time               `db:"updated_at" json:"updated_at"`
+}
+
+// MessengerChatUserCheck is an immutable diagnostic record of one membership
+// check or membership-changing operation. Raw payloads live here instead of the
+// latest-state table so the operational UI can stay fast while investigations
+// still have exact provider evidence.
+type MessengerChatUserCheck struct {
+	ID              int64                   `db:"id" json:"id"`
+	MessengerKind   MessengerKind           `db:"messenger_kind" json:"messenger_kind"`
+	ChatRef         string                  `db:"chat_ref" json:"chat_ref"`
+	MessengerUserID string                  `db:"messenger_user_id" json:"messenger_user_id"`
+	UserID          int64                   `db:"user_id" json:"user_id"`
+	ConnectorID     int64                   `db:"connector_id" json:"connector_id"`
+	SubscriptionID  int64                   `db:"subscription_id" json:"subscription_id"`
+	Source          string                  `db:"source" json:"source"`
+	Status          MessengerChatUserStatus `db:"status" json:"status"`
+	OK              bool                    `db:"ok" json:"ok"`
+	RawJSON         []byte                  `db:"raw_json" json:"raw_json,omitempty"`
+	RawError        string                  `db:"raw_error" json:"raw_error"`
+	CheckedAt       time.Time               `db:"checked_at" json:"checked_at"`
+}
+
 // SubscriptionEndsAt returns the next access boundary for this connector using
 // the canonical period model.
 func (c Connector) SubscriptionEndsAt(start time.Time) time.Time {
