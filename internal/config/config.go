@@ -123,6 +123,11 @@ type RobokassaPaymentConfig struct {
 	RecurringEnabled bool
 	CheckoutURL      string
 	RebillURL        string
+	ReceiptTax       string
+	ReceiptMethod    string
+	ReceiptObject    string
+	ReceiptSNO       string
+	ReceiptItemName  string
 }
 
 // LoggingConfig controls verbosity of structured logs.
@@ -213,6 +218,11 @@ func Load() (Config, error) {
 				RecurringEnabled: getBoolEnv("ROBOKASSA_RECURRING_ENABLED", false),
 				CheckoutURL:      strings.TrimSpace(os.Getenv("ROBOKASSA_CHECKOUT_URL")),
 				RebillURL:        strings.TrimSpace(os.Getenv("ROBOKASSA_REBILL_URL")),
+				ReceiptTax:       strings.TrimSpace(getEnv("ROBOKASSA_RECEIPT_TAX", "none")),
+				ReceiptMethod:    strings.TrimSpace(getEnv("ROBOKASSA_RECEIPT_PAYMENT_METHOD", "full_payment")),
+				ReceiptObject:    strings.TrimSpace(getEnv("ROBOKASSA_RECEIPT_PAYMENT_OBJECT", "service")),
+				ReceiptSNO:       strings.TrimSpace(os.Getenv("ROBOKASSA_RECEIPT_SNO")),
+				ReceiptItemName:  strings.TrimSpace(os.Getenv("ROBOKASSA_RECEIPT_ITEM_NAME")),
 			},
 		},
 		Logging: LoggingConfig{

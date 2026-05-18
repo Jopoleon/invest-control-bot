@@ -91,6 +91,69 @@ func TestEnvHelpersAndBuildPostgresDSN(t *testing.T) {
 	}
 }
 
+func TestLoad_RobokassaReceiptEnvDefaultsToZeroVAT(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("PAYMENT_PROVIDER", "robokassa")
+	t.Setenv("ROBOKASSA_MERCHANT_LOGIN", "merchant")
+	t.Setenv("ROBOKASSA_PASS1", "pass1")
+	t.Setenv("ROBOKASSA_PASS2", "pass2")
+	t.Setenv("APP_ENCRYPTION_KEY", strings.Repeat("x", 32))
+	t.Setenv("TELEGRAM_BOT_TOKEN", "telegram-token")
+	t.Setenv("TELEGRAM_WEBHOOK_PUBLIC_URL", "https://example.com/telegram/webhook")
+	t.Setenv("ADMIN_AUTH_TOKEN", "admin-token")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Payment.Robokassa.ReceiptTax != "none" {
+		t.Fatalf("ReceiptTax=%q want none", cfg.Payment.Robokassa.ReceiptTax)
+	}
+	if cfg.Payment.Robokassa.ReceiptMethod != "full_payment" {
+		t.Fatalf("ReceiptMethod=%q want full_payment", cfg.Payment.Robokassa.ReceiptMethod)
+	}
+	if cfg.Payment.Robokassa.ReceiptObject != "service" {
+		t.Fatalf("ReceiptObject=%q want service", cfg.Payment.Robokassa.ReceiptObject)
+	}
+}
+
+func TestLoad_RobokassaReceiptEnvOverrides(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("PAYMENT_PROVIDER", "robokassa")
+	t.Setenv("ROBOKASSA_MERCHANT_LOGIN", "merchant")
+	t.Setenv("ROBOKASSA_PASS1", "pass1")
+	t.Setenv("ROBOKASSA_PASS2", "pass2")
+	t.Setenv("ROBOKASSA_RECEIPT_TAX", "vat0")
+	t.Setenv("ROBOKASSA_RECEIPT_PAYMENT_METHOD", "full_prepayment")
+	t.Setenv("ROBOKASSA_RECEIPT_PAYMENT_OBJECT", "service")
+	t.Setenv("ROBOKASSA_RECEIPT_SNO", "usn_income")
+	t.Setenv("ROBOKASSA_RECEIPT_ITEM_NAME", "Абонемент")
+	t.Setenv("APP_ENCRYPTION_KEY", strings.Repeat("x", 32))
+	t.Setenv("TELEGRAM_BOT_TOKEN", "telegram-token")
+	t.Setenv("TELEGRAM_WEBHOOK_PUBLIC_URL", "https://example.com/telegram/webhook")
+	t.Setenv("ADMIN_AUTH_TOKEN", "admin-token")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Payment.Robokassa.ReceiptTax != "vat0" {
+		t.Fatalf("ReceiptTax=%q want vat0", cfg.Payment.Robokassa.ReceiptTax)
+	}
+	if cfg.Payment.Robokassa.ReceiptMethod != "full_prepayment" {
+		t.Fatalf("ReceiptMethod=%q want full_prepayment", cfg.Payment.Robokassa.ReceiptMethod)
+	}
+	if cfg.Payment.Robokassa.ReceiptObject != "service" {
+		t.Fatalf("ReceiptObject=%q want service", cfg.Payment.Robokassa.ReceiptObject)
+	}
+	if cfg.Payment.Robokassa.ReceiptSNO != "usn_income" {
+		t.Fatalf("ReceiptSNO=%q want usn_income", cfg.Payment.Robokassa.ReceiptSNO)
+	}
+	if cfg.Payment.Robokassa.ReceiptItemName != "Абонемент" {
+		t.Fatalf("ReceiptItemName=%q want Абонемент", cfg.Payment.Robokassa.ReceiptItemName)
+	}
+}
+
 func TestValidate_AcceptsOptionalTelegramRelayURLs(t *testing.T) {
 	cfg := Config{
 		Environment: EnvLocal,

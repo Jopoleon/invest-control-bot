@@ -1,4 +1,9 @@
 :root {
+  --pico-font-family: "Manrope", "Segoe UI", sans-serif;
+  --pico-font-size: 87.5%;
+  --pico-spacing: .8rem;
+  --pico-form-element-spacing-vertical: .45rem;
+  --pico-form-element-spacing-horizontal: .6rem;
   --admin-font-family: "Manrope", "Segoe UI", sans-serif;
   --admin-page-bg:
     radial-gradient(circle at top left, rgba(176, 205, 234, .42), transparent 26%),
@@ -46,6 +51,7 @@ main.container {
   gap: .75rem;
   flex-wrap: wrap;
   margin: 1rem 0;
+  font-size: .9rem;
 }
 
 .topbar nav ul {
@@ -61,6 +67,12 @@ main.container {
 
 .topbar nav a:hover {
   background: rgba(13, 97, 255, .08);
+}
+
+.topbar nav a[aria-current="page"],
+.topbar nav strong,
+.topbar .is-active {
+  font-weight: 700;
 }
 
 .langs a[aria-current="true"] {

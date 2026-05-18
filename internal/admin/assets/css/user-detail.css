@@ -1,681 +1,656 @@
-    :root {
-      --pico-font-family: "Manrope", "Segoe UI", sans-serif;
-      --pico-font-size: 92%;
-      --pico-spacing: .8rem;
-      --pico-form-element-spacing-vertical: .45rem;
-      --pico-form-element-spacing-horizontal: .6rem;
-      --card-border: rgba(36, 56, 89, .08);
-      --card-shadow: 0 18px 48px rgba(24, 39, 75, .08);
-      --hero-bg: linear-gradient(135deg, #11243d, #1d3f63 48%, #d7e6f7 135%);
-      --panel-bg: rgba(255, 255, 255, .88);
-    }
-    body {
-      position: relative;
-      min-height: 100vh;
-      background: var(--admin-page-bg);
-      background-attachment: fixed;
-    }
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      z-index: 0;
-      pointer-events: none;
-      background-image: url("/admin/assets/img/admin-doodles-clean-bg.png");
-      background-size: 900px 900px;
-      background-position: top 1.5rem right 1.5rem;
-      background-repeat: repeat;
-      opacity: .36;
-    }
-    main.container { position: relative; z-index: 1; max-width: 1380px; }
-    .topbar { display: flex; justify-content: space-between; align-items: center; gap: .75rem; flex-wrap: wrap; margin: 1rem 0; }
-    .topbar nav ul { align-items: center; }
-    .langs a[aria-current="true"] { font-weight: 700; text-decoration: underline; }
-    article {
-      border: 1px solid var(--card-border);
-      border-radius: 1.15rem;
-      background: var(--panel-bg);
-      box-shadow: var(--card-shadow);
-      backdrop-filter: blur(10px);
-    }
-    .notice { padding: .75rem 1rem; border: 1px solid #ffd8a8; border-radius: .75rem; background: #fff4e6; color: #8f4b00; margin: .75rem 0 0; font-weight: 600; }
-    .hero {
-      padding: .85rem 1rem .95rem;
-      color: #f7fbff;
-      background: var(--hero-bg);
-      overflow: hidden;
-      position: relative;
-    }
-    .hero::after {
-      content: "";
-      position: absolute;
-      inset: auto -10% -35% auto;
-      width: 280px;
-      height: 280px;
-      border-radius: 50%;
-      background: rgba(255, 255, 255, .08);
-      filter: blur(2px);
-    }
-    .hero-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 1rem;
-      flex-wrap: wrap;
-      position: relative;
-      z-index: 1;
-    }
-    .back-link {
-      display: inline-flex;
-      align-items: center;
-      gap: .35rem;
-      padding: .45rem .75rem;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, .12);
-      color: #f7fbff;
-      text-decoration: none;
-      font-weight: 700;
-    }
-    .hero h1 {
-      margin: .5rem 0 .25rem;
-      font-size: clamp(1.65rem, 2.8vw, 2.25rem);
-      line-height: 1.05;
-      letter-spacing: -.03em;
-      color: #fff;
-      position: relative;
-      z-index: 1;
-    }
-    .hero-subtitle {
-      margin: 0;
-      max-width: 58rem;
-      color: rgba(247, 251, 255, .84);
-      position: relative;
-      z-index: 1;
-    }
-    .profile-grid {
-      display: grid;
-      gap: .65rem;
-    }
-    .profile-card {
-      padding: .72rem .82rem;
-      border: 1px solid var(--card-border);
-      border-radius: 1rem;
-      background: rgba(255, 255, 255, .82);
-      color: #15314f;
-    }
-    .profile-card small {
-      display: block;
-      margin-bottom: .35rem;
-      color: #5b6b7f;
-      text-transform: uppercase;
-      letter-spacing: .04em;
-      font-size: .74rem;
-      font-weight: 700;
-    }
-    .profile-card strong,
-    .profile-card span {
-      word-break: break-word;
-    }
-    .profile-grid {
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    }
-    .profile-grid.is-compact {
-      display: flex;
-      flex-wrap: wrap;
-      gap: .5rem;
-    }
-    .profile-grid.is-compact .profile-card {
-      display: inline-flex;
-      align-items: center;
-      gap: .45rem;
-      padding: .5rem .65rem;
-      border-radius: .85rem;
-      max-width: 100%;
-    }
-    .profile-grid.is-compact .profile-card small {
-      margin: 0;
-      font-size: .68rem;
-      line-height: 1.1;
-    }
-    .profile-grid.is-compact .profile-card span {
-      font-size: .9rem;
-      min-width: 0;
-      overflow-wrap: anywhere;
-    }
-    .section-card {
-      padding: .85rem .95rem .95rem;
-    }
-    .section-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: .75rem;
-      flex-wrap: wrap;
-      margin-bottom: .65rem;
-    }
-    .section-head h3 {
-      margin: 0;
-      letter-spacing: -.02em;
-    }
-    .action-grid {
-      display: grid;
-      grid-template-columns: 1.4fr .9fr;
-      gap: 1rem;
-    }
-    .action-card {
-      padding: 1rem;
-      border: 1px solid #dbe6f1;
-      border-radius: .95rem;
-      background: rgba(255, 255, 255, .92);
-    }
-    .action-card h4 {
-      margin: 0 0 .75rem;
-    }
-    .action-card form {
-      margin: 0;
-    }
-    .action-card textarea {
-      min-height: 136px;
-      resize: vertical;
-    }
-    .action-note {
-      color: #5b6b7f;
-      font-size: .88rem;
-    }
-    .compose-tools {
-      display: flex;
-      flex-wrap: wrap;
-      gap: .65rem;
-      margin-top: .75rem;
-      align-items: center;
-    }
-    .compose-tools [role="button"],
-    .compose-tools button {
-      margin-bottom: 0;
-    }
-    .section-kicker {
-      display: inline-flex;
-      align-items: center;
-      padding: .35rem .7rem;
-      border-radius: 999px;
-      background: #edf4fb;
-      color: #294866;
-      font-size: .76rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: .05em;
-    }
-    .table-wrap { overflow: auto; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace; font-size: .8rem; }
-    #paymentsSource, #subsSource, #eventsSource, #consentsSource, #recurringConsentsSource { display: none; }
-    .gridjs-wrapper {
-      border: 1px solid #dbe6f1;
-      border-radius: .95rem;
-      overflow: hidden;
-      background: rgba(255, 255, 255, .92);
-    }
-    #consentsGrid .gridjs-container,
-    #recurringConsentsGrid .gridjs-container,
-    #subsGrid .gridjs-container,
-    #paymentsGrid .gridjs-container,
-    #eventsGrid .gridjs-container { width: 100%; }
-    #consentsGrid table.gridjs-table,
-    #recurringConsentsGrid table.gridjs-table,
-    #subsGrid table.gridjs-table,
-    #paymentsGrid table.gridjs-table,
-    #eventsGrid table.gridjs-table {
-      width: 100%;
-      table-layout: auto;
-    }
-    #consentsGrid .gridjs-wrapper table th,
-    #consentsGrid .gridjs-wrapper table td,
-    #recurringConsentsGrid .gridjs-wrapper table th,
-    #recurringConsentsGrid .gridjs-wrapper table td,
-    #subsGrid .gridjs-wrapper table th,
-    #subsGrid .gridjs-wrapper table td,
-    #paymentsGrid .gridjs-wrapper table th,
-    #paymentsGrid .gridjs-wrapper table td,
-    #eventsGrid .gridjs-wrapper table th,
-    #eventsGrid .gridjs-wrapper table td {
-      white-space: normal;
-      vertical-align: top;
-      word-break: break-word;
-      overflow-wrap: anywhere;
-    }
-    #consentsGrid .gridjs-wrapper table td:nth-child(2),
-    #consentsGrid .gridjs-wrapper table td:nth-child(4),
-    #recurringConsentsGrid .gridjs-wrapper table td:nth-child(2),
-    #subsGrid .gridjs-wrapper table td:nth-child(1),
-    #subsGrid .gridjs-wrapper table td:nth-child(2),
-    #subsGrid .gridjs-wrapper table td:nth-child(3),
-    #subsGrid .gridjs-wrapper table td:nth-child(5),
-    #subsGrid .gridjs-wrapper table td:nth-child(6),
-    #subsGrid .gridjs-wrapper table td:nth-child(7),
-    #subsGrid .gridjs-wrapper table td:nth-child(8),
-    #subsGrid .gridjs-wrapper table td:nth-child(9),
-    #paymentsGrid .gridjs-wrapper table td:nth-child(1),
-    #paymentsGrid .gridjs-wrapper table td:nth-child(3),
-    #paymentsGrid .gridjs-wrapper table td:nth-child(4),
-    #paymentsGrid .gridjs-wrapper table td:nth-child(6),
-    #paymentsGrid .gridjs-wrapper table td:nth-child(7),
-    #paymentsGrid .gridjs-wrapper table td:nth-child(8),
-    #paymentsGrid .gridjs-wrapper table td:nth-child(9),
-    #eventsGrid .gridjs-wrapper table td:nth-child(1) {
-      white-space: nowrap;
-    }
-    #consentsGrid .gridjs-wrapper table td:nth-child(1),
-    #recurringConsentsGrid .gridjs-wrapper table td:nth-child(1),
-    #subsGrid .gridjs-wrapper table td:nth-child(4),
-    #paymentsGrid .gridjs-wrapper table td:nth-child(5),
-    #eventsGrid .gridjs-wrapper table td:nth-child(2),
-    #eventsGrid .gridjs-wrapper table td:nth-child(3),
-    #eventsGrid .gridjs-wrapper table td:nth-child(4) {
-      min-width: 12rem;
-    }
-    #subsGrid .gridjs-wrapper table td:nth-child(10) {
-      min-width: 13rem;
-    }
-    #subsGrid .gridjs-wrapper {
-      min-height: auto;
-    }
-    #subsGrid table.gridjs-table {
-      min-width: 760px;
-    }
-    #subsGrid .gridjs-wrapper table td:nth-child(1) {
-      width: 10rem;
-    }
-    #subsGrid .gridjs-wrapper table td:nth-child(2) {
-      min-width: 13rem;
-      white-space: normal;
-    }
-    #subsGrid .gridjs-wrapper table td:nth-child(3) {
-      min-width: 10rem;
-      white-space: normal;
-    }
-    #subsGrid .gridjs-wrapper table td:nth-child(4) {
-      min-width: 14rem;
-      white-space: normal;
-    }
-    .subscription-operational-actions {
-      display: grid;
-      gap: .85rem;
-      margin: .85rem 0 1rem;
-    }
-    .subscription-action-card {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: .75rem;
-      align-items: center;
-      padding: .68rem .78rem;
-      border: 1px solid #dbe6f1;
-      border-radius: 1rem;
-      background: linear-gradient(135deg, rgba(248, 251, 255, .96), rgba(255, 255, 255, .9));
-      box-shadow: 0 10px 24px rgba(24, 39, 75, .06);
-    }
-    .subscription-action-title {
-      display: grid;
-      gap: .38rem;
-      min-width: 0;
-    }
-    .subscription-action-title strong {
-      color: #24364b;
-      line-height: 1.2;
-    }
-    .subscription-action-title small {
-      color: #6f7f92;
-    }
-    .subscription-action-badges {
-      display: flex;
-      flex-wrap: wrap;
-      gap: .35rem;
-    }
-    .subscription-action-menu {
-      position: relative;
-      margin: 0;
-      justify-self: end;
-    }
-    .subscription-action-menu summary {
-      list-style: none;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 2.35rem;
-      height: 2.35rem;
-      border: 1px solid #c9d8e8;
-      border-radius: 999px;
-      background: #f6f9fd;
-      color: #1f3b57;
-      font-size: 1.45rem;
-      line-height: 1;
-      font-weight: 800;
-      cursor: pointer;
-      box-shadow: 0 8px 18px rgba(24, 39, 75, .08);
-      user-select: none;
-    }
-    .subscription-action-menu summary::-webkit-details-marker {
-      display: none;
-    }
-    .subscription-action-menu[open] summary {
-      background: #eaf3ff;
-      border-color: #9dc2ff;
-      color: #0b5bd3;
-    }
-    .subscription-action-dropdown {
-      position: absolute;
-      right: 0;
-      top: calc(100% + .45rem);
-      z-index: 20;
-      display: grid;
-      gap: .45rem;
-      min-width: min(18rem, calc(100vw - 2rem));
-      padding: .65rem;
-      border: 1px solid #d5e1ef;
-      border-radius: 1rem;
-      background: rgba(255, 255, 255, .98);
-      box-shadow: 0 18px 42px rgba(24, 39, 75, .18);
-    }
-    .subscription-action-dropdown form {
-      margin: 0;
-    }
-    .subscription-action-dropdown .action-btn {
-      width: 100%;
-      justify-content: center;
-      padding: .58rem .8rem;
-      margin: 0;
-      text-align: center;
-      box-shadow: none;
-    }
-    .subscription-meta-stack {
-      display: grid;
-      gap: .42rem;
-      min-width: 0;
-    }
-    .subscription-meta-stack strong {
-      color: #24364b;
-      line-height: 1.25;
-    }
-    .subscription-meta-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: .35rem;
-      align-items: center;
-    }
-    .subscription-date-stack {
-      display: grid;
-      gap: .22rem;
-      color: #42576d;
-    }
-    .subscription-date-stack span {
-      display: flex;
-      justify-content: space-between;
-      gap: .6rem;
-      font-size: .78rem;
-    }
-    .subscription-date-stack small {
-      color: #7a899c;
-      text-transform: uppercase;
-      letter-spacing: .05em;
-      font-weight: 700;
-    }
-    @media (max-width: 820px) {
-      .subscription-action-card {
-        grid-template-columns: minmax(0, 1fr) auto;
-      }
-    }
-    .gridjs-head {
-      padding: .4rem .2rem .8rem;
-    }
-    .gridjs-search-input {
-      border-radius: .8rem;
-    }
-    .gridjs-pagination {
-      padding: .7rem .2rem 0;
-    }
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: .35rem;
-      padding: .18rem .48rem;
-      border-radius: .7rem;
-      font-size: .7rem;
-      font-weight: 700;
-      line-height: 1;
-      letter-spacing: .04em;
-      text-transform: uppercase;
-      border: 0;
-    }
-    .badge::before {
-      content: "";
-      width: .42rem;
-      height: .42rem;
-      border-radius: 999px;
-      background: currentColor;
-      opacity: .9;
-    }
-    .badge.is-success { background: #edf8f2; color: #17663a; }
-    .badge.is-warning { background: #fff7e7; color: #8a5a00; }
-    .badge.is-danger { background: #fff0f0; color: #b42318; }
-    .badge.is-muted { background: #f1f4f8; color: #5f7083; }
-    .badge.is-accent { background: #eef4ff; color: #1b57b7; }
-    .chat-access-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: .85rem;
-    }
-    .chat-access-card {
-      display: grid;
-      gap: .7rem;
-      padding: .9rem;
-      border: 1px solid #dbe6f1;
-      border-radius: .95rem;
-      background: rgba(255, 255, 255, .92);
-    }
-    .chat-access-card header {
-      display: flex;
-      justify-content: space-between;
-      gap: .75rem;
-      align-items: flex-start;
-    }
-    .chat-access-card h4 {
-      margin: 0 0 .35rem;
-      line-height: 1.15;
-    }
-    .chat-access-badges {
-      display: flex;
-      flex-wrap: wrap;
-      gap: .35rem;
-    }
-    .chat-access-meta {
-      display: grid;
-      grid-template-columns: minmax(6.5rem, .45fr) minmax(0, 1fr);
-      gap: .35rem .65rem;
-      margin: 0;
-      font-size: .84rem;
-    }
-    .chat-access-meta dt {
-      color: #5b6b7f;
-      font-weight: 700;
-    }
-    .chat-access-meta dd {
-      margin: 0;
-      min-width: 0;
-      overflow-wrap: anywhere;
-    }
-    .chat-access-error {
-      padding: .5rem .65rem;
-      border-radius: .7rem;
-      background: #fff0f0;
-      color: #9f1f17;
-      font-size: .8rem;
-      overflow-wrap: anywhere;
-    }
-    .chat-access-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: .45rem;
-      align-items: center;
-    }
-    .chat-access-actions form {
-      margin: 0;
-    }
-    .chat-access-actions button {
-      margin: 0;
-    }
-    .gridjs-footer {
-      background: #f7fafc;
-      color: #405266;
-    }
-    .gridjs-summary {
-      color: #405266;
-    }
-    .gridjs-pages button {
-      color: #24354d;
-      background: #fff;
-      border-color: #d6e0ea;
-    }
-    .gridjs-pages button:hover {
-      background: #edf4fb;
-    }
-    .gridjs-pages button.gridjs-currentPage {
-      color: #0f3f88;
-      background: #e7f0ff;
-      border-color: #b9cffb;
-    }
-    @media (max-width: 720px) {
-      .hero {
-        padding: 1rem;
-      }
-      .hero-key-strip,
-      .contact-summary-grid {
-        grid-template-columns: 1fr;
-      }
-      .section-card {
-        padding: .95rem;
-      }
-      .action-grid {
-        grid-template-columns: 1fr;
-      }
-    }
+.user-detail-page {
+  max-width: 1380px;
+}
 
-    .hero-key-strip {
-      display: grid;
-      grid-template-columns: minmax(4rem, max-content) minmax(14rem, 1.5fr) minmax(8rem, max-content) minmax(10rem, max-content);
-      gap: .5rem 1rem;
-      align-items: center;
-      margin-top: .8rem;
-      padding-top: .65rem;
-      border-top: 1px solid rgba(255, 255, 255, .14);
-      position: relative;
-      z-index: 1;
-    }
+.user-detail-page > article {
+  margin-bottom: .75rem;
+}
 
-    .hero-key-item {
-      display: grid;
-      grid-template-columns: max-content minmax(0, 1fr);
-      gap: .35rem;
-      align-items: baseline;
-      min-width: 0;
-      color: #f7fbff;
-    }
+.user-detail-page .hero {
+  padding: .72rem .95rem .82rem;
+  color: #f7fbff;
+  background: var(--admin-hero-bg);
+  overflow: hidden;
+  position: relative;
+}
 
-    .hero-key-item small {
-      color: rgba(247, 251, 255, .68);
-      text-transform: uppercase;
-      letter-spacing: .04em;
-      font-size: .68rem;
-      font-weight: 800;
-      white-space: nowrap;
-    }
+.user-detail-page .hero::after {
+  content: "";
+  position: absolute;
+  inset: auto -10% -35% auto;
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .08);
+  filter: blur(2px);
+}
 
-    .hero-key-item strong {
-      min-width: 0;
-      overflow-wrap: anywhere;
-      font-size: .9rem;
-      line-height: 1.2;
-    }
+.user-detail-page .hero-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: .7rem;
+  flex-wrap: wrap;
+  position: relative;
+  z-index: 1;
+}
 
-    .hero-key-item.is-wide strong {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
+.user-detail-page .back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .34rem .62rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .12);
+  color: #f7fbff;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: .84rem;
+}
 
-    .contact-summary-card {
-      margin-top: .85rem;
-    }
+.user-detail-page .hero h1 {
+  margin: .38rem 0 .16rem;
+  font-size: clamp(1.42rem, 2.2vw, 1.9rem);
+  line-height: 1.08;
+  letter-spacing: -.03em;
+  color: #fff;
+  position: relative;
+  z-index: 1;
+}
 
-    .contact-summary-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: .55rem 1rem;
-    }
+.user-detail-page .hero-subtitle {
+  margin: 0;
+  max-width: 58rem;
+  color: rgba(247, 251, 255, .84);
+  font-size: .9rem;
+  line-height: 1.25;
+  position: relative;
+  z-index: 1;
+}
 
-    .contact-summary-item {
-      display: grid;
-      grid-template-columns: max-content minmax(0, 1fr);
-      gap: .45rem;
-      align-items: baseline;
-      min-width: 0;
-      padding-block: .28rem;
-      border-bottom: 1px solid rgba(36, 56, 89, .07);
-    }
+.user-detail-page .hero-key-strip {
+  display: grid;
+  grid-template-columns: minmax(4rem, max-content) minmax(14rem, 1.5fr) minmax(8rem, max-content) minmax(10rem, max-content);
+  gap: .35rem .75rem;
+  align-items: center;
+  margin-top: .58rem;
+  padding-top: .48rem;
+  border-top: 1px solid rgba(255, 255, 255, .14);
+  position: relative;
+  z-index: 1;
+}
 
-    .contact-summary-item small {
-      color: #5b6b7f;
-      text-transform: uppercase;
-      letter-spacing: .04em;
-      font-size: .7rem;
-      font-weight: 800;
-      white-space: nowrap;
-    }
+.user-detail-page .hero-key-item {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: .28rem;
+  align-items: baseline;
+  min-width: 0;
+  color: #f7fbff;
+}
 
-    .contact-summary-item span {
-      min-width: 0;
-      overflow-wrap: anywhere;
-      color: #18324e;
-      line-height: 1.25;
-    }
+.user-detail-page .hero-key-item small {
+  color: rgba(247, 251, 255, .68);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  font-size: .62rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
 
-    .account-line {
-      display: block;
-    }
+.user-detail-page .hero-key-item strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: .82rem;
+  line-height: 1.2;
+}
 
-    .user-metrics-card,
-    .autopay-summary-card {
-      margin-top: .85rem;
-    }
+.user-detail-page .hero-key-item.is-wide strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-    .user-metrics-grid.profile-grid.is-compact .profile-card,
-    .autopay-summary-grid.profile-grid.is-compact .profile-card {
-      background: rgba(248, 251, 255, .86);
-      border-radius: .75rem;
-      padding: .42rem .58rem;
-    }
+.user-detail-page .section-card {
+  padding: .72rem .82rem .78rem;
+}
 
-    .autopay-action-stack {
-      margin-top: .85rem;
-      display: grid;
-      gap: .65rem;
-    }
+.user-detail-page .section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: .55rem;
+  flex-wrap: wrap;
+  margin-bottom: .48rem;
+}
 
-    @media (max-width: 1080px) {
-      .hero-key-strip,
-      .contact-summary-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-    }
+.user-detail-page .section-head h3 {
+  margin: 0;
+  letter-spacing: -.02em;
+  font-size: 1.08rem;
+  line-height: 1.15;
+}
 
-    @media (max-width: 720px) {
-      .hero-key-strip,
-      .contact-summary-grid {
-        grid-template-columns: 1fr;
-      }
-      .hero-key-item,
-      .contact-summary-item {
-        grid-template-columns: 1fr;
-        gap: .15rem;
-      }
-      .hero-key-item.is-wide strong {
-        white-space: normal;
-      }
-    }
+.user-detail-page .section-kicker {
+  display: inline-flex;
+  align-items: center;
+  padding: .24rem .52rem;
+  border-radius: 999px;
+  background: #edf4fb;
+  color: #294866;
+  font-size: .66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.user-detail-page .profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: .52rem;
+}
+
+.user-detail-page .profile-card {
+  padding: .52rem .62rem;
+  border: 1px solid var(--admin-card-border);
+  border-radius: .82rem;
+  background: rgba(255, 255, 255, .82);
+  color: #15314f;
+}
+
+.user-detail-page .profile-card small {
+  display: block;
+  margin-bottom: .24rem;
+  color: var(--admin-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  font-size: .66rem;
+  font-weight: 700;
+}
+
+.user-detail-page .profile-card strong,
+.user-detail-page .profile-card span {
+  word-break: break-word;
+}
+
+.user-detail-page .profile-grid.is-compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .38rem;
+}
+
+.user-detail-page .profile-grid.is-compact .profile-card {
+  display: inline-flex;
+  align-items: center;
+  gap: .34rem;
+  padding: .36rem .48rem;
+  border-radius: .7rem;
+  max-width: 100%;
+}
+
+.user-detail-page .profile-grid.is-compact .profile-card small {
+  margin: 0;
+  font-size: .62rem;
+  line-height: 1.1;
+}
+
+.user-detail-page .profile-grid.is-compact .profile-card span {
+  font-size: .82rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.user-detail-page .contact-summary-card,
+.user-detail-page .user-metrics-card,
+.user-detail-page .autopay-summary-card {
+  margin-top: .65rem;
+}
+
+.user-detail-page .contact-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .36rem .75rem;
+}
+
+.user-detail-page .contact-summary-item {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: .34rem;
+  align-items: baseline;
+  min-width: 0;
+  padding-block: .18rem;
+  border-bottom: 1px solid rgba(36, 56, 89, .07);
+}
+
+.user-detail-page .contact-summary-item small {
+  color: var(--admin-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  font-size: .64rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.user-detail-page .contact-summary-item span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #18324e;
+  font-size: .86rem;
+  line-height: 1.2;
+}
+
+.user-detail-page .account-line {
+  display: block;
+}
+
+.user-detail-page .user-metrics-grid.profile-grid.is-compact .profile-card,
+.user-detail-page .autopay-summary-grid.profile-grid.is-compact .profile-card {
+  background: rgba(248, 251, 255, .86);
+  border-radius: .68rem;
+  padding: .32rem .45rem;
+}
+
+.user-detail-page .action-grid {
+  display: grid;
+  grid-template-columns: 1.4fr .9fr;
+  gap: .75rem;
+}
+
+.user-detail-page .action-card {
+  padding: .78rem;
+  border: 1px solid #dbe6f1;
+  border-radius: .85rem;
+  background: rgba(255, 255, 255, .92);
+}
+
+.user-detail-page .action-card h4 {
+  margin: 0 0 .5rem;
+  font-size: .98rem;
+}
+
+.user-detail-page .action-card form {
+  margin: 0;
+}
+
+.user-detail-page .action-card textarea {
+  min-height: 112px;
+  resize: vertical;
+}
+
+.user-detail-page .action-note {
+  color: var(--admin-muted);
+  font-size: .82rem;
+}
+
+.user-detail-page .compose-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin-top: .55rem;
+  align-items: center;
+}
+
+.user-detail-page .compose-tools [role="button"],
+.user-detail-page .compose-tools button {
+  margin-bottom: 0;
+}
+
+.user-detail-page .autopay-action-stack {
+  margin-top: .65rem;
+  display: grid;
+  gap: .5rem;
+}
+
+.user-detail-page #paymentsSource,
+.user-detail-page #subsSource,
+.user-detail-page #eventsSource,
+.user-detail-page #consentsSource,
+.user-detail-page #recurringConsentsSource {
+  display: none;
+}
+
+.user-detail-page #consentsGrid .gridjs-container,
+.user-detail-page #recurringConsentsGrid .gridjs-container,
+.user-detail-page #subsGrid .gridjs-container,
+.user-detail-page #paymentsGrid .gridjs-container,
+.user-detail-page #eventsGrid .gridjs-container {
+  width: 100%;
+}
+
+.user-detail-page #consentsGrid table.gridjs-table,
+.user-detail-page #recurringConsentsGrid table.gridjs-table,
+.user-detail-page #subsGrid table.gridjs-table,
+.user-detail-page #paymentsGrid table.gridjs-table,
+.user-detail-page #eventsGrid table.gridjs-table {
+  width: 100%;
+  table-layout: auto;
+}
+
+.user-detail-page #consentsGrid .gridjs-wrapper table th,
+.user-detail-page #consentsGrid .gridjs-wrapper table td,
+.user-detail-page #recurringConsentsGrid .gridjs-wrapper table th,
+.user-detail-page #recurringConsentsGrid .gridjs-wrapper table td,
+.user-detail-page #subsGrid .gridjs-wrapper table th,
+.user-detail-page #subsGrid .gridjs-wrapper table td,
+.user-detail-page #paymentsGrid .gridjs-wrapper table th,
+.user-detail-page #paymentsGrid .gridjs-wrapper table td,
+.user-detail-page #eventsGrid .gridjs-wrapper table th,
+.user-detail-page #eventsGrid .gridjs-wrapper table td {
+  white-space: normal;
+  vertical-align: top;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.user-detail-page #consentsGrid .gridjs-wrapper table td:nth-child(2),
+.user-detail-page #consentsGrid .gridjs-wrapper table td:nth-child(4),
+.user-detail-page #recurringConsentsGrid .gridjs-wrapper table td:nth-child(2),
+.user-detail-page #subsGrid .gridjs-wrapper table td:nth-child(1),
+.user-detail-page #paymentsGrid .gridjs-wrapper table td:nth-child(1),
+.user-detail-page #paymentsGrid .gridjs-wrapper table td:nth-child(3),
+.user-detail-page #paymentsGrid .gridjs-wrapper table td:nth-child(4),
+.user-detail-page #paymentsGrid .gridjs-wrapper table td:nth-child(6),
+.user-detail-page #paymentsGrid .gridjs-wrapper table td:nth-child(7),
+.user-detail-page #paymentsGrid .gridjs-wrapper table td:nth-child(8),
+.user-detail-page #paymentsGrid .gridjs-wrapper table td:nth-child(9),
+.user-detail-page #eventsGrid .gridjs-wrapper table td:nth-child(1) {
+  white-space: nowrap;
+}
+
+.user-detail-page #consentsGrid .gridjs-wrapper table td:nth-child(1),
+.user-detail-page #recurringConsentsGrid .gridjs-wrapper table td:nth-child(1),
+.user-detail-page #subsGrid .gridjs-wrapper table td:nth-child(4),
+.user-detail-page #paymentsGrid .gridjs-wrapper table td:nth-child(5),
+.user-detail-page #eventsGrid .gridjs-wrapper table td:nth-child(2),
+.user-detail-page #eventsGrid .gridjs-wrapper table td:nth-child(3),
+.user-detail-page #eventsGrid .gridjs-wrapper table td:nth-child(4) {
+  min-width: 12rem;
+}
+
+.user-detail-page #subsGrid .gridjs-wrapper {
+  min-height: auto;
+}
+
+.user-detail-page #subsGrid table.gridjs-table {
+  min-width: 760px;
+}
+
+.user-detail-page #subsGrid .gridjs-wrapper table td:nth-child(1) {
+  width: 10rem;
+}
+
+.user-detail-page #subsGrid .gridjs-wrapper table td:nth-child(2) {
+  min-width: 13rem;
+  white-space: normal;
+}
+
+.user-detail-page #subsGrid .gridjs-wrapper table td:nth-child(3) {
+  min-width: 10rem;
+  white-space: normal;
+}
+
+.user-detail-page #subsGrid .gridjs-wrapper table td:nth-child(4) {
+  min-width: 14rem;
+  white-space: normal;
+}
+
+.user-detail-page .subscription-operational-actions {
+  display: grid;
+  gap: .58rem;
+  margin: .62rem 0 .72rem;
+}
+
+.user-detail-page .subscription-action-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .58rem;
+  align-items: center;
+  padding: .5rem .62rem;
+  border: 1px solid #dbe6f1;
+  border-radius: .82rem;
+  background: linear-gradient(135deg, rgba(248, 251, 255, .96), rgba(255, 255, 255, .9));
+  box-shadow: 0 10px 24px rgba(24, 39, 75, .06);
+}
+
+.user-detail-page .subscription-action-title {
+  display: grid;
+  gap: .28rem;
+  min-width: 0;
+}
+
+.user-detail-page .subscription-action-title strong {
+  color: #24364b;
+  line-height: 1.2;
+  font-size: .9rem;
+}
+
+.user-detail-page .subscription-action-title small {
+  color: #6f7f92;
+  font-size: .76rem;
+}
+
+.user-detail-page .subscription-action-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .28rem;
+}
+
+.user-detail-page .subscription-action-menu {
+  position: relative;
+  margin: 0;
+  justify-self: end;
+}
+
+.user-detail-page .subscription-action-menu summary {
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid #c9d8e8;
+  border-radius: 999px;
+  background: #f6f9fd;
+  color: #1f3b57;
+  font-size: 1.25rem;
+  line-height: 1;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(24, 39, 75, .08);
+  user-select: none;
+}
+
+.user-detail-page .subscription-action-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.user-detail-page .subscription-action-menu[open] summary {
+  background: #eaf3ff;
+  border-color: #9dc2ff;
+  color: #0b5bd3;
+}
+
+.user-detail-page .subscription-action-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + .45rem);
+  z-index: 20;
+  display: grid;
+  gap: .36rem;
+  min-width: min(18rem, calc(100vw - 2rem));
+  padding: .52rem;
+  border: 1px solid #d5e1ef;
+  border-radius: .82rem;
+  background: rgba(255, 255, 255, .98);
+  box-shadow: 0 18px 42px rgba(24, 39, 75, .18);
+}
+
+.user-detail-page .subscription-action-dropdown form {
+  margin: 0;
+}
+
+.user-detail-page .subscription-action-dropdown .action-btn {
+  width: 100%;
+  justify-content: center;
+  padding: .46rem .68rem;
+  margin: 0;
+  text-align: center;
+  box-shadow: none;
+}
+
+.user-detail-page .subscription-meta-stack {
+  display: grid;
+  gap: .3rem;
+  min-width: 0;
+}
+
+.user-detail-page .subscription-meta-stack strong {
+  color: #24364b;
+  line-height: 1.25;
+}
+
+.user-detail-page .subscription-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .28rem;
+  align-items: center;
+}
+
+.user-detail-page .subscription-date-stack {
+  display: grid;
+  gap: .16rem;
+  color: #42576d;
+}
+
+.user-detail-page .subscription-date-stack span {
+  display: flex;
+  justify-content: space-between;
+  gap: .45rem;
+  font-size: .74rem;
+}
+
+.user-detail-page .subscription-date-stack small {
+  color: #7a899c;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  font-weight: 700;
+}
+
+.user-detail-page .chat-access-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: .6rem;
+}
+
+.user-detail-page .chat-access-card {
+  display: grid;
+  gap: .5rem;
+  padding: .68rem;
+  border: 1px solid #dbe6f1;
+  border-radius: .85rem;
+  background: rgba(255, 255, 255, .92);
+}
+
+.user-detail-page .chat-access-card header {
+  display: flex;
+  justify-content: space-between;
+  gap: .55rem;
+  align-items: flex-start;
+}
+
+.user-detail-page .chat-access-card h4 {
+  margin: 0 0 .25rem;
+  line-height: 1.15;
+  font-size: .95rem;
+}
+
+.user-detail-page .chat-access-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .28rem;
+}
+
+.user-detail-page .chat-access-meta {
+  display: grid;
+  grid-template-columns: minmax(6.5rem, .45fr) minmax(0, 1fr);
+  gap: .24rem .5rem;
+  margin: 0;
+  font-size: .78rem;
+}
+
+.user-detail-page .chat-access-meta dt {
+  color: var(--admin-muted);
+  font-weight: 700;
+}
+
+.user-detail-page .chat-access-meta dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.user-detail-page .chat-access-error {
+  padding: .42rem .52rem;
+  border-radius: .62rem;
+  background: #fff0f0;
+  color: #9f1f17;
+  font-size: .76rem;
+  overflow-wrap: anywhere;
+}
+
+.user-detail-page .chat-access-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .36rem;
+  align-items: center;
+}
+
+.user-detail-page .chat-access-actions form {
+  margin: 0;
+}
+
+.user-detail-page .chat-access-actions button {
+  margin: 0;
+}
+
+@media (max-width: 1080px) {
+  .user-detail-page .hero-key-strip,
+  .user-detail-page .contact-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 820px) {
+  .user-detail-page .subscription-action-card {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+@media (max-width: 720px) {
+  .user-detail-page .hero {
+    padding: .82rem;
+  }
+
+  .user-detail-page .hero-key-strip,
+  .user-detail-page .contact-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .user-detail-page .hero-key-item,
+  .user-detail-page .contact-summary-item {
+    grid-template-columns: 1fr;
+    gap: .15rem;
+  }
+
+  .user-detail-page .hero-key-item.is-wide strong {
+    white-space: normal;
+  }
+
+  .user-detail-page .section-card {
+    padding: .78rem;
+  }
+
+  .user-detail-page .action-grid {
+    grid-template-columns: 1fr;
+  }
+}

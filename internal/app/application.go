@@ -299,6 +299,13 @@ func buildPaymentService(cfg config.Config, mockBaseURL string) (payment.Service
 			IsTest:        cfg.Payment.Robokassa.IsTestMode,
 			BaseURL:       cfg.Payment.Robokassa.CheckoutURL,
 			RebillURL:     cfg.Payment.Robokassa.RebillURL,
+			Receipt: payment.RobokassaReceiptConfig{
+				Tax:           cfg.Payment.Robokassa.ReceiptTax,
+				PaymentMethod: cfg.Payment.Robokassa.ReceiptMethod,
+				PaymentObject: cfg.Payment.Robokassa.ReceiptObject,
+				SNO:           cfg.Payment.Robokassa.ReceiptSNO,
+				ItemName:      cfg.Payment.Robokassa.ReceiptItemName,
+			},
 		})
 		return service, service, nil
 	default:

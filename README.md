@@ -107,7 +107,17 @@ ROBOKASSA_IS_TEST_MODE=false
 ROBOKASSA_RECURRING_ENABLED=true
 ROBOKASSA_CHECKOUT_URL=https://auth.robokassa.ru/Merchant/Index.aspx
 ROBOKASSA_REBILL_URL=https://auth.robokassa.ru/Merchant/Recurring
+ROBOKASSA_RECEIPT_TAX=none
+ROBOKASSA_RECEIPT_PAYMENT_METHOD=full_payment
+ROBOKASSA_RECEIPT_PAYMENT_OBJECT=service
+ROBOKASSA_RECEIPT_SNO=
+ROBOKASSA_RECEIPT_ITEM_NAME=
 ```
+
+`ROBOKASSA_RECEIPT_*` управляют номенклатурой для фискализации. `Receipt`
+передается и в первый платеж, и в повторные автосписания; без него Robokassa
+может не сформировать чек. `SNO` можно оставить пустым, если система
+налогообложения корректно задана в личном кабинете Robokassa.
 
 Опциональные аварийные network overrides для Telegram:
 

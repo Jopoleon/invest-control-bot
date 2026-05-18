@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -18,6 +19,11 @@ const (
 	defaultRobokassaBaseURL    = "https://auth.robokassa.ru/Merchant/Index.aspx"
 	defaultRobokassaRebillURL  = "https://auth.robokassa.ru/Merchant/Recurring"
 	defaultRobokassaOpStateURL = "https://auth.robokassa.ru/Merchant/WebService/Service.asmx/OpStateExt"
+
+	defaultRobokassaReceiptTax           = "none"
+	defaultRobokassaReceiptPaymentMethod = "full_payment"
+	defaultRobokassaReceiptPaymentObject = "service"
+	defaultRobokassaReceiptItemName      = "Оплата абонемента"
 )
 
 // RobokassaService generates payment links and verifies Robokassa signatures.
@@ -26,6 +32,7 @@ type RobokassaService struct {
 	password1     string
 	password2     string
 	isTest        bool
+	receipt       robokassaReceiptConfig
 	baseURL       string
 	rebillURL     string
 	opStateURL    string
@@ -40,6 +47,24 @@ type RobokassaConfig struct {
 	IsTest        bool
 	BaseURL       string
 	RebillURL     string
+	Receipt       RobokassaReceiptConfig
+}
+
+// RobokassaReceiptConfig controls fiscal receipt item defaults.
+type RobokassaReceiptConfig struct {
+	Tax           string
+	PaymentMethod string
+	PaymentObject string
+	SNO           string
+	ItemName      string
+}
+
+type robokassaReceiptConfig struct {
+	tax           string
+	paymentMethod string
+	paymentObject string
+	sno           string
+	itemName      string
 }
 
 // NewRobokassaService builds Robokassa payment provider client.
@@ -53,6 +78,7 @@ func NewRobokassaService(cfg RobokassaConfig) *RobokassaService {
 		password1:     strings.TrimSpace(cfg.Password1),
 		password2:     strings.TrimSpace(cfg.Password2),
 		isTest:        cfg.IsTest,
+		receipt:       normalizeRobokassaReceiptConfig(cfg.Receipt),
 		baseURL:       baseURL,
 		rebillURL:     firstNonEmpty(strings.TrimSpace(cfg.RebillURL), defaultRobokassaRebillURL),
 		opStateURL:    defaultRobokassaOpStateURL,
@@ -66,6 +92,91 @@ func (s *RobokassaService) ProviderName() string { return "robokassa" }
 // IsTestMode reports whether Robokassa checkout/rebill requests include IsTest.
 func (s *RobokassaService) IsTestMode() bool { return s.isTest }
 
+type robokassaReceipt struct {
+	SNO   string                 `json:"sno,omitempty"`
+	Items []robokassaReceiptItem `json:"items"`
+}
+
+type robokassaReceiptItem struct {
+	Name          string  `json:"name"`
+	Quantity      int     `json:"quantity"`
+	Sum           float64 `json:"sum"`
+	PaymentMethod string  `json:"payment_method"`
+	PaymentObject string  `json:"payment_object"`
+	Tax           string  `json:"tax"`
+}
+
+func normalizeRobokassaReceiptConfig(cfg RobokassaReceiptConfig) robokassaReceiptConfig {
+	return robokassaReceiptConfig{
+		tax:           firstNonEmpty(strings.TrimSpace(cfg.Tax), defaultRobokassaReceiptTax),
+		paymentMethod: firstNonEmpty(strings.TrimSpace(cfg.PaymentMethod), defaultRobokassaReceiptPaymentMethod),
+		paymentObject: firstNonEmpty(strings.TrimSpace(cfg.PaymentObject), defaultRobokassaReceiptPaymentObject),
+		sno:           strings.TrimSpace(cfg.SNO),
+		itemName:      strings.TrimSpace(cfg.ItemName),
+	}
+}
+
+func (s *RobokassaService) buildReceipt(amountRUB int64, description string) (string, error) {
+	if amountRUB <= 0 {
+		return "", fmt.Errorf("receipt amount must be positive")
+	}
+	itemName := strings.TrimSpace(s.receipt.itemName)
+	if itemName == "" {
+		itemName = strings.TrimSpace(description)
+	}
+	if itemName == "" {
+		itemName = defaultRobokassaReceiptItemName
+	}
+	itemName = sanitizeRobokassaReceiptName(itemName)
+	if itemName == "" {
+		itemName = defaultRobokassaReceiptItemName
+	}
+	receipt := robokassaReceipt{
+		SNO: s.receipt.sno,
+		Items: []robokassaReceiptItem{{
+			Name:          itemName,
+			Quantity:      1,
+			Sum:           float64(amountRUB),
+			PaymentMethod: s.receipt.paymentMethod,
+			PaymentObject: s.receipt.paymentObject,
+			Tax:           s.receipt.tax,
+		}},
+	}
+	raw, err := json.Marshal(receipt)
+	if err != nil {
+		return "", fmt.Errorf("build robokassa receipt: %w", err)
+	}
+	return string(raw), nil
+}
+
+func encodeRobokassaReceiptForSignature(receipt string) string {
+	if receipt == "" {
+		return ""
+	}
+	return url.QueryEscape(receipt)
+}
+
+func sanitizeRobokassaReceiptName(raw string) string {
+	name := strings.TrimSpace(raw)
+	name = strings.Map(func(r rune) rune {
+		switch r {
+		case '\n', '\r', '\t':
+			return ' '
+		case '<', '>', '"', '\'':
+			return -1
+		default:
+			return r
+		}
+	}, name)
+	name = strings.Join(strings.Fields(name), " ")
+	const maxReceiptNameRunes = 128
+	runes := []rune(name)
+	if len(runes) > maxReceiptNameRunes {
+		name = string(runes[:maxReceiptNameRunes])
+	}
+	return name
+}
+
 // CreateCheckoutURL forms Robokassa payment link with MD5 signature.
 // req.InvoiceID is our merchant-side Robokassa `InvId` and must match the
 // value persisted in payments.token for callback lookup and later status
@@ -76,12 +187,22 @@ func (s *RobokassaService) CreateCheckoutURL(_ context.Context, req Request) (st
 		return "", fmt.Errorf("invoice ID is required")
 	}
 	outSum := formatOutSum(req.AmountRUB)
-	signature := md5Hex(strings.Join([]string{
+	receipt, err := s.buildReceipt(req.AmountRUB, req.Description)
+	if err != nil {
+		return "", err
+	}
+	signatureParts := []string{
 		s.merchantLogin,
 		outSum,
 		invID,
+	}
+	if receipt != "" {
+		signatureParts = append(signatureParts, encodeRobokassaReceiptForSignature(receipt))
+	}
+	signatureParts = append(signatureParts,
 		s.password1,
-	}, ":"))
+	)
+	signature := md5Hex(strings.Join(signatureParts, ":"))
 
 	q := url.Values{}
 	q.Set("MerchantLogin", s.merchantLogin)
@@ -89,6 +210,9 @@ func (s *RobokassaService) CreateCheckoutURL(_ context.Context, req Request) (st
 	q.Set("InvId", invID)
 	q.Set("Description", strings.TrimSpace(req.Description))
 	q.Set("SignatureValue", signature)
+	if receipt != "" {
+		q.Set("Receipt", receipt)
+	}
 	if req.EnableRecurring {
 		q.Set("Recurring", "true")
 	}
@@ -131,12 +255,22 @@ func (s *RobokassaService) CreateRebill(ctx context.Context, req RebillRequest) 
 		return fmt.Errorf("previous invoice ID is required")
 	}
 	outSum := formatOutSum(req.AmountRUB)
-	signature := md5Hex(strings.Join([]string{
+	receipt, err := s.buildReceipt(req.AmountRUB, req.Description)
+	if err != nil {
+		return err
+	}
+	signatureParts := []string{
 		s.merchantLogin,
 		outSum,
 		invoiceID,
+	}
+	if receipt != "" {
+		signatureParts = append(signatureParts, encodeRobokassaReceiptForSignature(receipt))
+	}
+	signatureParts = append(signatureParts,
 		s.password1,
-	}, ":"))
+	)
+	signature := md5Hex(strings.Join(signatureParts, ":"))
 
 	form := url.Values{}
 	form.Set("MerchantLogin", s.merchantLogin)
@@ -145,6 +279,9 @@ func (s *RobokassaService) CreateRebill(ctx context.Context, req RebillRequest) 
 	form.Set("OutSum", outSum)
 	form.Set("Description", strings.TrimSpace(req.Description))
 	form.Set("SignatureValue", signature)
+	if receipt != "" {
+		form.Set("Receipt", receipt)
+	}
 	if s.isTest {
 		form.Set("IsTest", "1")
 	}

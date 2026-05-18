@@ -2,6 +2,7 @@ package payment
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -16,6 +17,12 @@ func TestRobokassa_CreateCheckoutURLAndSignatures(t *testing.T) {
 		Password2:     "pass2",
 		IsTest:        true,
 		BaseURL:       "https://pay.example.test/checkout",
+		Receipt: RobokassaReceiptConfig{
+			Tax:           "none",
+			PaymentMethod: "full_payment",
+			PaymentObject: "service",
+			SNO:           "usn_income",
+		},
 	})
 
 	rawURL, err := svc.CreateCheckoutURL(context.Background(), Request{
@@ -48,6 +55,12 @@ func TestRobokassa_CreateCheckoutURLAndSignatures(t *testing.T) {
 	if q.Get("IsTest") != "1" {
 		t.Fatalf("IsTest=%q want 1", q.Get("IsTest"))
 	}
+	receipt := q.Get("Receipt")
+	assertRobokassaReceipt(t, receipt, "Test payment", 2322, "none", "full_payment", "service", "usn_income")
+	expectedSignature := md5Hex("merchant:2322.00:100500:" + url.QueryEscape(receipt) + ":pass1")
+	if q.Get("SignatureValue") != expectedSignature {
+		t.Fatalf("SignatureValue=%q want %q", q.Get("SignatureValue"), expectedSignature)
+	}
 
 	resultSig := md5Hex("2322.00:100500:pass2")
 	successSig := md5Hex("2322.00:100500:pass1")
@@ -63,6 +76,34 @@ func TestRobokassa_CreateCheckoutURL_RequiresInvoiceID(t *testing.T) {
 	svc := NewRobokassaService(RobokassaConfig{MerchantLogin: "merchant", Password1: "pass1", Password2: "pass2"})
 	if _, err := svc.CreateCheckoutURL(context.Background(), Request{}); err == nil {
 		t.Fatalf("CreateCheckoutURL err=nil want error")
+	}
+}
+
+func TestRobokassa_CreateCheckoutURL_DefaultReceiptUsesZeroVAT(t *testing.T) {
+	svc := NewRobokassaService(RobokassaConfig{
+		MerchantLogin: "merchant",
+		Password1:     "pass1",
+		Password2:     "pass2",
+		BaseURL:       "https://pay.example.test/checkout",
+	})
+
+	rawURL, err := svc.CreateCheckoutURL(context.Background(), Request{
+		InvoiceID:   "100501",
+		AmountRUB:   1500,
+		Description: "Default fiscal item",
+	})
+	if err != nil {
+		t.Fatalf("CreateCheckoutURL: %v", err)
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	receipt := parsed.Query().Get("Receipt")
+	assertRobokassaReceipt(t, receipt, "Default fiscal item", 1500, "none", "full_payment", "service", "")
+	expectedSignature := md5Hex("merchant:1500.00:100501:" + url.QueryEscape(receipt) + ":pass1")
+	if parsed.Query().Get("SignatureValue") != expectedSignature {
+		t.Fatalf("SignatureValue=%q want %q", parsed.Query().Get("SignatureValue"), expectedSignature)
 	}
 }
 
@@ -83,6 +124,11 @@ func TestRobokassa_CreateRebill_SendsFormAndAcceptsOK(t *testing.T) {
 		Password2:     "pass2",
 		IsTest:        true,
 		RebillURL:     server.URL,
+		Receipt: RobokassaReceiptConfig{
+			Tax:           "vat20",
+			PaymentMethod: "full_payment",
+			PaymentObject: "service",
+		},
 	})
 	svc.httpClient = server.Client()
 
@@ -109,6 +155,41 @@ func TestRobokassa_CreateRebill_SendsFormAndAcceptsOK(t *testing.T) {
 	}
 	if captured.Get("IsTest") != "1" {
 		t.Fatalf("IsTest=%q want 1", captured.Get("IsTest"))
+	}
+	receipt := captured.Get("Receipt")
+	assertRobokassaReceipt(t, receipt, "renewal", 777, "vat20", "full_payment", "service", "")
+	expectedSignature := md5Hex("merchant:777.00:200700:" + url.QueryEscape(receipt) + ":pass1")
+	if captured.Get("SignatureValue") != expectedSignature {
+		t.Fatalf("SignatureValue=%q want %q", captured.Get("SignatureValue"), expectedSignature)
+	}
+}
+
+func TestRobokassa_ReceiptSanitizesAndTruncatesItemName(t *testing.T) {
+	svc := NewRobokassaService(RobokassaConfig{MerchantLogin: "merchant", Password1: "pass1", Password2: "pass2"})
+	rawURL, err := svc.CreateCheckoutURL(context.Background(), Request{
+		InvoiceID:   "100501",
+		AmountRUB:   10,
+		Description: strings.Repeat("Ю", 140) + "\n<script>",
+	})
+	if err != nil {
+		t.Fatalf("CreateCheckoutURL: %v", err)
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	var receipt robokassaReceipt
+	if err := json.Unmarshal([]byte(parsed.Query().Get("Receipt")), &receipt); err != nil {
+		t.Fatalf("receipt json: %v", err)
+	}
+	if len(receipt.Items) != 1 {
+		t.Fatalf("items len=%d want 1", len(receipt.Items))
+	}
+	if got := len([]rune(receipt.Items[0].Name)); got != 128 {
+		t.Fatalf("name runes=%d want 128", got)
+	}
+	if strings.ContainsAny(receipt.Items[0].Name, "<>\n\r\t") {
+		t.Fatalf("name contains forbidden chars: %q", receipt.Items[0].Name)
 	}
 }
 
@@ -170,5 +251,41 @@ func TestRobokassa_LookupOperationState_RequiresInvoiceID(t *testing.T) {
 	svc := NewRobokassaService(RobokassaConfig{})
 	if _, err := svc.LookupOperationState(context.Background(), " "); err == nil {
 		t.Fatalf("LookupOperationState err=nil want error")
+	}
+}
+
+func assertRobokassaReceipt(t *testing.T, raw, name string, sum float64, tax, method, object, sno string) {
+	t.Helper()
+	if raw == "" {
+		t.Fatalf("Receipt is empty")
+	}
+	var receipt robokassaReceipt
+	if err := json.Unmarshal([]byte(raw), &receipt); err != nil {
+		t.Fatalf("receipt json: %v raw=%q", err, raw)
+	}
+	if receipt.SNO != sno {
+		t.Fatalf("sno=%q want %q", receipt.SNO, sno)
+	}
+	if len(receipt.Items) != 1 {
+		t.Fatalf("items len=%d want 1", len(receipt.Items))
+	}
+	item := receipt.Items[0]
+	if item.Name != name {
+		t.Fatalf("name=%q want %q", item.Name, name)
+	}
+	if item.Quantity != 1 {
+		t.Fatalf("quantity=%d want 1", item.Quantity)
+	}
+	if item.Sum != sum {
+		t.Fatalf("sum=%v want %v", item.Sum, sum)
+	}
+	if item.Tax != tax {
+		t.Fatalf("tax=%q want %q", item.Tax, tax)
+	}
+	if item.PaymentMethod != method {
+		t.Fatalf("payment_method=%q want %q", item.PaymentMethod, method)
+	}
+	if item.PaymentObject != object {
+		t.Fatalf("payment_object=%q want %q", item.PaymentObject, object)
 	}
 }

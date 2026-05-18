@@ -1,13 +1,3 @@
-:root {
-  --pico-font-family: "Manrope", "Segoe UI", sans-serif;
-  --pico-font-size: 87.5%;
-  --pico-spacing: .8rem;
-  --pico-form-element-spacing-vertical: .45rem;
-  --pico-form-element-spacing-horizontal: .6rem;
-}
-
-body::before { opacity: .18; }
-
 .connectors-admin-page {
   max-width: 1760px;
   width: min(1760px, calc(100vw - 32px));
