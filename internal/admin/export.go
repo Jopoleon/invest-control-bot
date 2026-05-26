@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/csv"
 	"net/http"
 	"net/url"
@@ -204,17 +205,25 @@ func (h *Handler) exportPaymentsCSV(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	connectorNames := h.loadConnectorNames(r.Context())
+	connectorNames, projectNames, monthlyAmounts := h.loadConnectorExportData(r.Context())
 	resolveAccountPresentation := h.buildMessengerAccountPresentationLookup(r.Context(), h.resolveLang(w, r))
+	resolveExportAccount := h.buildExportMessengerAccountLookup(r.Context())
+	paidCounts := h.buildPaidPaymentCounts(r.Context())
 
 	records := make([][]string, 0, len(rows)+1)
 	records = append(records, []string{
 		"id", "user_id", "primary_account", "provider", "provider_payment_id", "status", "token", "connector_id",
-		"connector", "subscription_id", "parent_payment_id", "amount_rub", "auto_pay_enabled",
+		"connector", "project", "messenger_kind", "messenger_user_id", "messenger_username", "telegram_username",
+		"subscription_id", "parent_payment_id", "amount_rub", "monthly_payment_rub", "total_paid_payments", "auto_pay_enabled",
 		"checkout_url", "created_at", "paid_at", "updated_at",
 	})
 	for _, payment := range rows {
 		accountPresentation, err := resolveAccountPresentation(payment.UserID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		exportAccount, err := resolveExportAccount(payment.UserID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -233,9 +242,16 @@ func (h *Handler) exportPaymentsCSV(w http.ResponseWriter, r *http.Request) {
 			payment.Token,
 			strconv.FormatInt(payment.ConnectorID, 10),
 			connectorDisplayName(connectorNames, payment.ConnectorID),
+			connectorDisplayName(projectNames, payment.ConnectorID),
+			string(exportAccount.MessengerKind),
+			exportAccount.MessengerUserID,
+			exportAccount.Username,
+			exportAccount.TelegramUsername,
 			strconv.FormatInt(payment.SubscriptionID, 10),
 			strconv.FormatInt(payment.ParentPaymentID, 10),
 			strconv.FormatInt(payment.AmountRUB, 10),
+			formatMonthlyPaymentRUB(monthlyAmounts, payment.ConnectorID, payment.AmountRUB),
+			strconv.Itoa(paidCounts[exportPaymentCountKey(payment.UserID, payment.ConnectorID)]),
 			strconv.FormatBool(payment.AutoPayEnabled),
 			payment.CheckoutURL,
 			payment.CreatedAt.In(time.Local).Format(time.RFC3339),
@@ -262,19 +278,28 @@ func (h *Handler) exportSubscriptionsCSV(w http.ResponseWriter, r *http.Request)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	connectorNames := h.loadConnectorNames(r.Context())
+	connectorNames, projectNames, monthlyAmounts := h.loadConnectorExportData(r.Context())
 	resolveAccountPresentation := h.buildMessengerAccountPresentationLookup(r.Context(), h.resolveLang(w, r))
+	resolveExportAccount := h.buildExportMessengerAccountLookup(r.Context())
+	paidCounts := h.buildPaidPaymentCounts(r.Context())
 	now := time.Now().UTC()
 	sortSubscriptionsForOperationalView(rows, now)
 
 	records := make([][]string, 0, len(rows)+1)
 	records = append(records, []string{
-		"id", "user_id", "primary_account", "connector_id", "connector", "payment_id", "status", "phase",
-		"auto_pay_enabled", "starts_at", "ends_at", "reminder_sent_at",
+		"id", "user_id", "primary_account", "connector_id", "connector", "project",
+		"messenger_kind", "messenger_user_id", "messenger_username", "telegram_username",
+		"payment_id", "status", "phase", "auto_pay_enabled", "monthly_payment_rub", "total_paid_payments",
+		"next_payment_at", "reminder_sent_at",
 		"expiry_notice_sent_at", "created_at", "updated_at",
 	})
 	for _, sub := range rows {
 		accountPresentation, err := resolveAccountPresentation(sub.UserID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		exportAccount, err := resolveExportAccount(sub.UserID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -285,12 +310,18 @@ func (h *Handler) exportSubscriptionsCSV(w http.ResponseWriter, r *http.Request)
 			accountPresentation.PrimaryAccount,
 			strconv.FormatInt(sub.ConnectorID, 10),
 			connectorDisplayName(connectorNames, sub.ConnectorID),
+			connectorDisplayName(projectNames, sub.ConnectorID),
+			string(exportAccount.MessengerKind),
+			exportAccount.MessengerUserID,
+			exportAccount.Username,
+			exportAccount.TelegramUsername,
 			strconv.FormatInt(sub.PaymentID, 10),
 			string(sub.Status),
 			subscriptionPhaseLabel(sub, now),
 			strconv.FormatBool(sub.AutoPayEnabled),
-			sub.StartsAt.In(time.Local).Format(time.RFC3339),
-			sub.EndsAt.In(time.Local).Format(time.RFC3339),
+			formatMonthlyPaymentRUB(monthlyAmounts, sub.ConnectorID, 0),
+			strconv.Itoa(paidCounts[exportPaymentCountKey(sub.UserID, sub.ConnectorID)]),
+			formatNextPaymentAt(sub, now),
 			formatOptionalTime(sub.ReminderSentAt),
 			formatOptionalTime(sub.ExpiryNoticeSentAt),
 			sub.CreatedAt.In(time.Local).Format(time.RFC3339),
@@ -438,6 +469,159 @@ func parseEventsQuery(params url.Values) domain.AuditEventListQuery {
 		query.SortDesc = false
 	}
 	return query
+}
+
+type exportMessengerAccount struct {
+	MessengerKind    domain.MessengerKind
+	MessengerUserID  string
+	Username         string
+	TelegramUsername string
+}
+
+func (h *Handler) buildExportMessengerAccountLookup(ctx context.Context) func(int64) (exportMessengerAccount, error) {
+	cache := make(map[int64]exportMessengerAccount)
+	return func(userID int64) (exportMessengerAccount, error) {
+		if cached, ok := cache[userID]; ok {
+			return cached, nil
+		}
+		accounts, err := h.store.ListUserMessengerAccounts(ctx, userID)
+		if err != nil {
+			return exportMessengerAccount{}, err
+		}
+		preferred, _ := pickPreferredMessengerAccount(accounts)
+		item := exportMessengerAccount{
+			MessengerKind:   preferred.MessengerKind,
+			MessengerUserID: strings.TrimSpace(preferred.MessengerUserID),
+			Username:        strings.TrimPrefix(strings.TrimSpace(preferred.Username), "@"),
+		}
+		for _, account := range accounts {
+			if account.MessengerKind == domain.MessengerKindTelegram {
+				item.TelegramUsername = strings.TrimPrefix(strings.TrimSpace(account.Username), "@")
+				break
+			}
+		}
+		cache[userID] = item
+		return item, nil
+	}
+}
+
+func (h *Handler) buildPaidPaymentCounts(ctx context.Context) map[string]int {
+	payments, err := h.store.ListPayments(ctx, domain.PaymentListQuery{Status: domain.PaymentStatusPaid, Limit: exportLimit})
+	if err != nil {
+		return map[string]int{}
+	}
+	counts := make(map[string]int)
+	for _, payment := range payments {
+		counts[exportPaymentCountKey(payment.UserID, payment.ConnectorID)]++
+	}
+	return counts
+}
+
+func exportPaymentCountKey(userID, connectorID int64) string {
+	return strconv.FormatInt(userID, 10) + ":" + strconv.FormatInt(connectorID, 10)
+}
+
+func formatNextPaymentAt(sub domain.Subscription, now time.Time) string {
+	if !sub.IsCurrentActiveAt(now) || !sub.AutoPayEnabled {
+		return ""
+	}
+	return sub.EndsAt.In(time.Local).Format(time.RFC3339)
+}
+
+func formatMonthlyPaymentRUB(amounts map[int64]int64, connectorID, fallbackAmount int64) string {
+	amount := amounts[connectorID]
+	if amount <= 0 {
+		amount = fallbackAmount
+	}
+	if amount <= 0 {
+		return ""
+	}
+	return strconv.FormatInt(amount, 10)
+}
+
+func (h *Handler) loadConnectorExportData(ctx context.Context) (map[int64]string, map[int64]string, map[int64]int64) {
+	connectors, err := h.store.ListConnectors(ctx)
+	if err != nil {
+		return map[int64]string{}, map[int64]string{}, map[int64]int64{}
+	}
+	telegramProjects := h.loadTelegramProjectNames(ctx)
+	connectorNames := make(map[int64]string, len(connectors))
+	projectNames := make(map[int64]string, len(connectors))
+	monthlyAmounts := make(map[int64]int64, len(connectors))
+	for _, connector := range connectors {
+		connectorNames[connector.ID] = connector.Name
+		projectNames[connector.ID] = connectorProjectName(connector, telegramProjects)
+		monthlyAmounts[connector.ID] = connector.PriceRUB
+	}
+	return connectorNames, projectNames, monthlyAmounts
+}
+
+func (h *Handler) loadTelegramProjectNames(ctx context.Context) map[string]string {
+	chats, err := h.store.ListTelegramChats(ctx)
+	if err != nil {
+		return map[string]string{}
+	}
+	names := make(map[string]string, len(chats)*3)
+	for _, chat := range chats {
+		title := telegramProjectTitle(chat)
+		if title == "" {
+			continue
+		}
+		for _, key := range telegramChatProjectKeys(chat) {
+			names[key] = title
+		}
+	}
+	return names
+}
+
+func telegramProjectTitle(chat domain.TelegramChat) string {
+	if title := strings.TrimSpace(chat.Title); title != "" {
+		return title
+	}
+	if username := strings.TrimSpace(chat.Username); username != "" {
+		return "@" + strings.TrimPrefix(username, "@")
+	}
+	return strings.TrimSpace(chat.ChatID)
+}
+
+func telegramChatProjectKeys(chat domain.TelegramChat) []string {
+	rawChatID := strings.TrimSpace(chat.ChatID)
+	username := strings.TrimSpace(chat.Username)
+	keys := make([]string, 0, 4)
+	if rawChatID != "" {
+		keys = append(keys, rawChatID, strings.TrimPrefix(rawChatID, "-"))
+	}
+	if username != "" {
+		keys = append(keys, "@"+strings.TrimPrefix(username, "@"), strings.TrimPrefix(username, "@"))
+	}
+	return keys
+}
+
+func connectorProjectName(connector domain.Connector, telegramProjects map[string]string) string {
+	if ref := connector.ResolvedTelegramChatRef(); ref != "" {
+		if name := strings.TrimSpace(telegramProjects[ref]); name != "" {
+			return name
+		}
+		if name := strings.TrimSpace(telegramProjects[strings.TrimPrefix(ref, "-")]); name != "" {
+			return name
+		}
+	}
+	return firstNonEmptyExportValue(
+		strings.TrimSpace(connector.Name),
+		strings.TrimSpace(connector.ChannelURL),
+		strings.TrimSpace(connector.MAXChannelURL),
+		strings.TrimSpace(connector.MAXChatID),
+		strings.TrimSpace(connector.ChatID),
+	)
+}
+
+func firstNonEmptyExportValue(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func buildExportURL(path string, params url.Values, lang string) string {

@@ -129,6 +129,8 @@ func (h *Handler) saveAuditEvent(ctx context.Context, event domain.AuditEvent) {
 // Register mounts admin routes into the shared application router.
 func (h *Handler) Register(router chi.Router) {
 	router.Handle("/admin/assets/*", http.StripPrefix("/admin/assets/", staticHandler()))
+	router.Handle("/favicon.ico", faviconHandler())
+	router.Handle("/favicon.png", faviconHandler())
 	router.HandleFunc("/admin/login", h.loginPage)
 	router.HandleFunc("/admin", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin/connectors", http.StatusFound)

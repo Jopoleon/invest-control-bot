@@ -191,13 +191,14 @@ func (s *RobokassaService) CreateCheckoutURL(_ context.Context, req Request) (st
 	if err != nil {
 		return "", err
 	}
+	encodedReceipt := encodeRobokassaReceiptForSignature(receipt)
 	signatureParts := []string{
 		s.merchantLogin,
 		outSum,
 		invID,
 	}
-	if receipt != "" {
-		signatureParts = append(signatureParts, encodeRobokassaReceiptForSignature(receipt))
+	if encodedReceipt != "" {
+		signatureParts = append(signatureParts, encodedReceipt)
 	}
 	signatureParts = append(signatureParts,
 		s.password1,
@@ -210,8 +211,11 @@ func (s *RobokassaService) CreateCheckoutURL(_ context.Context, req Request) (st
 	q.Set("InvId", invID)
 	q.Set("Description", strings.TrimSpace(req.Description))
 	q.Set("SignatureValue", signature)
-	if receipt != "" {
-		q.Set("Receipt", receipt)
+	if encodedReceipt != "" {
+		// Robokassa expects Receipt itself to be URL-encoded before it is placed
+		// into the request. url.Values then encodes the form/query transport
+		// layer, so the final URL contains a double-encoded Receipt value.
+		q.Set("Receipt", encodedReceipt)
 	}
 	if req.EnableRecurring {
 		q.Set("Recurring", "true")
@@ -259,13 +263,14 @@ func (s *RobokassaService) CreateRebill(ctx context.Context, req RebillRequest) 
 	if err != nil {
 		return err
 	}
+	encodedReceipt := encodeRobokassaReceiptForSignature(receipt)
 	signatureParts := []string{
 		s.merchantLogin,
 		outSum,
 		invoiceID,
 	}
-	if receipt != "" {
-		signatureParts = append(signatureParts, encodeRobokassaReceiptForSignature(receipt))
+	if encodedReceipt != "" {
+		signatureParts = append(signatureParts, encodedReceipt)
 	}
 	signatureParts = append(signatureParts,
 		s.password1,
@@ -279,8 +284,8 @@ func (s *RobokassaService) CreateRebill(ctx context.Context, req RebillRequest) 
 	form.Set("OutSum", outSum)
 	form.Set("Description", strings.TrimSpace(req.Description))
 	form.Set("SignatureValue", signature)
-	if receipt != "" {
-		form.Set("Receipt", receipt)
+	if encodedReceipt != "" {
+		form.Set("Receipt", encodedReceipt)
 	}
 	if s.isTest {
 		form.Set("IsTest", "1")

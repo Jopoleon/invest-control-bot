@@ -17,3 +17,12 @@ func staticHandler() http.Handler {
 	}
 	return http.FileServer(http.FS(sub))
 }
+
+// faviconHandler serves one shared site icon for both admin and public pages.
+// Browsers request /favicon.ico implicitly, so the route is intentionally not
+// scoped under /admin/assets even though the embedded file lives there.
+func faviconHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFileFS(w, r, assetsFS, "assets/img/favicon.png")
+	})
+}

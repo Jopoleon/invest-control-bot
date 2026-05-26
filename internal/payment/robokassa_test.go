@@ -3,6 +3,7 @@ package payment
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -56,8 +57,19 @@ func TestRobokassa_CreateCheckoutURLAndSignatures(t *testing.T) {
 		t.Fatalf("IsTest=%q want 1", q.Get("IsTest"))
 	}
 	receipt := q.Get("Receipt")
-	assertRobokassaReceipt(t, receipt, "Test payment", 2322, "none", "full_payment", "service", "usn_income")
-	expectedSignature := md5Hex("merchant:2322.00:100500:" + url.QueryEscape(receipt) + ":pass1")
+	rawReceipt := decodeRobokassaReceiptParam(t, receipt)
+	assertRobokassaReceipt(t, rawReceipt, "Test payment", 2322, "none", "full_payment", "service", "usn_income")
+	expectedEncodedReceipt := url.QueryEscape(rawReceipt)
+	if receipt != expectedEncodedReceipt {
+		t.Fatalf("Receipt=%q want encoded receipt %q", receipt, expectedEncodedReceipt)
+	}
+	if !strings.Contains(rawURL, "Receipt="+url.QueryEscape(expectedEncodedReceipt)) {
+		t.Fatalf("raw URL does not contain double-encoded receipt: %s", rawURL)
+	}
+	if strings.Contains(rawURL, "Receipt="+expectedEncodedReceipt) {
+		t.Fatalf("raw URL contains legacy single-encoded receipt: %s", rawURL)
+	}
+	expectedSignature := md5Hex("merchant:2322.00:100500:" + expectedEncodedReceipt + ":pass1")
 	if q.Get("SignatureValue") != expectedSignature {
 		t.Fatalf("SignatureValue=%q want %q", q.Get("SignatureValue"), expectedSignature)
 	}
@@ -100,8 +112,9 @@ func TestRobokassa_CreateCheckoutURL_DefaultReceiptUsesZeroVAT(t *testing.T) {
 		t.Fatalf("Parse: %v", err)
 	}
 	receipt := parsed.Query().Get("Receipt")
-	assertRobokassaReceipt(t, receipt, "Default fiscal item", 1500, "none", "full_payment", "service", "")
-	expectedSignature := md5Hex("merchant:1500.00:100501:" + url.QueryEscape(receipt) + ":pass1")
+	rawReceipt := decodeRobokassaReceiptParam(t, receipt)
+	assertRobokassaReceipt(t, rawReceipt, "Default fiscal item", 1500, "none", "full_payment", "service", "")
+	expectedSignature := md5Hex("merchant:1500.00:100501:" + receipt + ":pass1")
 	if parsed.Query().Get("SignatureValue") != expectedSignature {
 		t.Fatalf("SignatureValue=%q want %q", parsed.Query().Get("SignatureValue"), expectedSignature)
 	}
@@ -157,10 +170,56 @@ func TestRobokassa_CreateRebill_SendsFormAndAcceptsOK(t *testing.T) {
 		t.Fatalf("IsTest=%q want 1", captured.Get("IsTest"))
 	}
 	receipt := captured.Get("Receipt")
-	assertRobokassaReceipt(t, receipt, "renewal", 777, "vat20", "full_payment", "service", "")
-	expectedSignature := md5Hex("merchant:777.00:200700:" + url.QueryEscape(receipt) + ":pass1")
+	rawReceipt := decodeRobokassaReceiptParam(t, receipt)
+	assertRobokassaReceipt(t, rawReceipt, "renewal", 777, "vat20", "full_payment", "service", "")
+	expectedSignature := md5Hex("merchant:777.00:200700:" + receipt + ":pass1")
 	if captured.Get("SignatureValue") != expectedSignature {
 		t.Fatalf("SignatureValue=%q want %q", captured.Get("SignatureValue"), expectedSignature)
+	}
+}
+
+func TestRobokassa_CreateRebill_SendsDoubleEncodedReceiptInFormBody(t *testing.T) {
+	var rawBody string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("ReadAll: %v", err)
+		}
+		rawBody = string(body)
+		_, _ = w.Write([]byte("OK+200701"))
+	}))
+	defer server.Close()
+
+	svc := NewRobokassaService(RobokassaConfig{
+		MerchantLogin: "merchant",
+		Password1:     "pass1",
+		Password2:     "pass2",
+		RebillURL:     server.URL,
+	})
+	svc.httpClient = server.Client()
+
+	err := svc.CreateRebill(context.Background(), RebillRequest{
+		InvoiceID:         "200701",
+		PreviousInvoiceID: "100501",
+		AmountRUB:         1500,
+		Description:       "Default fiscal item",
+	})
+	if err != nil {
+		t.Fatalf("CreateRebill: %v", err)
+	}
+
+	form, err := url.ParseQuery(rawBody)
+	if err != nil {
+		t.Fatalf("ParseQuery: %v", err)
+	}
+	encodedReceipt := form.Get("Receipt")
+	rawReceipt := decodeRobokassaReceiptParam(t, encodedReceipt)
+	assertRobokassaReceipt(t, rawReceipt, "Default fiscal item", 1500, "none", "full_payment", "service", "")
+	if !strings.Contains(rawBody, "Receipt="+url.QueryEscape(encodedReceipt)) {
+		t.Fatalf("raw form body does not contain double-encoded receipt: %s", rawBody)
+	}
+	if strings.Contains(rawBody, "Receipt="+encodedReceipt) {
+		t.Fatalf("raw form body contains legacy single-encoded receipt: %s", rawBody)
 	}
 }
 
@@ -179,7 +238,8 @@ func TestRobokassa_ReceiptSanitizesAndTruncatesItemName(t *testing.T) {
 		t.Fatalf("Parse: %v", err)
 	}
 	var receipt robokassaReceipt
-	if err := json.Unmarshal([]byte(parsed.Query().Get("Receipt")), &receipt); err != nil {
+	rawReceipt := decodeRobokassaReceiptParam(t, parsed.Query().Get("Receipt"))
+	if err := json.Unmarshal([]byte(rawReceipt), &receipt); err != nil {
 		t.Fatalf("receipt json: %v", err)
 	}
 	if len(receipt.Items) != 1 {
@@ -288,4 +348,13 @@ func assertRobokassaReceipt(t *testing.T, raw, name string, sum float64, tax, me
 	if item.PaymentObject != object {
 		t.Fatalf("payment_object=%q want %q", item.PaymentObject, object)
 	}
+}
+
+func decodeRobokassaReceiptParam(t *testing.T, encoded string) string {
+	t.Helper()
+	raw, err := url.QueryUnescape(encoded)
+	if err != nil {
+		t.Fatalf("decode receipt param: %v", err)
+	}
+	return raw
 }

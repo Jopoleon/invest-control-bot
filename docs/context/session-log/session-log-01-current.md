@@ -146,3 +146,37 @@ timeout fix, and improve observability for the next reproduction.
 - `node --check telegram-bot-relay/index.js`
 - `GOCACHE=/tmp/go-build GOTMPDIR=/tmp go test ./internal/telegram ./internal/admin`
 - `GOCACHE=/tmp/go-build GOTMPDIR=/tmp go test ./...`
+
+## 2026-05-26 - Robokassa Error 29 After Receipt Fiscalization
+
+### Goal
+
+Investigate persistent Robokassa checkout error `29` after fiscal receipt
+support was added and after shop passwords #1/#2 were regenerated.
+
+### Actions Performed
+
+- Checked production env shape and recent payment rows.
+- Verified that production uses `ROBOKASSA_IS_TEST_MODE=false`.
+- Compared generated checkout signatures with Robokassa documentation.
+- Checked that password #3 is not used by the current checkout/recurring flow.
+- Changed checkout and rebill request generation so the `Receipt` request
+  parameter is set to the URL-encoded receipt value, matching Robokassa payment
+  examples and signature rules.
+- Added regression tests for double-encoded `Receipt` in checkout URLs and
+  recurring rebill form bodies.
+- Added incident note:
+  `docs/archive/incidents/robokassa-error-29-receipt-2026-05-26.md`.
+
+### Main Findings
+
+- The failure was linked to fiscalization request encoding, not password #3.
+- Before the fix, the signature used encoded `Receipt`, but the request
+  parameter stored raw JSON and was encoded only by the transport layer.
+- Robokassa expects `Receipt` to be encoded before it is placed into the request;
+  the transport then encodes that encoded value again.
+- Operator confirmed that payment works after deployment of the encoding fix.
+
+### Verification
+
+- `GOCACHE=/tmp/go-build GOTMPDIR=/tmp go test ./internal/payment ./internal/config ./internal/app ./...`
