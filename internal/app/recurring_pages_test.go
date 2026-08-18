@@ -74,6 +74,39 @@ func TestRecurringCheckoutPage_RendersConnectorAndConsent(t *testing.T) {
 	}
 }
 
+func TestRecurringCheckoutPage_DoesNotExposeTelegramWebClientURL(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	const webURL = "https://web.telegram.org/a/#-1003222018503"
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-private-web-import",
+		Name:          "Private Telegram tariff",
+		ChatID:        "1003222018503",
+		ChannelURL:    webURL,
+		PriceRUB:      100,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 15 * 60,
+		IsActive:      true,
+		CreatedAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateConnector: %v", err)
+	}
+
+	handler := testRecurringPagesHandler(t, st)
+	req := httptest.NewRequest(http.MethodGet, "/subscribe/in-private-web-import", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%q", rr.Code, rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), webURL) || strings.Contains(rr.Body.String(), "web.telegram.org") {
+		t.Fatalf("checkout page exposes Telegram Web client URL: %q", rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "https://t.me/test_bot?start=in-private-web-import") {
+		t.Fatalf("checkout page must retain safe bot CTA: %q", rr.Body.String())
+	}
+}
+
 func TestRecurringCancelPage_DisablesAutopay(t *testing.T) {
 	ctx := context.Background()
 	st := memory.New()

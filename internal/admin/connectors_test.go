@@ -42,7 +42,7 @@ func TestConnectorsPageCreate_UsesRedirectAfterPost(t *testing.T) {
 	form.Set("price_rub", "3200")
 	form.Set("period_mode", "duration")
 	form.Set("period_value", "15m")
-	form.Set("channel_url", "https://web.max.ru/-72598909498032")
+	form.Set("max_channel_url", "https://web.max.ru/-72598909498032")
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/connectors?lang=ru", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -70,6 +70,110 @@ func TestConnectorsPageCreate_UsesRedirectAfterPost(t *testing.T) {
 	}
 	if connectors[0].PeriodMode != domain.ConnectorPeriodModeDuration || connectors[0].PeriodSeconds != 900 {
 		t.Fatalf("explicit period = (%q,%d), want (duration,900)", connectors[0].PeriodMode, connectors[0].PeriodSeconds)
+	}
+}
+
+func TestCreateConnector_ImportsTelegramWebChatWithoutPersistingWebURL(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil, nil)
+	now := time.Now().UTC()
+	if err := st.UpsertTelegramChat(ctx, domain.TelegramChat{
+		ChatID:         "-1003222018503",
+		Title:          "Paid private channel",
+		Type:           "channel",
+		BotStatus:      "administrator",
+		CanInviteUsers: true,
+		LastSeenAt:     now,
+		UpdatedAt:      now,
+	}); err != nil {
+		t.Fatalf("UpsertTelegramChat: %v", err)
+	}
+
+	form := url.Values{
+		"name":         {"Web import"},
+		"price_rub":    {"100"},
+		"period_mode":  {"duration"},
+		"period_value": {"15m"},
+		"channel_url":  {"https://web.telegram.org/a/#-1003222018503"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/connectors", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if err := h.createConnector(ctx, req); err != nil {
+		t.Fatalf("createConnector: %v", err)
+	}
+
+	connectors, err := st.ListConnectors(ctx)
+	if err != nil {
+		t.Fatalf("ListConnectors: %v", err)
+	}
+	if len(connectors) != 1 {
+		t.Fatalf("connector count=%d want=1", len(connectors))
+	}
+	if connectors[0].ChatID != "1003222018503" {
+		t.Fatalf("chat_id=%q want unsigned imported ID", connectors[0].ChatID)
+	}
+	if connectors[0].ChannelURL != "" {
+		t.Fatalf("channel_url=%q want empty; Telegram Web URL must not be user-facing", connectors[0].ChannelURL)
+	}
+}
+
+func TestCreateConnector_RejectsTelegramWebChatWithoutInviteCapableCatalogEntry(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	h := NewHandler(st, "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil, nil)
+
+	form := url.Values{
+		"name":         {"Unknown Web chat"},
+		"price_rub":    {"100"},
+		"period_mode":  {"duration"},
+		"period_value": {"15m"},
+		"channel_url":  {"https://web.telegram.org/a/#-1003222018503"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/connectors", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if err := h.createConnector(ctx, req); !errors.Is(err, errCreateConnectorWebChat) {
+		t.Fatalf("createConnector error=%v want %v", err, errCreateConnectorWebChat)
+	}
+	connectors, err := st.ListConnectors(ctx)
+	if err != nil {
+		t.Fatalf("ListConnectors: %v", err)
+	}
+	if len(connectors) != 0 {
+		t.Fatalf("connector count=%d want=0 after rejected import", len(connectors))
+	}
+}
+
+func TestNormalizeTelegramDestination_CanonicalizesOfficialLinks(t *testing.T) {
+	h := NewHandler(memory.New(), "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil, nil)
+
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "telegram alias", raw: "https://telegram.me/public_channel", want: "https://t.me/public_channel"},
+		{name: "legacy invite", raw: "https://telegram.me/joinchat/AbCd_123", want: "https://t.me/+AbCd_123"},
+		{name: "tg public", raw: "tg://resolve?domain=public_channel", want: "https://t.me/public_channel"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			chatID, channelURL, err := h.normalizeTelegramDestination(context.Background(), "", tt.raw)
+			if err != nil {
+				t.Fatalf("normalizeTelegramDestination: %v", err)
+			}
+			if chatID != "" || channelURL != tt.want {
+				t.Fatalf("normalizeTelegramDestination=(%q,%q) want (empty,%q)", chatID, channelURL, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeTelegramDestination_RejectsForeignTelegramFieldURL(t *testing.T) {
+	h := NewHandler(memory.New(), "test-admin-token", "test_bot", "max_test_bot", "http://localhost:8080", "test-encryption-key-123456789012345", nil, nil, nil)
+	_, _, err := h.normalizeTelegramDestination(context.Background(), "", "https://web.telegram.org.evil.example/a/#-1003222018503")
+	if !errors.Is(err, errCreateConnectorTelegramURL) {
+		t.Fatalf("normalizeTelegramDestination error=%v want %v", err, errCreateConnectorTelegramURL)
 	}
 }
 

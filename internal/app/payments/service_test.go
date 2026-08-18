@@ -795,13 +795,17 @@ func TestActivateSuccessfulPayment_WritesInviteLinkFailureAuditWhenFallbackSucce
 		t.Fatalf("CreatePayment err=%v", err)
 	}
 
+	var sent messenger.OutgoingMessage
 	service := &Service{
 		Store:                 st,
 		PaymentSuccessMessage: func(domain.Payment, domain.Connector, time.Time) string { return "ok" },
 		BuildTelegramAccessLink: func(context.Context, int64, domain.Connector, domain.Subscription) (string, error) {
 			return "", errors.New("telegram api failed")
 		},
-		SendUserNotification: func(context.Context, int64, string, messenger.OutgoingMessage) error { return nil },
+		SendUserNotification: func(_ context.Context, _ int64, _ string, msg messenger.OutgoingMessage) error {
+			sent = msg
+			return nil
+		},
 		BuildTargetAuditEvent: func(_ context.Context, userID int64, _ string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
 			return domain.AuditEvent{TargetUserID: userID, ConnectorID: connectorID, Action: action, Details: details, CreatedAt: createdAt}
 		},
@@ -810,6 +814,13 @@ func TestActivateSuccessfulPayment_WritesInviteLinkFailureAuditWhenFallbackSucce
 	}
 
 	service.ActivateSuccessfulPayment(ctx, paymentRow, "robokassa:p-invite-fallback", now)
+
+	if len(sent.Buttons) == 0 || len(sent.Buttons[0]) == 0 {
+		t.Fatalf("buttons are empty, want public Telegram fallback")
+	}
+	if got := sent.Buttons[0][0].URL; got != connector.ChannelURL {
+		t.Fatalf("fallback url=%q want=%q", got, connector.ChannelURL)
+	}
 
 	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 50})
 	if err != nil {
@@ -826,6 +837,87 @@ func TestActivateSuccessfulPayment_WritesInviteLinkFailureAuditWhenFallbackSucce
 	}
 	if !strings.Contains(findPaymentAuditDetails(events, domain.AuditActionPaymentAccessReady), "source=telegram_channel_url") {
 		t.Fatalf("payment_access_ready details=%q want telegram_channel_url", findPaymentAuditDetails(events, domain.AuditActionPaymentAccessReady))
+	}
+}
+
+func TestActivateSuccessfulPayment_DoesNotExposeTelegramWebURLWhenInviteLinkFails(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	now := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
+	webURL := "https://web.telegram.org/a/#-1001234567890"
+	connector := domain.Connector{
+		ID:            1,
+		StartPayload:  "in-payments-web-telegram-fallback",
+		Name:          "private tg",
+		PriceRUB:      1000,
+		ChatID:        "1001234567890",
+		ChannelURL:    webURL,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 30 * 24 * 60 * 60,
+		IsActive:      true,
+		CreatedAt:     now,
+	}
+	if err := st.CreateConnector(ctx, connector); err != nil {
+		t.Fatalf("CreateConnector err=%v", err)
+	}
+	paymentRow := domain.Payment{
+		ID:          1,
+		Provider:    "robokassa",
+		Status:      domain.PaymentStatusPending,
+		Token:       "p-web-telegram-fallback",
+		UserID:      42,
+		ConnectorID: connector.ID,
+		AmountRUB:   1000,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := st.CreatePayment(ctx, paymentRow); err != nil {
+		t.Fatalf("CreatePayment err=%v", err)
+	}
+
+	var sent messenger.OutgoingMessage
+	service := &Service{
+		Store:                 st,
+		PaymentSuccessMessage: func(domain.Payment, domain.Connector, time.Time) string { return "ok" },
+		BuildTelegramAccessLink: func(context.Context, int64, domain.Connector, domain.Subscription) (string, error) {
+			return "", errors.New("telegram api failed")
+		},
+		SendUserNotification: func(_ context.Context, _ int64, _ string, msg messenger.OutgoingMessage) error {
+			sent = msg
+			return nil
+		},
+		BuildTargetAuditEvent: func(_ context.Context, userID int64, _ string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
+			return domain.AuditEvent{TargetUserID: userID, ConnectorID: connectorID, Action: action, Details: details, CreatedAt: createdAt}
+		},
+		OpenChannelActionLabel: "open",
+		MySubscriptionAction:   "sub",
+	}
+
+	service.ActivateSuccessfulPayment(ctx, paymentRow, "robokassa:p-web-telegram-fallback", now)
+
+	if strings.Contains(sent.Text, webURL) || strings.Contains(sent.Text, "web.telegram.org") {
+		t.Fatalf("notification text exposes Telegram Web URL: %q", sent.Text)
+	}
+	for _, row := range sent.Buttons {
+		for _, button := range row {
+			if strings.Contains(button.URL, webURL) || strings.Contains(button.URL, "web.telegram.org") {
+				t.Fatalf("notification button exposes Telegram Web URL: %+v", button)
+			}
+		}
+	}
+
+	events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{Page: 1, PageSize: 50})
+	if err != nil {
+		t.Fatalf("ListAuditEvents err=%v", err)
+	}
+	if got := countPaymentAuditEvents(events, domain.AuditActionInviteLinkDeliveryFailed); got != 1 {
+		t.Fatalf("invite_link_delivery_failed count=%d want=1", got)
+	}
+	if got := countPaymentAuditEvents(events, domain.AuditActionPaymentAccessReady); got != 0 {
+		t.Fatalf("payment_access_ready count=%d want=0; details=%q", got, findPaymentAuditDetails(events, domain.AuditActionPaymentAccessReady))
+	}
+	if details := findPaymentAuditDetails(events, domain.AuditActionPaymentAccessReady); strings.Contains(details, "source=telegram_channel_url") {
+		t.Fatalf("payment_access_ready must not use Telegram Web fallback: %q", details)
 	}
 }
 

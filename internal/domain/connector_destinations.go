@@ -12,6 +12,12 @@ func (c Connector) TelegramAccessURL() string {
 	return channelurl.Resolve(c.ChannelURL, c.ChatID)
 }
 
+// TelegramPublicURL returns a destination safe to render before payment or on
+// other unauthenticated pages. Private invite links are intentionally omitted.
+func (c Connector) TelegramPublicURL() string {
+	return channelurl.ResolvePublic(c.ChannelURL, c.ChatID)
+}
+
 // ResolvedTelegramChatRef returns a Telegram Bot API-compatible chat reference
 // that can be used for invite-link creation and revoke operations.
 func (c Connector) ResolvedTelegramChatRef() string {
@@ -64,12 +70,33 @@ func (c Connector) AccessURL(kind MessengerKind) string {
 	}
 }
 
+// PublicAccessURL returns a destination safe for unauthenticated web pages.
+func (c Connector) PublicAccessURL(kind MessengerKind) string {
+	switch kind {
+	case MessengerKindMAX:
+		return c.MAXAccessURL()
+	case MessengerKindTelegram:
+		return c.TelegramPublicURL()
+	default:
+		return ""
+	}
+}
+
 // HasAccessFor reports whether the connector can grant access in the selected messenger.
 func (c Connector) HasAccessFor(kind MessengerKind) bool {
-	return c.AccessURL(kind) != ""
+	switch kind {
+	case MessengerKindTelegram:
+		// A private Telegram chat normally has no stable public URL. Its Bot API
+		// chat reference is enough because access is granted with a fresh invite.
+		return c.ResolvedTelegramChatRef() != "" || c.TelegramAccessURL() != ""
+	case MessengerKindMAX:
+		return c.MAXAccessURL() != ""
+	default:
+		return false
+	}
 }
 
 // HasAnyAccessDestination reports whether at least one delivery destination is configured.
 func (c Connector) HasAnyAccessDestination() bool {
-	return c.TelegramAccessURL() != "" || c.MAXAccessURL() != ""
+	return c.HasAccessFor(MessengerKindTelegram) || c.HasAccessFor(MessengerKindMAX)
 }

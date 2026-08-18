@@ -96,6 +96,40 @@ func TestConnectorResolvedTelegramChatRef(t *testing.T) {
 	}
 }
 
+func TestConnectorBoundPrivateTelegramChatCountsAsAccessWithoutPublicURL(t *testing.T) {
+	connector := Connector{ChatID: "1003222018503"}
+
+	if got := connector.TelegramAccessURL(); got != "" {
+		t.Fatalf("TelegramAccessURL()=%q want empty for a private numeric chat without a public link", got)
+	}
+	if got := connector.ResolvedTelegramChatRef(); got != "-1003222018503" {
+		t.Fatalf("ResolvedTelegramChatRef()=%q want -1003222018503", got)
+	}
+	if !connector.HasAccessFor(MessengerKindTelegram) {
+		t.Fatal("HasAccessFor(telegram)=false want true for a bound private chat")
+	}
+	if !connector.HasAnyAccessDestination() {
+		t.Fatal("HasAnyAccessDestination()=false want true for a bound private chat")
+	}
+}
+
+func TestConnectorTelegramWebURLIsImportHintButNeverUserFacing(t *testing.T) {
+	connector := Connector{ChannelURL: "https://web.telegram.org/a/#-1003222018503"}
+
+	if got := connector.TelegramAccessURL(); got != "" {
+		t.Fatalf("TelegramAccessURL()=%q want empty for Telegram web-client URL", got)
+	}
+	if got := connector.AccessURL(MessengerKindTelegram); got != "" {
+		t.Fatalf("AccessURL(telegram)=%q want empty for Telegram web-client URL", got)
+	}
+	if got := connector.ResolvedTelegramChatRef(); got != "-1003222018503" {
+		t.Fatalf("ResolvedTelegramChatRef()=%q want imported -1003222018503", got)
+	}
+	if !connector.HasAccessFor(MessengerKindTelegram) {
+		t.Fatal("HasAccessFor(telegram)=false want true when Telegram web URL supplies an importable chat id")
+	}
+}
+
 func TestConnectorMAXAccessURL_NormalizesWebHostForUserFacingLinks(t *testing.T) {
 	connector := Connector{MAXChannelURL: " https://web.max.ru/-72598909498032 "}
 	if got := connector.MAXAccessURL(); got != "https://max.ru/-72598909498032" {

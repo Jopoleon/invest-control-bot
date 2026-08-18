@@ -17,20 +17,23 @@ import (
 	"github.com/Jopoleon/invest-control-bot/internal/domain"
 	storepkg "github.com/Jopoleon/invest-control-bot/internal/store"
 	"github.com/Jopoleon/invest-control-bot/internal/telegramchat"
+	"github.com/Jopoleon/invest-control-bot/internal/telegramlink"
 )
 
 var (
-	errCreateConnectorRequired   = errors.New("create_connector_required")
-	errCreateConnectorPrice      = errors.New("create_connector_price")
-	errCreateConnectorPeriodMode = errors.New("create_connector_period_mode")
-	errCreateConnectorDuration   = errors.New("create_connector_duration")
-	errCreateConnectorMonths     = errors.New("create_connector_months")
-	errCreateConnectorDeadline   = errors.New("create_connector_deadline")
-	errCreateConnectorChatOrURL  = errors.New("create_connector_chat_or_url_required")
-	errConnectorNameRequired     = errors.New("connector_name_required")
-	errConnectorNameTooLong      = errors.New("connector_name_too_long")
-	errConnectorDescriptionLong  = errors.New("connector_description_too_long")
-	errConnectorTextInvalid      = errors.New("connector_text_invalid")
+	errCreateConnectorRequired    = errors.New("create_connector_required")
+	errCreateConnectorPrice       = errors.New("create_connector_price")
+	errCreateConnectorPeriodMode  = errors.New("create_connector_period_mode")
+	errCreateConnectorDuration    = errors.New("create_connector_duration")
+	errCreateConnectorMonths      = errors.New("create_connector_months")
+	errCreateConnectorDeadline    = errors.New("create_connector_deadline")
+	errCreateConnectorChatOrURL   = errors.New("create_connector_chat_or_url_required")
+	errCreateConnectorTelegramURL = errors.New("create_connector_telegram_url_invalid")
+	errCreateConnectorWebChat     = errors.New("create_connector_telegram_web_chat_unavailable")
+	errConnectorNameRequired      = errors.New("connector_name_required")
+	errConnectorNameTooLong       = errors.New("connector_name_too_long")
+	errConnectorDescriptionLong   = errors.New("connector_description_too_long")
+	errConnectorTextInvalid       = errors.New("connector_text_invalid")
 )
 
 const (
@@ -278,10 +281,11 @@ func (h *Handler) createConnector(ctx context.Context, r *http.Request) error {
 	if chatID == "" && channelURL == "" && maxChannelURL == "" && maxChatID == "" {
 		return errCreateConnectorChatOrURL
 	}
-	if resolvedChatID, ok, err := h.resolveTelegramChatID(ctx, chatID, channelURL); err != nil {
+	if normalizedChatID, normalizedChannelURL, err := h.normalizeTelegramDestination(ctx, chatID, channelURL); err != nil {
 		return err
-	} else if ok {
-		chatID = resolvedChatID
+	} else {
+		chatID = normalizedChatID
+		channelURL = normalizedChannelURL
 	}
 	// Keep chat ID in unsigned form to stay consistent with current admin input convention.
 	chatID = strings.TrimPrefix(chatID, "-")
@@ -327,6 +331,45 @@ func (h *Handler) createConnector(ctx context.Context, r *http.Request) error {
 	}
 
 	return nil
+}
+
+// normalizeTelegramDestination separates Bot API identity from user-facing
+// navigation. A web.telegram.org URL may help import a private chat ID, but it
+// must never be persisted as the link later shown to a subscriber.
+func (h *Handler) normalizeTelegramDestination(ctx context.Context, chatID, channelURL string) (string, string, error) {
+	chatID = strings.TrimSpace(chatID)
+	channelURL = strings.TrimSpace(channelURL)
+	if channelURL != "" {
+		destination, err := telegramlink.Parse(channelURL)
+		switch {
+		case err == nil && destination.IsImportOnly():
+			explicitRef := telegramchat.NormalizeChatRef(chatID)
+			if explicitRef != "" && explicitRef != destination.ChatRef {
+				return "", "", errCreateConnectorWebChat
+			}
+			chat, found, lookupErr := h.store.GetTelegramChat(ctx, destination.ChatRef)
+			if lookupErr != nil {
+				return "", "", lookupErr
+			}
+			if !found || !telegramChatCanCreateInviteLinks(chat) {
+				return "", "", errCreateConnectorWebChat
+			}
+			return strings.TrimPrefix(destination.ChatRef, "-"), "", nil
+		case err == nil:
+			channelURL = destination.CanonicalURL
+		case telegramlink.IsWebClientURL(channelURL):
+			return "", "", errCreateConnectorWebChat
+		default:
+			return "", "", errCreateConnectorTelegramURL
+		}
+	}
+
+	if resolvedChatID, ok, err := h.resolveTelegramChatID(ctx, chatID, channelURL); err != nil {
+		return "", "", err
+	} else if ok {
+		chatID = resolvedChatID
+	}
+	return chatID, channelURL, nil
 }
 
 func (h *Handler) resolveTelegramChatID(ctx context.Context, chatID, channelURL string) (string, bool, error) {
@@ -870,6 +913,10 @@ func (h *Handler) localizeCreateConnectorError(lang string, err error) string {
 		return t(lang, "connector.validation.period_deadline")
 	case errors.Is(err, errCreateConnectorChatOrURL):
 		return t(lang, "connector.validation.chat_or_url")
+	case errors.Is(err, errCreateConnectorTelegramURL):
+		return t(lang, "connector.validation.telegram_url")
+	case errors.Is(err, errCreateConnectorWebChat):
+		return t(lang, "connector.validation.telegram_web_chat")
 	default:
 		return err.Error()
 	}

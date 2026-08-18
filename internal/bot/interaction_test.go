@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -348,6 +349,34 @@ func TestSendSubscriptionOverview_TelegramCreatesFreshInviteLink(t *testing.T) {
 	}
 	if !strings.Contains(text, "бот выдаст новую") {
 		t.Fatalf("text = %q, want expired-link guidance", text)
+	}
+}
+
+func TestBotSubscriptionAccessLines_FailedInviteFiltersTelegramWebFallback(t *testing.T) {
+	h := &Handler{}
+	h.SetTelegramAccessLinkBuilder(func(context.Context, int64, domain.Connector, domain.Subscription) (string, error) {
+		return "", errors.New("telegram api failed")
+	})
+	sub := domain.Subscription{ID: 1, UserID: 42}
+
+	webURL := "https://web.telegram.org/a/#-1001234567890"
+	webLines := h.botSubscriptionAccessLines(context.Background(), sub, domain.Connector{
+		ID:         1,
+		ChatID:     "1001234567890",
+		ChannelURL: webURL,
+	}, messenger.KindTelegram)
+	if got := strings.Join(webLines, "\n"); strings.Contains(got, webURL) || strings.Contains(got, "web.telegram.org") {
+		t.Fatalf("subscription fallback exposes Telegram Web URL: %q", got)
+	}
+
+	publicURL := "https://t.me/public_channel"
+	publicLines := h.botSubscriptionAccessLines(context.Background(), sub, domain.Connector{
+		ID:         2,
+		ChatID:     "1009876543210",
+		ChannelURL: publicURL,
+	}, messenger.KindTelegram)
+	if got := strings.Join(publicLines, "\n"); !strings.Contains(got, publicURL) {
+		t.Fatalf("subscription fallback=%q want public Telegram URL %q", got, publicURL)
 	}
 }
 
