@@ -191,8 +191,10 @@ func (p *paymentRuntime) handlePaymentSuccess(w http.ResponseWriter, r *http.Req
 			if loadedConnector, found, err := p.store.GetConnector(r.Context(), paymentRow.ConnectorID); err == nil && found {
 				connector = loadedConnector
 				connectorFound = true
-				deliveryKind := connector.DeliveryMessengerKind(messengerKindToDomain(p.resolvePreferredKindFn(r.Context(), paymentRow.UserID, "")))
-				channelURL = connector.AccessURL(deliveryKind)
+				if paymentRow.Status == domain.PaymentStatusPaid {
+					deliveryKind := connector.DeliveryMessengerKind(messengerKindToDomain(p.resolvePreferredKindFn(r.Context(), paymentRow.UserID, "")))
+					channelURL = connector.PublicAccessURL(deliveryKind)
+				}
 			} else if err != nil {
 				logStoreError("load connector for payment success page failed", err, "payment_id", paymentRow.ID, "connector_id", paymentRow.ConnectorID)
 			}
@@ -206,7 +208,7 @@ func (p *paymentRuntime) handlePaymentSuccess(w http.ResponseWriter, r *http.Req
 		{Label: appPaymentActionOpenTelegram, URL: "https://t.me"},
 	}
 	if paymentFound {
-		actions = p.buildPaymentPageActions(r.Context(), paymentRow, channelURL, true)
+		actions = p.buildPaymentPageActions(r.Context(), paymentRow, channelURL, paymentRow.Status == domain.PaymentStatusPaid)
 	}
 	renderPaymentPage(w, paymentPageData{
 		Title:   appPaymentPageTitleSuccess,

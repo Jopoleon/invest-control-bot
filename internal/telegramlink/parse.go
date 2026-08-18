@@ -11,10 +11,17 @@ import (
 const (
 	canonicalHost       = "t.me"
 	maxUsernameLength   = 32
-	maxChannelID        = uint64(999_999_999_999)
+	maxChannelID        = uint64(997_852_516_352)
 	maxMessageID        = uint64(2_147_483_647)
-	botAPIChannelPrefix = "-100"
+	botAPIChannelOffset = int64(1_000_000_000_000)
 )
+
+var reservedPublicRoutes = map[string]struct{}{
+	"a": {}, "addemoji": {}, "addlist": {}, "addstickers": {}, "addstyle": {}, "addtheme": {},
+	"auction": {}, "auth": {}, "boost": {}, "call": {}, "confirmphone": {}, "contact": {},
+	"giftcode": {}, "invoice": {}, "joinchat": {}, "k": {}, "login": {}, "m": {}, "nft": {},
+	"proxy": {}, "setlanguage": {}, "share": {}, "socks": {}, "web": {}, "www": {}, "z": {},
+}
 
 var (
 	// ErrInvalidDestination indicates that the input isn't one of the supported
@@ -91,16 +98,28 @@ func Parse(raw string) (Destination, error) {
 
 	lower := strings.ToLower(value)
 	switch {
-	case strings.HasPrefix(lower, "t.me/"), strings.HasPrefix(lower, "telegram.me/"):
-		return parseHTTPS("https://" + value)
+	case strings.HasPrefix(lower, "t.me/"),
+		strings.HasPrefix(lower, "www.t.me/"),
+		strings.HasPrefix(lower, "telegram.me/"),
+		strings.HasPrefix(lower, "www.telegram.me/"),
+		strings.HasPrefix(lower, "telegram.dog/"),
+		strings.HasPrefix(lower, "www.telegram.dog/"),
+		looksLikeSubdomainPublicLink(lower):
+		return parseWebURL("https://" + value)
+	case strings.HasPrefix(lower, "tg:"):
+		parsed, err := url.Parse(value)
+		if err != nil {
+			return Destination{}, invalid("malformed tg URL")
+		}
+		return parseTG(parsed)
 	case strings.Contains(value, "://"):
 		parsed, err := url.Parse(value)
 		if err != nil {
 			return Destination{}, invalid("malformed URL")
 		}
 		switch strings.ToLower(parsed.Scheme) {
-		case "https":
-			return parseParsedHTTPS(parsed)
+		case "http", "https":
+			return parseParsedWebURL(parsed)
 		case "tg":
 			return parseTG(parsed)
 		default:
@@ -148,31 +167,53 @@ func ResolveChatRef(raw string) (string, error) {
 	return destination.ChatRef, nil
 }
 
-func parseHTTPS(raw string) (Destination, error) {
+func parseWebURL(raw string) (Destination, error) {
 	parsed, err := url.Parse(raw)
 	if err != nil {
-		return Destination{}, invalid("malformed HTTPS URL")
+		return Destination{}, invalid("malformed Telegram web URL")
 	}
-	return parseParsedHTTPS(parsed)
+	return parseParsedWebURL(parsed)
 }
 
-func parseParsedHTTPS(parsed *url.URL) (Destination, error) {
-	if parsed == nil || !strings.EqualFold(parsed.Scheme, "https") || parsed.Opaque != "" || parsed.User != nil {
-		return Destination{}, invalid("malformed HTTPS URL")
+func parseParsedWebURL(parsed *url.URL) (Destination, error) {
+	if parsed == nil || parsed.Opaque != "" || parsed.User != nil {
+		return Destination{}, invalid("malformed Telegram web URL")
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return Destination{}, invalid("unsupported Telegram web scheme")
 	}
 	if parsed.Host == "" || strings.Contains(parsed.Host, ":") {
-		return Destination{}, invalid("missing or non-canonical HTTPS host")
+		return Destination{}, invalid("missing or non-canonical Telegram host")
 	}
 
 	host := strings.ToLower(parsed.Host)
+	if strings.HasPrefix(host, "www.") {
+		withoutWWW := strings.TrimPrefix(host, "www.")
+		if withoutWWW != "t.me" && withoutWWW != "telegram.me" && withoutWWW != "telegram.dog" {
+			return Destination{}, invalid("unsupported www Telegram host")
+		}
+		host = withoutWWW
+	}
 	switch host {
-	case "t.me", "telegram.me":
+	case "t.me", "telegram.me", "telegram.dog":
 		return parseTelegramHTTPS(parsed)
 	case "web.telegram.org":
 		return parseTelegramWebImport(parsed)
 	default:
-		return Destination{}, invalid("unsupported HTTPS host")
+		if username, ok := strings.CutSuffix(host, ".t.me"); ok {
+			if (parsed.Path != "" && parsed.Path != "/") || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+				return Destination{}, invalid("public username host must not contain a path, query or fragment")
+			}
+			return publicDestination(username)
+		}
+		return Destination{}, invalid("unsupported Telegram host")
 	}
+}
+
+func looksLikeSubdomainPublicLink(value string) bool {
+	host, _, _ := strings.Cut(value, "/")
+	return strings.HasSuffix(host, ".t.me")
 }
 
 func parseTelegramHTTPS(parsed *url.URL) (Destination, error) {
@@ -218,7 +259,7 @@ func parseTelegramHTTPS(parsed *url.URL) (Destination, error) {
 }
 
 func parseTelegramWebImport(parsed *url.URL) (Destination, error) {
-	if parsed.RawQuery != "" || parsed.ForceQuery || parsed.User != nil {
+	if !strings.EqualFold(parsed.Scheme, "https") || parsed.RawQuery != "" || parsed.ForceQuery || parsed.User != nil {
 		return Destination{}, invalid("malformed Telegram Web import URL")
 	}
 	path, ok := strictPath(parsed)
@@ -228,25 +269,32 @@ func parseTelegramWebImport(parsed *url.URL) (Destination, error) {
 	if parsed.Fragment == "" || strings.Contains(parsed.RawFragment, "%") {
 		return Destination{}, invalid("missing or encoded Telegram Web chat fragment")
 	}
-	channelID, ok := strings.CutPrefix(parsed.Fragment, botAPIChannelPrefix)
-	if !ok || !validPositiveID(channelID, maxChannelID) {
+	chatRef, ok := parseBotAPIChannelRef(parsed.Fragment)
+	if !ok {
 		return Destination{}, invalid("malformed Telegram Web chat fragment")
 	}
 	return Destination{
 		Kind:    KindWebImport,
-		ChatRef: botAPIChannelPrefix + channelID,
+		ChatRef: chatRef,
 	}, nil
 }
 
 func parseTG(parsed *url.URL) (Destination, error) {
-	if parsed == nil || !strings.EqualFold(parsed.Scheme, "tg") || parsed.Opaque != "" || parsed.User != nil || parsed.Path != "" || parsed.Fragment != "" {
+	if parsed == nil || !strings.EqualFold(parsed.Scheme, "tg") || parsed.User != nil || parsed.Path != "" || parsed.Fragment != "" {
 		return Destination{}, invalid("malformed tg URL")
 	}
-	if parsed.Host == "" || strings.Contains(parsed.Host, ":") {
+	target := parsed.Host
+	if parsed.Opaque != "" {
+		if target != "" || strings.ContainsAny(parsed.Opaque, "/:") {
+			return Destination{}, invalid("malformed tg target")
+		}
+		target = parsed.Opaque
+	}
+	if target == "" || strings.Contains(target, ":") {
 		return Destination{}, invalid("malformed tg host")
 	}
 
-	switch strings.ToLower(parsed.Host) {
+	switch strings.ToLower(target) {
 	case "resolve":
 		domain, ok := strictSingleQueryValue(parsed, "domain")
 		if !ok {
@@ -280,6 +328,9 @@ func publicDestination(username string) (Destination, error) {
 	if !validUsername(username) {
 		return Destination{}, invalid("malformed public username")
 	}
+	if _, reserved := reservedPublicRoutes[strings.ToLower(username)]; reserved {
+		return Destination{}, invalid("reserved Telegram route is not a public username")
+	}
 	return Destination{
 		Kind:         KindPublic,
 		CanonicalURL: "https://" + canonicalHost + "/" + username,
@@ -305,11 +356,25 @@ func privateMessageDestination(channelID, messageID string, single bool) (Destin
 	if single {
 		canonicalURL += "?single"
 	}
+	numericChannelID, _ := strconv.ParseUint(channelID, 10, 64)
 	return Destination{
 		Kind:         KindPrivateMessage,
 		CanonicalURL: canonicalURL,
-		ChatRef:      botAPIChannelPrefix + channelID,
+		ChatRef:      strconv.FormatInt(-(botAPIChannelOffset + int64(numericChannelID)), 10),
 	}, nil
+}
+
+func parseBotAPIChannelRef(value string) (string, bool) {
+	numeric, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || strconv.FormatInt(numeric, 10) != value {
+		return "", false
+	}
+	min := -(botAPIChannelOffset + int64(maxChannelID))
+	max := -(botAPIChannelOffset + 1)
+	if numeric < min || numeric > max {
+		return "", false
+	}
+	return value, true
 }
 
 func strictPath(parsed *url.URL) (string, bool) {

@@ -2,6 +2,7 @@ package recurring
 
 import (
 	"context"
+	"net/http"
 	"strconv"
 	"strings"
 	"testing"
@@ -930,6 +931,106 @@ func TestBuildCancelPageData_ShowsSuccessBanner(t *testing.T) {
 	}
 	if data.PageState != cancelPageStateSuccess {
 		t.Fatalf("PageState=%q want=%q", data.PageState, cancelPageStateSuccess)
+	}
+}
+
+func TestBuildCancelPageData_OnlyExposesPublicTelegramDestinations(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "public username", raw: "https://telegram.me/public_channel", want: "https://t.me/public_channel"},
+		{name: "static invite", raw: "https://t.me/+AbCd_123"},
+		{name: "web client import", raw: "https://web.telegram.org/a/#-1003222018503"},
+		{name: "private message", raw: "https://t.me/c/3222018503/12"},
+	}
+
+	for index, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			st := memory.New()
+			now := time.Now().UTC()
+			messengerUserID := int64(264704600 + index)
+			user, _, err := st.GetOrCreateUserByMessenger(ctx, domain.MessengerKindTelegram, strconv.FormatInt(messengerUserID, 10), "cancel_user")
+			if err != nil {
+				t.Fatalf("GetOrCreateUserByMessenger: %v", err)
+			}
+			payload := "in-cancel-link-" + strconv.Itoa(index)
+			if err := st.CreateConnector(ctx, domain.Connector{
+				StartPayload:  payload,
+				Name:          "Cancel link policy",
+				ChatID:        "1003222018503",
+				ChannelURL:    tt.raw,
+				PriceRUB:      100,
+				PeriodMode:    domain.ConnectorPeriodModeDuration,
+				PeriodSeconds: 900,
+				IsActive:      true,
+				CreatedAt:     now,
+			}); err != nil {
+				t.Fatalf("CreateConnector: %v", err)
+			}
+			connector, found, err := st.GetConnectorByStartPayload(ctx, payload)
+			if err != nil || !found {
+				t.Fatalf("GetConnectorByStartPayload found=%v err=%v", found, err)
+			}
+			paidAt := now.Add(-time.Hour)
+			paymentRow := domain.Payment{
+				Provider:       "robokassa",
+				Status:         domain.PaymentStatusPaid,
+				Token:          "cancel-link-" + strconv.Itoa(index),
+				UserID:         user.ID,
+				ConnectorID:    connector.ID,
+				AmountRUB:      100,
+				AutoPayEnabled: true,
+				PaidAt:         &paidAt,
+				CreatedAt:      paidAt,
+				UpdatedAt:      paidAt,
+			}
+			if err := st.CreatePayment(ctx, paymentRow); err != nil {
+				t.Fatalf("CreatePayment: %v", err)
+			}
+			paymentRow, found, err = st.GetPaymentByToken(ctx, paymentRow.Token)
+			if err != nil || !found {
+				t.Fatalf("GetPaymentByToken found=%v err=%v", found, err)
+			}
+			if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+				UserID:         user.ID,
+				ConnectorID:    connector.ID,
+				PaymentID:      paymentRow.ID,
+				Status:         domain.SubscriptionStatusActive,
+				AutoPayEnabled: true,
+				StartsAt:       now.Add(-time.Hour),
+				EndsAt:         now.Add(time.Hour),
+				CreatedAt:      now.Add(-time.Hour),
+				UpdatedAt:      now,
+			}); err != nil {
+				t.Fatalf("UpsertSubscriptionByPayment: %v", err)
+			}
+
+			service := &Service{
+				Store: st,
+				ResolveUserByMessengerUserID: func(ctx context.Context, id int64) (domain.User, bool, error) {
+					return st.GetUserByMessenger(ctx, domain.MessengerKindTelegram, strconv.FormatInt(id, 10))
+				},
+				ResolveTelegramMessengerUserID: func(context.Context, int64) (int64, bool, error) {
+					return messengerUserID, true, nil
+				},
+				ConnectorPeriodLabel:        func(domain.Connector) string { return "15 мин." },
+				RecurringCancelTitle:        "Cancel",
+				RecurringCancelSubsLoadFail: "load failed",
+			}
+			data, status := service.BuildCancelPageData(ctx, "token", messengerUserID, now.Add(time.Hour), "", "")
+			if status != http.StatusOK {
+				t.Fatalf("status=%d data=%+v", status, data)
+			}
+			if len(data.ActiveSubscriptions) != 1 {
+				t.Fatalf("active subscriptions=%d want=1 data=%+v", len(data.ActiveSubscriptions), data)
+			}
+			if got := data.ActiveSubscriptions[0].ChannelURL; got != tt.want {
+				t.Fatalf("ChannelURL=%q want=%q", got, tt.want)
+			}
+		})
 	}
 }
 

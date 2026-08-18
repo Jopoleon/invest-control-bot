@@ -74,36 +74,74 @@ func TestRecurringCheckoutPage_RendersConnectorAndConsent(t *testing.T) {
 	}
 }
 
-func TestRecurringCheckoutPage_DoesNotExposeTelegramWebClientURL(t *testing.T) {
-	ctx := context.Background()
-	st := memory.New()
-	const webURL = "https://web.telegram.org/a/#-1003222018503"
-	if err := st.CreateConnector(ctx, domain.Connector{
-		StartPayload:  "in-private-web-import",
-		Name:          "Private Telegram tariff",
-		ChatID:        "1003222018503",
-		ChannelURL:    webURL,
-		PriceRUB:      100,
-		PeriodMode:    domain.ConnectorPeriodModeDuration,
-		PeriodSeconds: 15 * 60,
-		IsActive:      true,
-		CreatedAt:     time.Now().UTC(),
-	}); err != nil {
-		t.Fatalf("CreateConnector: %v", err)
+func TestRecurringCheckoutPage_OnlyExposesPublicTelegramDestinations(t *testing.T) {
+	tests := []struct {
+		name        string
+		payload     string
+		channelURL  string
+		wantChannel string
+	}{
+		{
+			name:       "web client import is hidden",
+			payload:    "in-private-web-import",
+			channelURL: "https://web.telegram.org/a/#-1003222018503",
+		},
+		{
+			name:       "static private invite is hidden",
+			payload:    "in-private-static-invite",
+			channelURL: "https://t.me/+AbCd_123",
+		},
+		{
+			name:       "private message link is hidden",
+			payload:    "in-private-message-link",
+			channelURL: "https://t.me/c/3222018503/12",
+		},
+		{
+			name:        "public username remains available",
+			payload:     "in-public-channel-link",
+			channelURL:  "https://telegram.me/public_channel",
+			wantChannel: "https://t.me/public_channel",
+		},
 	}
 
-	handler := testRecurringPagesHandler(t, st)
-	req := httptest.NewRequest(http.MethodGet, "/subscribe/in-private-web-import", nil)
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status=%d body=%q", rr.Code, rr.Body.String())
-	}
-	if strings.Contains(rr.Body.String(), webURL) || strings.Contains(rr.Body.String(), "web.telegram.org") {
-		t.Fatalf("checkout page exposes Telegram Web client URL: %q", rr.Body.String())
-	}
-	if !strings.Contains(rr.Body.String(), "https://t.me/test_bot?start=in-private-web-import") {
-		t.Fatalf("checkout page must retain safe bot CTA: %q", rr.Body.String())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			st := memory.New()
+			if err := st.CreateConnector(ctx, domain.Connector{
+				StartPayload:  tt.payload,
+				Name:          "Telegram tariff",
+				ChatID:        "1003222018503",
+				ChannelURL:    tt.channelURL,
+				PriceRUB:      100,
+				PeriodMode:    domain.ConnectorPeriodModeDuration,
+				PeriodSeconds: 15 * 60,
+				IsActive:      true,
+				CreatedAt:     time.Now().UTC(),
+			}); err != nil {
+				t.Fatalf("CreateConnector: %v", err)
+			}
+
+			handler := testRecurringPagesHandler(t, st)
+			req := httptest.NewRequest(http.MethodGet, "/subscribe/"+tt.payload, nil)
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status=%d body=%q", rr.Code, rr.Body.String())
+			}
+			if tt.wantChannel == "" && strings.Contains(rr.Body.String(), tt.channelURL) {
+				t.Fatalf("checkout page exposes private/import-only Telegram URL: %q", rr.Body.String())
+			}
+			if strings.Contains(tt.channelURL, "web.telegram.org") && strings.Contains(rr.Body.String(), "web.telegram.org") {
+				t.Fatalf("checkout page exposes Telegram Web host: %q", rr.Body.String())
+			}
+			if tt.wantChannel != "" && !strings.Contains(rr.Body.String(), tt.wantChannel) {
+				t.Fatalf("checkout page omits canonical public channel URL %q: %q", tt.wantChannel, rr.Body.String())
+			}
+			if !strings.Contains(rr.Body.String(), "https://t.me/test_bot?start="+tt.payload) {
+				t.Fatalf("checkout page must retain safe bot CTA: %q", rr.Body.String())
+			}
+		})
 	}
 }
 

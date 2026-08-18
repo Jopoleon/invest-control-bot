@@ -99,7 +99,7 @@ func (rr *recurringRuntime) handleRecurringCheckout(w http.ResponseWriter, r *ht
 		ConnectorDesc:     strings.TrimSpace(connector.Description),
 		PriceRUB:          connector.PriceRUB,
 		PeriodLabel:       appConnectorPeriodLabel(connector),
-		ChannelURL:        resolveConnectorChannelURL(connector.ChannelURL, connector.ChatID),
+		ChannelURL:        connector.TelegramPublicURL(),
 		OfferURL:          offerURL,
 		PrivacyURL:        privacyURL,
 		AgreementURL:      agreementURL,

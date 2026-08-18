@@ -340,7 +340,7 @@
                   {{end}}
                 </td>
                 <td class="link-cell channel-cell">
-                  {{if or .TelegramURL .MAXChannelURL .MAXAppURL .ChatID .MAXChatID}}
+                  {{if or .HasTelegram .TelegramChatRef .TelegramURL .MAXChannelURL .MAXAppURL .ChatID .MAXChatID}}
                   <details class="link-group">
                     <summary class="link-summary">{{index $.I18N "connectors.table.open_link"}}</summary>
                     <div class="access-list">
@@ -348,6 +348,7 @@
                       {{if .MAXChannelURL}}<div class="access-row"><span class="access-kind">{{index $.I18N "connectors.table.max_web_channel"}}</span><a href="{{.MAXChannelURL}}" target="_blank" rel="noreferrer">{{.MAXChannelURL}}</a><span class="access-note">{{index $.I18N "connectors.table.access_web_note"}}</span></div>{{end}}
                       {{if .MAXAppURL}}<div class="access-row"><span class="access-kind">{{index $.I18N "connectors.table.max_app_channel"}}</span><a href="{{.MAXAppURL}}" target="_blank" rel="noreferrer">{{.MAXAppURL}}</a><span class="access-note">{{index $.I18N "connectors.table.access_app_note"}}</span></div>{{end}}
                       {{if .ChatID}}<div class="access-row"><span class="access-kind">{{index $.I18N "connectors.table.chat"}}</span><code>{{.ChatID}}</code><span class="access-note">{{index $.I18N "connectors.table.access_chat_note"}}</span></div>{{end}}
+                      {{if and (not .ChatID) .TelegramChatRef}}<div class="access-row"><span class="access-kind">{{index $.I18N "connectors.table.chat"}}</span><code>{{.TelegramChatRef}}</code><span class="access-note">{{index $.I18N "connectors.table.access_chat_note"}}</span></div>{{end}}
                       {{if .MAXChatID}}<div class="access-row"><span class="access-kind">{{index $.I18N "connectors.table.max_chat_id"}}</span><code>{{.MAXChatID}}</code><span class="access-note">{{index $.I18N "connectors.table.access_chat_note"}}</span></div>{{end}}
                       {{if and .HasTelegram $.TelegramChatOptions}}
                       {{$row := .}}

@@ -459,7 +459,7 @@ func (s *Service) BuildCancelPageData(ctx context.Context, token string, messeng
 			PeriodLabel:    s.ConnectorPeriodLabel(connector),
 			StartsAtLabel:  sub.StartsAt.In(time.Local).Format("02.01.2006 15:04"),
 			EndsAtLabel:    sub.EndsAt.In(time.Local).Format("02.01.2006 15:04"),
-			ChannelURL:     connector.AccessURL(account.MessengerKind),
+			ChannelURL:     connector.PublicAccessURL(account.MessengerKind),
 		}
 		switch {
 		case sub.IsFutureActiveAt(now):

@@ -29,7 +29,7 @@ var (
 	errCreateConnectorDeadline    = errors.New("create_connector_deadline")
 	errCreateConnectorChatOrURL   = errors.New("create_connector_chat_or_url_required")
 	errCreateConnectorTelegramURL = errors.New("create_connector_telegram_url_invalid")
-	errCreateConnectorWebChat     = errors.New("create_connector_telegram_web_chat_unavailable")
+	errCreateConnectorPrivateChat = errors.New("create_connector_private_telegram_chat_unavailable")
 	errConnectorNameRequired      = errors.New("connector_name_required")
 	errConnectorNameTooLong       = errors.New("connector_name_too_long")
 	errConnectorDescriptionLong   = errors.New("connector_description_too_long")
@@ -153,8 +153,22 @@ func (h *Handler) updateConnectorTelegramChat(w http.ResponseWriter, r *http.Req
 		h.redirectConnectors(w, r, lang, t(lang, "connectors.telegram_chat_updated"))
 		return
 	}
-	if _, found, err := h.store.GetTelegramChat(r.Context(), chatID); err != nil || !found {
+	chat, found, err := h.store.GetTelegramChat(r.Context(), chatID)
+	if err != nil || !found || !telegramChatCanCreateInviteLinks(chat) {
 		h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "connectors.telegram_chat_unknown"))
+		return
+	}
+	connector, found, err := h.store.GetConnector(r.Context(), id)
+	if err != nil {
+		h.renderConnectorsPage(r.Context(), w, r, lang, err.Error())
+		return
+	}
+	if !found {
+		h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "connectors.not_found"))
+		return
+	}
+	if !telegramChatMatchesConnectorDestination(chat, connector.ChannelURL) {
+		h.renderConnectorsPage(r.Context(), w, r, lang, t(lang, "connectors.telegram_chat_wrong"))
 		return
 	}
 	storedChatID := strings.TrimPrefix(chatID, "-")
@@ -339,26 +353,45 @@ func (h *Handler) createConnector(ctx context.Context, r *http.Request) error {
 func (h *Handler) normalizeTelegramDestination(ctx context.Context, chatID, channelURL string) (string, string, error) {
 	chatID = strings.TrimSpace(chatID)
 	channelURL = strings.TrimSpace(channelURL)
+	explicitRef := telegramchat.NormalizeChatRef(chatID)
+	explicitChat := domain.TelegramChat{}
+	if chatID != "" {
+		if explicitRef == "" {
+			return "", "", errCreateConnectorPrivateChat
+		}
+		var err error
+		explicitChat, err = h.loadInviteCapableTelegramChat(ctx, explicitRef)
+		if err != nil {
+			return "", "", err
+		}
+		chatID = explicitRef
+	}
 	if channelURL != "" {
 		destination, err := telegramlink.Parse(channelURL)
 		switch {
-		case err == nil && destination.IsImportOnly():
-			explicitRef := telegramchat.NormalizeChatRef(chatID)
+		case err == nil && (destination.IsImportOnly() || destination.Kind == telegramlink.KindPrivateMessage):
 			if explicitRef != "" && explicitRef != destination.ChatRef {
-				return "", "", errCreateConnectorWebChat
+				return "", "", errCreateConnectorPrivateChat
 			}
-			chat, found, lookupErr := h.store.GetTelegramChat(ctx, destination.ChatRef)
-			if lookupErr != nil {
-				return "", "", lookupErr
-			}
-			if !found || !telegramChatCanCreateInviteLinks(chat) {
-				return "", "", errCreateConnectorWebChat
+			if err := h.requireInviteCapableTelegramChat(ctx, destination.ChatRef); err != nil {
+				return "", "", err
 			}
 			return strings.TrimPrefix(destination.ChatRef, "-"), "", nil
+		case err == nil && destination.Kind == telegramlink.KindInvite:
+			if explicitRef == "" {
+				return "", "", errCreateConnectorPrivateChat
+			}
+			channelURL = destination.CanonicalURL
+		case err == nil && destination.Kind == telegramlink.KindPublic && explicitRef != "":
+			catalogUsername := telegramchat.NormalizeChatRef(explicitChat.Username)
+			if catalogUsername == "" || !strings.EqualFold(catalogUsername, destination.ChatRef) {
+				return "", "", errCreateConnectorPrivateChat
+			}
+			channelURL = destination.CanonicalURL
 		case err == nil:
 			channelURL = destination.CanonicalURL
 		case telegramlink.IsWebClientURL(channelURL):
-			return "", "", errCreateConnectorWebChat
+			return "", "", errCreateConnectorPrivateChat
 		default:
 			return "", "", errCreateConnectorTelegramURL
 		}
@@ -370,6 +403,47 @@ func (h *Handler) normalizeTelegramDestination(ctx context.Context, chatID, chan
 		chatID = resolvedChatID
 	}
 	return chatID, channelURL, nil
+}
+
+func (h *Handler) requireInviteCapableTelegramChat(ctx context.Context, chatRef string) error {
+	_, err := h.loadInviteCapableTelegramChat(ctx, chatRef)
+	return err
+}
+
+func (h *Handler) loadInviteCapableTelegramChat(ctx context.Context, chatRef string) (domain.TelegramChat, error) {
+	chat, found, err := h.store.GetTelegramChat(ctx, strings.TrimSpace(chatRef))
+	if err != nil {
+		return domain.TelegramChat{}, err
+	}
+	if !found || !telegramChatCanCreateInviteLinks(chat) {
+		return domain.TelegramChat{}, errCreateConnectorPrivateChat
+	}
+	return chat, nil
+}
+
+// telegramChatMatchesConnectorDestination prevents a connector from issuing
+// per-user invites for one chat while exposing a public/import URL for another.
+// Static invite hashes cannot be mapped back to a chat, so a verified catalog
+// selection remains the source of truth for that legacy fallback form.
+func telegramChatMatchesConnectorDestination(chat domain.TelegramChat, rawURL string) bool {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return true
+	}
+	destination, err := telegramlink.Parse(rawURL)
+	if err != nil {
+		// Binding a verified chat is allowed to recover legacy malformed values;
+		// read-time URL filtering still prevents those values reaching users.
+		return true
+	}
+	switch destination.Kind {
+	case telegramlink.KindPublic:
+		return strings.EqualFold(telegramchat.NormalizeChatRef(chat.Username), destination.ChatRef)
+	case telegramlink.KindWebImport, telegramlink.KindPrivateMessage:
+		return telegramchat.NormalizeChatRef(chat.ChatID) == destination.ChatRef
+	default:
+		return true
+	}
 }
 
 func (h *Handler) resolveTelegramChatID(ctx context.Context, chatID, channelURL string) (string, bool, error) {
@@ -915,7 +989,7 @@ func (h *Handler) localizeCreateConnectorError(lang string, err error) string {
 		return t(lang, "connector.validation.chat_or_url")
 	case errors.Is(err, errCreateConnectorTelegramURL):
 		return t(lang, "connector.validation.telegram_url")
-	case errors.Is(err, errCreateConnectorWebChat):
+	case errors.Is(err, errCreateConnectorPrivateChat):
 		return t(lang, "connector.validation.telegram_web_chat")
 	default:
 		return err.Error()

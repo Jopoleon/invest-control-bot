@@ -133,6 +133,7 @@ var translations = map[string]map[string]string{
 		"connectors.text_updated":                   "название и описание коннектора обновлены",
 		"connectors.telegram_chat_updated":          "Telegram-чат коннектора обновлен",
 		"connectors.telegram_chat_unknown":          "выбранный Telegram-чат не найден в каталоге",
+		"connectors.telegram_chat_wrong":            "выбранный Telegram-чат не совпадает с адресом канала коннектора",
 		"connectors.deleted":                        "коннектор удален",
 		"connectors.bad_form":                       "не удалось разобрать форму",
 		"connectors.invalid_id":                     "некорректный ID коннектора",
@@ -151,7 +152,7 @@ var translations = map[string]map[string]string{
 		"connector.validation.period_deadline":      "дедлайн должен быть в будущем и в формате дата/время",
 		"connector.validation.chat_or_url":          "нужно заполнить хотя бы одно направление доступа: Telegram Chat ID, MAX Chat ID, Telegram Channel URL или MAX Channel URL",
 		"connector.validation.telegram_url":         "укажите официальную Telegram-ссылку: t.me, telegram.me, tg:// или @username",
-		"connector.validation.telegram_web_chat":    "ссылка web.telegram.org не подходит для выдачи доступа: добавьте бота администратором чата с правом приглашать пользователей и выберите этот чат в Telegram Chat ID",
+		"connector.validation.telegram_web_chat":    "для приватного Telegram-доступа добавьте бота администратором чата с правом приглашать пользователей и выберите этот чат в Telegram Chat ID",
 
 		"connectors.form.name":                        "Название тарифа *",
 		"connectors.form.name_hint":                   "Понятное имя тарифа, которое увидит администратор и пользователь.",
@@ -745,6 +746,7 @@ var translations = map[string]map[string]string{
 		"connectors.text_updated":                   "connector name and description updated",
 		"connectors.telegram_chat_updated":          "connector Telegram chat updated",
 		"connectors.telegram_chat_unknown":          "selected Telegram chat is not in catalog",
+		"connectors.telegram_chat_wrong":            "selected Telegram chat does not match the connector channel address",
 		"connectors.deleted":                        "connector deleted",
 		"connectors.bad_form":                       "failed to parse form",
 		"connectors.invalid_id":                     "invalid connector ID",
@@ -763,7 +765,7 @@ var translations = map[string]map[string]string{
 		"connector.validation.period_deadline":      "deadline must be in the future and use a valid date/time format",
 		"connector.validation.chat_or_url":          "at least one destination is required: Telegram Chat ID, MAX Chat ID, Telegram Channel URL or MAX Channel URL",
 		"connector.validation.telegram_url":         "use an official Telegram destination: t.me, telegram.me, tg://, or @username",
-		"connector.validation.telegram_web_chat":    "web.telegram.org cannot be used for access delivery: add the bot as a chat administrator with invite rights and select that chat as Telegram Chat ID",
+		"connector.validation.telegram_web_chat":    "for private Telegram access, add the bot as a chat administrator with invite rights and select that chat as Telegram Chat ID",
 
 		"connectors.form.name":                        "Tariff name *",
 		"connectors.form.name_hint":                   "Short tariff name visible to operators and users.",

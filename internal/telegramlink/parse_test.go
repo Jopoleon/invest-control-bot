@@ -34,6 +34,36 @@ func TestParseSupportedDestinations(t *testing.T) {
 			want: Destination{Kind: KindPublic, CanonicalURL: "https://t.me/invest_channel", ChatRef: "@invest_channel"},
 		},
 		{
+			name: "http and www alias",
+			raw:  "http://www.t.me/invest_channel",
+			want: Destination{Kind: KindPublic, CanonicalURL: "https://t.me/invest_channel", ChatRef: "@invest_channel"},
+		},
+		{
+			name: "telegram dog alias",
+			raw:  "https://telegram.dog/invest_channel",
+			want: Destination{Kind: KindPublic, CanonicalURL: "https://t.me/invest_channel", ChatRef: "@invest_channel"},
+		},
+		{
+			name: "www telegram dog alias",
+			raw:  "https://www.telegram.dog/invest_channel",
+			want: Destination{Kind: KindPublic, CanonicalURL: "https://t.me/invest_channel", ChatRef: "@invest_channel"},
+		},
+		{
+			name: "www telegram me alias",
+			raw:  "https://www.telegram.me/invest_channel",
+			want: Destination{Kind: KindPublic, CanonicalURL: "https://t.me/invest_channel", ChatRef: "@invest_channel"},
+		},
+		{
+			name: "username host",
+			raw:  "invest_channel.t.me",
+			want: Destination{Kind: KindPublic, CanonicalURL: "https://t.me/invest_channel", ChatRef: "@invest_channel"},
+		},
+		{
+			name: "full username host",
+			raw:  "https://invest_channel.t.me",
+			want: Destination{Kind: KindPublic, CanonicalURL: "https://t.me/invest_channel", ChatRef: "@invest_channel"},
+		},
+		{
 			name: "modern invite",
 			raw:  "https://t.me/+AbCd_123-xyz",
 			want: Destination{Kind: KindInvite, CanonicalURL: "https://t.me/+AbCd_123-xyz"},
@@ -49,6 +79,11 @@ func TestParseSupportedDestinations(t *testing.T) {
 			want: Destination{Kind: KindPrivateMessage, CanonicalURL: "https://t.me/c/3626584986/12", ChatRef: "-1003626584986"},
 		},
 		{
+			name: "private message with short MTProto channel id",
+			raw:  "https://t.me/c/123456789/12",
+			want: Destination{Kind: KindPrivateMessage, CanonicalURL: "https://t.me/c/123456789/12", ChatRef: "-1000123456789"},
+		},
+		{
 			name: "private album message",
 			raw:  "https://telegram.me/c/3626584986/12?single",
 			want: Destination{Kind: KindPrivateMessage, CanonicalURL: "https://t.me/c/3626584986/12?single", ChatRef: "-1003626584986"},
@@ -59,14 +94,29 @@ func TestParseSupportedDestinations(t *testing.T) {
 			want: Destination{Kind: KindPublic, CanonicalURL: "https://t.me/invest_channel", ChatRef: "@invest_channel"},
 		},
 		{
+			name: "opaque tg public",
+			raw:  "tg:resolve?domain=invest_channel",
+			want: Destination{Kind: KindPublic, CanonicalURL: "https://t.me/invest_channel", ChatRef: "@invest_channel"},
+		},
+		{
 			name: "tg invite",
 			raw:  "tg://join?invite=AbCd_123-xyz",
+			want: Destination{Kind: KindInvite, CanonicalURL: "https://t.me/+AbCd_123-xyz"},
+		},
+		{
+			name: "opaque tg invite",
+			raw:  "tg:join?invite=AbCd_123-xyz",
 			want: Destination{Kind: KindInvite, CanonicalURL: "https://t.me/+AbCd_123-xyz"},
 		},
 		{
 			name: "Telegram Web A import",
 			raw:  "https://web.telegram.org/a/#-1003626584986",
 			want: Destination{Kind: KindWebImport, ChatRef: "-1003626584986"},
+		},
+		{
+			name: "Telegram Web import with short MTProto channel id",
+			raw:  "https://web.telegram.org/a/#-1000123456789",
+			want: Destination{Kind: KindWebImport, ChatRef: "-1000123456789"},
 		},
 		{
 			name: "Telegram Web K import",
@@ -77,6 +127,16 @@ func TestParseSupportedDestinations(t *testing.T) {
 			name: "Telegram Web Z import",
 			raw:  "https://web.telegram.org/z/#-1009876543210",
 			want: Destination{Kind: KindWebImport, ChatRef: "-1009876543210"},
+		},
+		{
+			name: "Telegram Web minimum channel id",
+			raw:  "https://web.telegram.org/a/#-1000000000001",
+			want: Destination{Kind: KindWebImport, ChatRef: "-1000000000001"},
+		},
+		{
+			name: "Telegram Web maximum channel id",
+			raw:  "https://web.telegram.org/a/#-1997852516352",
+			want: Destination{Kind: KindWebImport, ChatRef: "-1997852516352"},
 		},
 	}
 
@@ -104,12 +164,10 @@ func TestParseRejectsUnsafeOrMalformedDestinations(t *testing.T) {
 		"bad-channel",
 		"bad channel",
 		"https://t.me",
-		"http://t.me/invest_channel",
 		"https://t.me.evil.example/invest_channel",
 		"https://evil.example/t.me/invest_channel",
 		"https://user@t.me/invest_channel",
 		"https://t.me:443/invest_channel",
-		"https://www.t.me/invest_channel",
 		"https://t.me/invest_channel?profile=true",
 		"https://t.me/invest_channel#fragment",
 		"https://t.me/invest%5Fchannel",
@@ -128,6 +186,8 @@ func TestParseRejectsUnsafeOrMalformedDestinations(t *testing.T) {
 		"https://web.telegram.org/a#-1003626584986",
 		"https://web.telegram.org/a/#-100",
 		"https://web.telegram.org/a/#-1000",
+		"https://web.telegram.org/a/#-1000000000000",
+		"https://web.telegram.org/a/#-1997852516353",
 		"https://web.telegram.org/a/#-1003626584986/12",
 		"https://web.telegram.org/b/#-1003626584986",
 		"https://web.telegram.org/a/-1003626584986",
@@ -155,6 +215,29 @@ func TestParseRejectsUnsafeOrMalformedDestinations(t *testing.T) {
 				t.Fatalf("Parse(%q) = %#v, %v; want ErrInvalidDestination", raw, got, err)
 			}
 		})
+	}
+}
+
+func TestParseRejectsReservedTelegramRoutesAsPublicUsernames(t *testing.T) {
+	t.Parallel()
+
+	reserved := []string{
+		"addemoji", "addlist", "addstickers", "addstyle", "addtheme", "auction", "auth", "boost",
+		"call", "confirmphone", "contact", "giftcode", "invoice", "joinchat", "login", "nft",
+		"proxy", "setlanguage", "share", "socks", "web",
+	}
+	for _, route := range reserved {
+		route := route
+		for _, raw := range []string{"https://t.me/" + route, route + ".t.me", "@" + route} {
+			raw := raw
+			t.Run(raw, func(t *testing.T) {
+				t.Parallel()
+				got, err := Parse(raw)
+				if !errors.Is(err, ErrInvalidDestination) {
+					t.Fatalf("Parse(%q) = %#v, %v; want ErrInvalidDestination", raw, got, err)
+				}
+			})
+		}
 	}
 }
 

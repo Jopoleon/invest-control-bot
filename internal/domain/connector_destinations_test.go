@@ -130,6 +130,28 @@ func TestConnectorTelegramWebURLIsImportHintButNeverUserFacing(t *testing.T) {
 	}
 }
 
+func TestConnectorPublicAccessURL_AllowsPublicTelegramButNotPrivateLinks(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "public username", raw: "https://telegram.me/public_channel", want: "https://t.me/public_channel"},
+		{name: "static invite", raw: "https://t.me/+AbCd_123"},
+		{name: "web client import", raw: "https://web.telegram.org/a/#-1003222018503"},
+		{name: "private message", raw: "https://t.me/c/3222018503/12"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			connector := Connector{ChannelURL: tt.raw}
+			if got := connector.PublicAccessURL(MessengerKindTelegram); got != tt.want {
+				t.Fatalf("PublicAccessURL(telegram)=%q want=%q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestConnectorMAXAccessURL_NormalizesWebHostForUserFacingLinks(t *testing.T) {
 	connector := Connector{MAXChannelURL: " https://web.max.ru/-72598909498032 "}
 	if got := connector.MAXAccessURL(); got != "https://max.ru/-72598909498032" {

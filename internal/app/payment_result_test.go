@@ -415,17 +415,137 @@ func TestBuildPaymentPageActions_SelectsMessengerSpecificActions(t *testing.T) {
 	tgActions := appCtx.buildPaymentPageActions(ctx, domain.Payment{
 		UserID: seedTelegramUser(t, ctx, st, 777123),
 	}, "https://t.me/example_channel", false)
-	if len(tgActions) != 3 {
-		t.Fatalf("telegram actions len=%d want=3", len(tgActions))
+	if len(tgActions) != 2 {
+		t.Fatalf("telegram actions len=%d want=2", len(tgActions))
 	}
 	if tgActions[0].Label != appPaymentActionReturnToBot {
 		t.Fatalf("telegram first label=%q want=%q", tgActions[0].Label, appPaymentActionReturnToBot)
 	}
-	if tgActions[1].Label != appPaymentActionOpenChannel {
-		t.Fatalf("telegram second label=%q want=%q", tgActions[1].Label, appPaymentActionOpenChannel)
+	if tgActions[1].Label != appPaymentActionOpenTelegram {
+		t.Fatalf("telegram second label=%q want=%q", tgActions[1].Label, appPaymentActionOpenTelegram)
 	}
-	if tgActions[2].Label != appPaymentActionOpenTelegram {
-		t.Fatalf("telegram third label=%q want=%q", tgActions[2].Label, appPaymentActionOpenTelegram)
+	for _, action := range tgActions {
+		if action.URL == "https://t.me/example_channel" {
+			t.Fatalf("failed payment actions expose channel URL: %+v", tgActions)
+		}
+	}
+}
+
+func TestPaymentSuccessPage_PendingPaymentDoesNotExposeStaticInvite(t *testing.T) {
+	ctx := context.Background()
+	st := memory.New()
+	const inviteURL = "https://t.me/+AbCd_123"
+	if err := st.CreateConnector(ctx, domain.Connector{
+		StartPayload:  "in-pending-private-invite",
+		Name:          "Pending private invite",
+		ChannelURL:    inviteURL,
+		PriceRUB:      100,
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 900,
+		IsActive:      true,
+		CreatedAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateConnector: %v", err)
+	}
+	connector, found, err := st.GetConnectorByStartPayload(ctx, "in-pending-private-invite")
+	if err != nil || !found {
+		t.Fatalf("GetConnectorByStartPayload found=%v err=%v", found, err)
+	}
+	seedPayment(t, ctx, st, domain.Payment{
+		Provider:    "robokassa",
+		Status:      domain.PaymentStatusPending,
+		Token:       "pending-private-invite-1",
+		UserID:      seedTelegramUser(t, ctx, st, 777124),
+		ConnectorID: connector.ID,
+		AmountRUB:   100,
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	})
+
+	handler := testServerHandler(t, st, "test-pass2")
+	req := httptest.NewRequest(http.MethodGet, "/payment/success?InvId=pending-private-invite-1", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%q", rr.Code, rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), inviteURL) {
+		t.Fatalf("pending payment success page exposes private invite: %q", rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "Ожидает подтверждения") {
+		t.Fatalf("pending payment status missing: %q", rr.Body.String())
+	}
+}
+
+func TestPaymentSuccessPage_PaidPaymentOnlyExposesPublicTelegramDestinations(t *testing.T) {
+	tests := []struct {
+		name        string
+		channelURL  string
+		wantChannel string
+	}{
+		{name: "static invite is hidden", channelURL: "https://t.me/+AbCd_123"},
+		{name: "web client import is hidden", channelURL: "https://web.telegram.org/a/#-1003222018503"},
+		{name: "private message link is hidden", channelURL: "https://t.me/c/3222018503/12"},
+		{name: "public username is preserved", channelURL: "https://telegram.me/public_channel", wantChannel: "https://t.me/public_channel"},
+	}
+
+	for index, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			st := memory.New()
+			payload := "in-paid-link-policy-" + strconv.Itoa(index)
+			if err := st.CreateConnector(ctx, domain.Connector{
+				StartPayload:  payload,
+				Name:          "Paid Telegram destination",
+				ChatID:        "1003222018503",
+				ChannelURL:    tt.channelURL,
+				PriceRUB:      100,
+				PeriodMode:    domain.ConnectorPeriodModeDuration,
+				PeriodSeconds: 900,
+				IsActive:      true,
+				CreatedAt:     time.Now().UTC(),
+			}); err != nil {
+				t.Fatalf("CreateConnector: %v", err)
+			}
+			connector, found, err := st.GetConnectorByStartPayload(ctx, payload)
+			if err != nil || !found {
+				t.Fatalf("GetConnectorByStartPayload found=%v err=%v", found, err)
+			}
+			paidAt := time.Now().UTC()
+			token := "paid-link-policy-" + strconv.Itoa(index)
+			seedPayment(t, ctx, st, domain.Payment{
+				Provider:    "robokassa",
+				Status:      domain.PaymentStatusPaid,
+				Token:       token,
+				UserID:      seedTelegramUser(t, ctx, st, 777125+int64(index)),
+				ConnectorID: connector.ID,
+				AmountRUB:   100,
+				PaidAt:      &paidAt,
+				CreatedAt:   paidAt,
+				UpdatedAt:   paidAt,
+			})
+
+			handler := testServerHandler(t, st, "test-pass2")
+			req := httptest.NewRequest(http.MethodGet, "/payment/success?InvId="+token, nil)
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("status=%d body=%q", rr.Code, rr.Body.String())
+			}
+			body := rr.Body.String()
+			if tt.wantChannel == "" && strings.Contains(body, tt.channelURL) {
+				t.Fatalf("paid payment success page exposes private/import destination: %q", body)
+			}
+			if strings.Contains(tt.channelURL, "web.telegram.org") && strings.Contains(body, "web.telegram.org") {
+				t.Fatalf("paid payment success page exposes Telegram Web host: %q", body)
+			}
+			if tt.wantChannel != "" && !strings.Contains(body, tt.wantChannel) {
+				t.Fatalf("paid payment success page omits public channel %q: %q", tt.wantChannel, body)
+			}
+			if !strings.Contains(body, "Платеж подтвержден") {
+				t.Fatalf("paid payment status missing: %q", body)
+			}
+		})
 	}
 }
 
