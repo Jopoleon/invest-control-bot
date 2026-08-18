@@ -12,7 +12,7 @@ bash scripts/prod_postgres_tunnel.sh
 ```
 
 Defaults:
-- SSH host: `investcontrol-server`
+- SSH host: `airnet-server`
 - local forwarded port: `6543`
 - remote PostgreSQL host: `127.0.0.1`
 - remote PostgreSQL port: `5432`
@@ -20,7 +20,7 @@ Defaults:
 Override them if needed:
 
 ```bash
-SSH_HOST=investcontrol-server LOCAL_PORT=6543 REMOTE_DB_HOST=127.0.0.1 REMOTE_DB_PORT=5432 bash scripts/prod_postgres_tunnel.sh
+SSH_HOST=airnet-server LOCAL_PORT=6543 REMOTE_DB_HOST=127.0.0.1 REMOTE_DB_PORT=5432 bash scripts/prod_postgres_tunnel.sh
 ```
 
 Keep this process running while Codex uses the MCP.

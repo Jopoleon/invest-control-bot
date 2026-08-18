@@ -37,8 +37,8 @@ fail() {
 
 APP_NAME="${APP_NAME:-invest-control-bot}"
 BUILD_PACKAGE="${BUILD_PACKAGE:-./cmd/server}"
-SSH_HOST="${SSH_HOST:-investcontrol-server}"
-REMOTE_APP_DIR="${REMOTE_APP_DIR:-/home/investcontrol/apps/invest-control-bot}"
+SSH_HOST="${SSH_HOST:-airnet-server}"
+REMOTE_APP_DIR="${REMOTE_APP_DIR:-/home/ubuntu/apps/invest-control-bot}"
 DEPLOY_LAYOUT="${DEPLOY_LAYOUT:-simple}"
 GOOS="${GOOS:-linux}"
 GOARCH="${GOARCH:-amd64}"
@@ -64,6 +64,13 @@ require_cmd go
 require_cmd git
 require_cmd ssh
 require_cmd scp
+
+remote_user="$(ssh "${SSH_HOST}" 'id -un')"
+remote_group="$(ssh "${SSH_HOST}" 'id -gn')"
+if [[ "${remote_user}" != "ubuntu" || "${remote_group}" != "ubuntu" ]]; then
+    fail "remote deploy identity must be ubuntu:ubuntu, got ${remote_user}:${remote_group}"
+    exit 1
+fi
 
 mkdir -p "${REPO_ROOT}/.dist"
 
@@ -116,9 +123,7 @@ esac
 
 if [[ "${SKIP_RESTART}" == "1" ]]; then
     RESTART_CMD=""
-fi
-
-if [[ -z "${RESTART_CMD}" && -n "${REMOTE_SERVICE_NAME}" ]]; then
+elif [[ -z "${RESTART_CMD}" && -n "${REMOTE_SERVICE_NAME}" ]]; then
     RESTART_CMD="sudo systemctl restart ${REMOTE_SERVICE_NAME}"
 fi
 

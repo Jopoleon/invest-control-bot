@@ -37,7 +37,8 @@ Values:
 
 - `TELEGRAM_BOT_TOKEN`: same token as app env `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_WEBHOOK_SECRET`: same secret as app env `TELEGRAM_WEBHOOK_SECRET`
-- `TELEGRAM_WEBHOOK_ORIGIN_URL`: direct app webhook URL, for example `https://xn--b1aghkfidhbthmd7l.xn--p1ai/telegram/webhook`
+- `TELEGRAM_WEBHOOK_ORIGIN_URL`: direct app webhook URL, currently
+  `https://investcontrol.org/telegram/webhook`
 
 Do not set `TELEGRAM_WEBHOOK_ORIGIN_URL` to the Worker URL. It must point to the real app origin, otherwise the Worker will proxy back to itself.
 

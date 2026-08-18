@@ -1,18 +1,20 @@
 [Unit]
 Description=invest-control-bot backend service
-After=network-online.target
-Wants=network-online.target
+After=network-online.target postgresql.service
+Wants=network-online.target postgresql.service
 
 [Service]
 Type=simple
-User=investcontrol
-Group=investcontrol
-WorkingDirectory=/home/investcontrol/apps/invest-control-bot/current
-EnvironmentFile=/home/investcontrol/apps/invest-control-bot/shared/invest-control-bot.env
-ExecStart=/home/investcontrol/apps/invest-control-bot/current/invest-control-bot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/apps/invest-control-bot/current
+EnvironmentFile=/home/ubuntu/apps/invest-control-bot/shared/invest-control-bot.env
+ExecStart=/home/ubuntu/apps/invest-control-bot/current/invest-control-bot
 Restart=always
 RestartSec=5
-TimeoutStopSec=15
+# Payment callbacks and rebill requests may still be in flight during deploy.
+# Give graceful shutdown enough time to finish their bounded network calls.
+TimeoutStopSec=60
 NoNewPrivileges=true
 
 [Install]
