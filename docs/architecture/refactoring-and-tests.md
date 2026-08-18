@@ -32,8 +32,8 @@
 - Unit-тесты фиксируют canonical `t.me` public/invite формы, legacy aliases,
   malformed/lookalike rejection и import-only `web.telegram.org` routes.
 - Integration-level unit tests покрывают domain capability, admin connector
-  import, payment success fallback, bot subscription fallback и public
-  recurring checkout.
+  import/chat matching, payment success/fail/status fallback, bot subscription
+  fallback, public recurring checkout и cancel-page projection.
 - Рабочий public `t.me` fallback и существующий fresh invite flow закреплены
   отдельными regression assertions.
 - Focused `-race` и полный `go test ./...` прошли; production rollout остаётся

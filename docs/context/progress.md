@@ -76,7 +76,9 @@ The current engineering focus is stabilization, not broad scope expansion:
 - The Telegram deep-link hardening is implemented and covered by unit,
   race-detector and full-repository tests, but is not deployed yet. Existing
   production connectors with Telegram Web URLs still need a controlled
-  post-deploy binding/backfill pass.
+  post-deploy binding/backfill pass. Public payment/recurring pages expose only
+  public Telegram usernames; static/private invites remain bot-delivered after
+  confirmed access, and admin chat binding rejects destination mismatches.
 
 ## Sensitive Areas
 

@@ -648,19 +648,29 @@ Do not start the legacy `investcontrol-server` backend at the same time.
   import only when the chat is already in `telegram_chats` and the bot has
   invite rights. The stored connector keeps the chat ID and drops the Web URL.
 - Existing public `t.me` fallback and fresh bot-created invite behavior remain
-  unchanged. Unknown legacy full HTTP(S) runtime URLs remain readable for
-  backward compatibility, while new Telegram-field input is validated.
+  unchanged. Only recognized Telegram destinations are user-facing; foreign,
+  malformed and Telegram Web legacy values are suppressed at read time.
+- Static private invites are no longer exposed by public checkout, cancel,
+  failed/pending or paid-result pages. Private access continues through the
+  bot-created per-user invite after the provider callback.
+- Connector create/update validates that the selected catalog chat has invite
+  rights and matches any configured public/import destination, preventing an
+  invite for chat B with a fallback URL for chat A.
+- MTProto channel IDs are converted with Telegram's numeric offset formula,
+  including IDs shorter than ten digits; reserved service routes such as
+  `share`, `proxy` and `boost` are rejected as channel usernames.
 - Replaced the old chat-ID backlog transcript with a current implementation,
   rollout and future `KeyboardButtonRequestChat` / `chat_shared` plan.
 
 ### Unit Coverage And Verification
 
 - Added table tests for valid, legacy, malformed and lookalike Telegram links.
-- Added regression tests for channel/domain resolution, admin Web import,
-  payment fallback, bot subscription fallback and recurring checkout HTML.
+- Added regression tests for channel/domain resolution, admin Web import and
+  chat matching, payment fallback/status pages, bot subscription fallback,
+  recurring checkout HTML and cancel-page projection.
 - Focused package tests passed.
 - Race detector passed for all touched core packages:
-  `go test -race ./internal/telegramlink ./internal/channelurl ./internal/telegramchat ./internal/domain ./internal/admin ./internal/app/payments ./internal/bot`.
+  `go test -race ./internal/telegramlink ./internal/channelurl ./internal/telegramchat ./internal/domain ./internal/admin ./internal/app/payments ./internal/app/recurring ./internal/app ./internal/bot`.
 - Full repository regression passed:
   `GOCACHE=/tmp/go-build GOTMPDIR=/tmp go test ./...`.
 - No migration, production data change, deployment, service restart or provider

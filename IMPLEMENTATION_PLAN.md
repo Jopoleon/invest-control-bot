@@ -40,6 +40,8 @@
   не попадает в payment/bot/public-page fallback.
 - Создание коннектора по Telegram Web URL требует уже обнаруженный чат и права
   бота на invite; invalid/lookalike Telegram URL отклоняется.
+- Публичные checkout/cancel/payment-result страницы не раскрывают статические
+  private invite; chat binding отклоняет несовпадение URL канала и каталога.
 - Unit coverage добавлен для parser, domain/admin, payment, bot и recurring
   page; focused race tests и полный `go test ./...` проходят.
 - Изменение пока не задеплоено; legacy-коннекторы нужно привязать через каталог

@@ -139,6 +139,8 @@ fallbacks, or provider/client quirks.
 - A Bot API `chat_id` is transport identity, not a user-facing URL.
 - Public Telegram destinations use canonical `https://t.me/<username>` links.
 - Private paid destinations use fresh bot-created `https://t.me/+...` invites.
+- Static private invite links must not be rendered on unauthenticated checkout,
+  cancel or payment-result pages; those pages may expose only public usernames.
 - `web.telegram.org/{a,k,z}/#-100...` is only an import hint for a chat ID and
   must never appear in subscriber buttons or public payment/recurring pages.
 - `t.me/c/<channel>/<message_id>` is a message link; the project must not
@@ -146,6 +148,8 @@ fallbacks, or provider/client quirks.
 - A private chat can be a valid connector destination without a public URL when
   a Bot API chat reference is available. Invite creation and later removal
   still depend on the bot's administrator rights.
+- MTProto channel IDs must be converted to Bot API IDs numerically as
+  `-(1000000000000 + channel_id)`, not by string concatenation.
 
 ## Connector Period Model
 

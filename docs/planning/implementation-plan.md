@@ -109,7 +109,8 @@ Checks:
 - Implemented link boundary: public/legacy Telegram inputs are canonicalized to
   `t.me`; Telegram Web routes are import-only; private numeric IDs never become
   bare `t.me/c` links; payment, bot and public-page fallbacks suppress unsafe
-  Web URLs.
+  Web URLs and public pages suppress static private invites. Admin binding also
+  rejects a catalog chat that conflicts with the connector destination.
 - Next UX step: replace manual chat-ID discovery with a signed
   `KeyboardButtonRequestChat` / `chat_shared` binding flow while preserving the
   current `my_chat_member` catalog and dropdown.

@@ -26,6 +26,13 @@ The code now distinguishes Telegram chat identity from user-facing navigation:
   administrator with `can_invite_users`;
 - if creation of a private invite fails, the payment and subscription flows do
   not fall back to Telegram Web. They retain the existing audit/error path.
+- public checkout, cancel and payment-result pages expose public usernames only;
+  they never disclose a static private invite as a substitute for bot delivery;
+- Bot API channel references are derived from MTProto IDs with Telegram's
+  numeric offset formula, and reserved `t.me` service routes are not accepted
+  as public channel usernames;
+- selecting a discovered chat is rejected when it conflicts with the
+  connector's configured public/import destination.
 
 This needs no database migration. Existing rows remain readable: a stored Web
 URL can contribute its `chat_id` at runtime, but it is suppressed as a public
@@ -68,9 +75,10 @@ lifecycle operations.
 
 ## Verification
 
-Unit coverage exists for parsing/canonicalization, unsafe-host rejection, Web
-URL suppression, admin import validation, connector capability, payment
-fallback, bot subscription fallback, and the public recurring checkout page.
+Unit coverage exists for parsing/canonicalization, ID conversion, reserved and
+unsafe-host rejection, Web/static-invite suppression, admin import/chat-match
+validation, connector capability, payment fallback/status pages, bot
+subscription fallback, public recurring checkout and cancel-page projection.
 
 Main regression command:
 
