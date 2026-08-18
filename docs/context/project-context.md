@@ -47,7 +47,7 @@ The repository is organized around stable runtime zones:
 
 ## Source Of Truth
 
-- PostgreSQL is the production source of truth.
+- PostgreSQL 18 on `airnet-server` is the production source of truth.
 - Provider callbacks are the source of truth for payment success.
 - Robokassa recurring result callbacks are the source of truth for rebill
   success.
@@ -58,6 +58,28 @@ The repository is organized around stable runtime zones:
 
 Changing an already-applied historical migration does not upgrade an existing
 database. Existing databases need a new migration version.
+
+## Production Operations
+
+- Canonical public origin: `https://investcontrol.org`.
+- Canonical SSH alias: `airnet-server`; the application and PostgreSQL listen
+  only on loopback behind Nginx.
+- The `invest-control-bot` backend is active/enabled on `airnet-server`; it is
+  the only application writer and callback handler. The old backend remains
+  inactive/disabled.
+- The application layout is `/home/ubuntu/apps/invest-control-bot`; systemd and
+  every file/directory in that tree use Linux user/group `ubuntu:ubuntu`.
+  The former Linux account `investcontrol` was removed; `investcontrol_app`
+  remains only a PostgreSQL role.
+- The previous `investcontrol-server` backend is inactive/disabled and its
+  PostgreSQL 14 database is a rollback snapshot, not a writer.
+- The previous `инвестконтроль.рф` hostname temporarily remains on the old
+  Nginx as a compatibility proxy for provider callbacks and legacy clients.
+- MAX uses the new direct webhook URL. Telegram still uses the Cloudflare
+  Worker public webhook, and Robokassa callbacks may continue using the old
+  hostname until their provider settings are changed.
+- Never start both old and new backends: recurring/lifecycle work runs inside
+  the process and both databases would diverge.
 
 ## Payment And Subscription Invariants
 
@@ -111,6 +133,19 @@ not become a parallel copy of Telegram business logic.
 Transport-specific behavior is allowed only where the transport actually
 requires it, such as Telegram invite links, chat member removal, MAX deeplink
 fallbacks, or provider/client quirks.
+
+## Telegram Access-Link Boundary
+
+- A Bot API `chat_id` is transport identity, not a user-facing URL.
+- Public Telegram destinations use canonical `https://t.me/<username>` links.
+- Private paid destinations use fresh bot-created `https://t.me/+...` invites.
+- `web.telegram.org/{a,k,z}/#-100...` is only an import hint for a chat ID and
+  must never appear in subscriber buttons or public payment/recurring pages.
+- `t.me/c/<channel>/<message_id>` is a message link; the project must not
+  synthesize bare `t.me/c/<channel>` links from numeric IDs.
+- A private chat can be a valid connector destination without a public URL when
+  a Bot API chat reference is available. Invite creation and later removal
+  still depend on the bot's administrator rights.
 
 ## Connector Period Model
 

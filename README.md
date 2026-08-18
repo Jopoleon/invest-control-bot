@@ -19,6 +19,10 @@ Go backend для платного доступа к Telegram/MAX чатам с:
   - admin panel
   - public pages `/subscribe/{start_payload}` и `/unsubscribe/{token}`
 - Текущий production приоритет: не ломать Telegram и удерживать recurring-логику стабильной.
+- Production: `https://investcontrol.org`, VPS SSH alias `airnet-server`,
+  PostgreSQL 18 на том же host и только через loopback.
+- Backend `active/enabled` на `airnet-server` и работает как Linux user/group
+  `ubuntu:ubuntu`; старый backend остаётся `inactive/disabled`.
 
 ## Основные Пакеты
 - `cmd/server` - основной backend entrypoint
@@ -157,7 +161,8 @@ wrangler secret put TELEGRAM_WEBHOOK_ORIGIN_URL
 ```
 - в `TELEGRAM_BOT_TOKEN` кладётся тот же токен, что и в приложении
 - в `TELEGRAM_WEBHOOK_SECRET` кладётся тот же secret, что и в приложении
-- в `TELEGRAM_WEBHOOK_ORIGIN_URL` кладётся прямой origin приложения, например `https://xn--b1aghkfidhbthmd7l.xn--p1ai/telegram/webhook`
+- в `TELEGRAM_WEBHOOK_ORIGIN_URL` кладётся прямой origin приложения, сейчас
+  `https://investcontrol.org/telegram/webhook`
 - secrets нужны, чтобы relay обслуживал только нашего бота и принимал только webhook-запросы с правильным Telegram secret
 
 Важно:
@@ -166,6 +171,21 @@ wrangler secret put TELEGRAM_WEBHOOK_ORIGIN_URL
 - без токена
 - `TELEGRAM_WEBHOOK_PUBLIC_URL` может указывать на Worker route `/telegram/webhook`
 - `TELEGRAM_WEBHOOK_ORIGIN_URL` в Worker должен указывать на настоящий webhook приложения, а не обратно на Worker
+
+## Telegram-Ссылки Для Платного Доступа
+
+- Для публичного чата указывайте `https://t.me/<username>` или `@username`.
+- Для приватного чата добавьте бота администратором с правами приглашать и
+  удалять пользователей, затем выберите обнаруженный чат в коннекторе.
+- `web.telegram.org/a/#-100...` не является deep link. Админка может использовать
+  такую ссылку только как подсказку для импорта уже обнаруженного `chat_id`; она
+  никогда не отправляется подписчику.
+- После оплаты и из «Моя подписка» приватный доступ выдаётся свежей
+  `https://t.me/+...` invite-ссылкой.
+- Не используйте `t.me/c/<id>` без message ID: это не ссылка на корень чата.
+
+Подробности и дальнейший `chat_shared` UX:
+`docs/backlog/telegram-chat-id-problem.md`.
 
 ## Deploy И Ops
 
@@ -185,19 +205,26 @@ REMOTE_SERVICE_NAME=invest-control-bot bash scripts/deploy_vps.sh
 Установка `systemd`-сервиса на сервере:
 ```bash
 sudo cp /path/to/repo/deploy/systemd/invest-control-bot.service /etc/systemd/system/invest-control-bot.service
-sudo mkdir -p /home/investcontrol/apps/invest-control-bot/releases
-sudo mkdir -p /home/investcontrol/apps/invest-control-bot/shared
-sudo chown -R investcontrol:investcontrol /home/investcontrol/apps/invest-control-bot
-sudo -u investcontrol editor /home/investcontrol/apps/invest-control-bot/shared/invest-control-bot.env
+sudo install -d -o ubuntu -g ubuntu -m 0750 /home/ubuntu/apps/invest-control-bot/current
+sudo install -d -o ubuntu -g ubuntu -m 0750 /home/ubuntu/apps/invest-control-bot/.deploy
+sudo install -d -o ubuntu -g ubuntu -m 0750 /home/ubuntu/apps/invest-control-bot/shared/logs
+sudo -u ubuntu touch /home/ubuntu/apps/invest-control-bot/shared/invest-control-bot.env
+sudo chmod 0600 /home/ubuntu/apps/invest-control-bot/shared/invest-control-bot.env
+sudo -u ubuntu editor /home/ubuntu/apps/invest-control-bot/shared/invest-control-bot.env
 sudo systemctl daemon-reload
 sudo systemctl enable invest-control-bot
 sudo systemctl start invest-control-bot
 ```
 
+Production Nginx source lives under `deploy/nginx/`. The checked-in `/mcp`
+guard intentionally returns 503 until its separate migration target is chosen.
+
 Systemd:
 - unit template: `deploy/systemd/invest-control-bot.service`
 - production env file:
-  `/home/investcontrol/apps/invest-control-bot/shared/invest-control-bot.env`
+  `/home/ubuntu/apps/invest-control-bot/shared/invest-control-bot.env`
+- весь application tree и runtime принадлежат `ubuntu:ubuntu`; отдельный Linux
+  service user для backend не используется
 
 Основные команды:
 ```bash

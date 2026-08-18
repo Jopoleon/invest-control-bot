@@ -35,11 +35,36 @@ The current engineering focus is stabilization, not broad scope expansion:
 - Robokassa rebill request/response metadata and stale pending rebills have
   explicit observability in logs/audit.
 - Admin screens are mostly messenger-neutral in presentation.
+- Telegram access now separates private Bot API chat identity from public
+  navigation: official links are canonicalized to `t.me`, Telegram Web URLs
+  are import-only, and private numeric chat IDs no longer become invalid bare
+  `t.me/c/<id>` links.
 
 ## Active Work
 
 - Real-money short-period recurring validation remains the top operational
   priority.
+- Production migration to `airnet-server`, PostgreSQL 18 and
+  `https://investcontrol.org` completed on 2026-08-12. After a requested pause,
+  the owner explicitly resumed the new backend: it is active/enabled and is the
+  only writer/callback handler; the old service is inactive/disabled.
+- The new service layout was consolidated under
+  `/home/ubuntu/apps/invest-control-bot`; systemd runs as `ubuntu:ubuntu` and
+  every application-tree file/directory has that owner/group. Future deploys
+  default to the same layout and must not introduce another Linux service user.
+  The obsolete `investcontrol` Linux account/home was removed after confirming
+  that it had no processes or service data.
+- The final PostgreSQL custom dump checksum and source/target manifests matched.
+  Production retained `Europe/Moscow`, all 9 migrations, 18 users, 144 payments
+  and 115 subscriptions at the cutover boundary.
+- The previous production hostname remains a temporary HTTPS compatibility
+  proxy to the new origin. Its exact `/mcp` route stays on the unrelated old
+  stack; the new hostname intentionally returns 404 for `/mcp`.
+- MAX has only the new-domain webhook subscription. Telegram remains healthy
+  through its Worker (`pending=0`, no last error); a synthetic empty update
+  passed Worker→legacy proxy→new backend with HTTP 200. The Worker secret could
+  not be updated because local Wrangler authentication is unavailable, so the
+  old hostname proxy currently preserves its origin route.
 - Messenger-neutral refactor is ongoing, especially around delivery, identity
   resolution, and transport-specific access actions.
 - Admin UI is being refined for operational clarity around connectors,
@@ -48,6 +73,10 @@ The current engineering focus is stabilization, not broad scope expansion:
   `internal/app/payments`, `internal/app/recurring`, and
   `internal/app/subscriptions`.
 - Documentation is being reorganized to keep AI/Codex session context durable.
+- The Telegram deep-link hardening is implemented and covered by unit,
+  race-detector and full-repository tests, but is not deployed yet. Existing
+  production connectors with Telegram Web URLs still need a controlled
+  post-deploy binding/backfill pass.
 
 ## Sensitive Areas
 
@@ -62,8 +91,31 @@ The current engineering focus is stabilization, not broad scope expansion:
 
 ## Next Concrete Tasks
 
+- Monitor the resumed new service, Nginx, payment callbacks and recurring/audit
+  state for 24–72 hours before removing rollback assets. Do not start the
+  legacy writer.
+- Re-authenticate Wrangler and set
+  `TELEGRAM_WEBHOOK_ORIGIN_URL=https://investcontrol.org/telegram/webhook`, then
+  verify a real Telegram update reaches the new origin directly.
+- Change and verify Robokassa ResultURL/SuccessURL/FailURL to the new hostname;
+  until then the legacy-host compatibility proxy remains mandatory.
+- Establish a durable encrypted off-host PostgreSQL backup. The final 0600 dump
+  is temporarily retained outside the repo, target has a protected archive,
+  and the old frozen DB remains available, but this is not the final backup
+  policy.
+- Recheck public DNS after Airnet's four-hour TTL expires; Quad9 still returned
+  the provider's former IP during the immediate post-cutover check.
+- After provider URL changes and the observation window, decide the retirement
+  date for the old Nginx/PostgreSQL host. `/mcp` can remain independently or be
+  retired with its own project.
 - Deploy current recurring/access fixes and repeat short-period live-money smoke
   tests.
+- Deploy the Telegram link hardening, bind every private paid chat through the
+  discovered-chat dropdown, and verify new payment plus "Моя подписка" paths
+  issue fresh `t.me/+...` links. Do not bulk-rewrite unverified chat IDs.
+- Design the later `KeyboardButtonRequestChat` / `chat_shared` connector flow;
+  keep the current `my_chat_member` catalog and dropdown as the safe manual
+  path.
 - Cross-check recurring incidents with journald, audit events, payment rows, and
   subscription rows before drawing timing conclusions.
 - Update recurring docs after the next production confirmation if callback
@@ -76,6 +128,9 @@ The current engineering focus is stabilization, not broad scope expansion:
   unchanged.
 
 ## Open Questions
+
+- When can the old hostname compatibility proxy and frozen PostgreSQL 14
+  rollback source be retired?
 
 - Which mixed-mode compatibility paths can be removed after the next identity
   cleanup milestone?

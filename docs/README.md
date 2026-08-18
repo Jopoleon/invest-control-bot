@@ -38,6 +38,8 @@
 - [ops/migrations.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/ops/migrations.md) - как устроены миграции.
 - [ops/vercel.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/ops/vercel.md) - заметки по Vercel runtime.
 - [ops/prod-postgres-mcp.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/ops/prod-postgres-mcp.md) - Codex MCP доступ к prod PostgreSQL через SSH tunnel.
+- [ops/airnet-server-migration.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/ops/airnet-server-migration.md) - исследование и runbook переезда production на новый VPS.
+- [ops/domain-dns-cutover.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/ops/domain-dns-cutover.md) - DNS, новый домен и связанные webhook/TLS настройки для `airnet-server`.
 
 ## Architecture
 
@@ -58,6 +60,7 @@
 ## Backlog
 
 - [backlog/todo.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/backlog/todo.md) - актуальный рабочий TODO.
+- [backlog/telegram-chat-id-problem.md](/home/egor/Work/src/github.com/Jopoleon/invest-control-bot/docs/backlog/telegram-chat-id-problem.md) - Telegram chat-id, native `t.me` access links, implemented safety boundary and remaining `chat_shared` UX.
 
 ## Zone Overviews
 

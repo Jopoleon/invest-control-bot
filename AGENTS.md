@@ -262,6 +262,9 @@ Current deploy script behavior:
 - default behavior overwrites the live binary in `current/`
 - release-style deploy is opt-in through `DEPLOY_LAYOUT=releases`
 - service status/log printing is opt-in through flags
+- production backend and every file/directory in its application tree must use
+  Linux owner/group `ubuntu:ubuntu`; do not introduce another OS runtime/deploy
+  user for this service
 
 Current payment-mode behavior:
 - bot payment-link text reflects the real provider mode now
@@ -272,27 +275,30 @@ Current payment-mode behavior:
 When debugging prod behavior, prefer a reproducible SSH + `journalctl` + `psql` flow instead of guessing from local state.
 
 SSH entrypoint:
-- use the SSH alias `investcontrol-server`
+- use the SSH alias `airnet-server`
+- `investcontrol-server` is the disabled legacy/rollback host and must not be
+  started as a second writer during normal operations
 - standard shell check:
 ```bash
-ssh investcontrol-server
+ssh airnet-server
 ```
 
 Find the live systemd unit wiring first:
 ```bash
-ssh investcontrol-server 'systemctl cat invest-control-bot'
-ssh investcontrol-server 'systemctl show invest-control-bot --property=WorkingDirectory,EnvironmentFile,ExecStart'
+ssh airnet-server 'systemctl cat invest-control-bot'
+ssh airnet-server 'systemctl show invest-control-bot --property=WorkingDirectory,EnvironmentFile,ExecStart'
 ```
 
 Current production layout usually resolves to:
-- working directory: `/home/investcontrol/apps/invest-control-bot/current`
-- env file: `/home/investcontrol/apps/invest-control-bot/shared/invest-control-bot.env`
-- binary: `/home/investcontrol/apps/invest-control-bot/current/invest-control-bot`
+- working directory: `/home/ubuntu/apps/invest-control-bot/current`
+- env file: `/home/ubuntu/apps/invest-control-bot/shared/invest-control-bot.env`
+- binary: `/home/ubuntu/apps/invest-control-bot/current/invest-control-bot`
+- systemd runtime user/group: `ubuntu:ubuntu`
 
 Read service logs through journald:
 ```bash
-ssh investcontrol-server 'journalctl -u invest-control-bot --since "30 min ago" --no-pager'
-ssh investcontrol-server 'journalctl -u invest-control-bot -f --no-pager'
+ssh airnet-server 'journalctl -u invest-control-bot --since "30 min ago" --no-pager'
+ssh airnet-server 'journalctl -u invest-control-bot -f --no-pager'
 ```
 
 For recurring incidents, the most useful patterns are:
@@ -305,9 +311,9 @@ For recurring incidents, the most useful patterns are:
 
 Read production Postgres directly on the server by sourcing the same env file the service uses:
 ```bash
-cat <<'REMOTE' | ssh investcontrol-server bash -s
+cat <<'REMOTE' | ssh airnet-server bash -s
 set -a
-source /home/investcontrol/apps/invest-control-bot/shared/invest-control-bot.env
+source /home/ubuntu/apps/invest-control-bot/shared/invest-control-bot.env
 set +a
 export PGPASSWORD="$DB_PASSWORD"
 psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USERNAME" -d "$DB_DATABASE" \
@@ -324,7 +330,7 @@ Local prod MCP access is tunnel-based:
 
 Typical local tunnel pattern:
 ```bash
-ssh -N -L 6543:<prod-db-host>:<prod-db-port> investcontrol-server
+ssh -N -L 6543:<prod-db-host>:<prod-db-port> airnet-server
 ```
 
 Important practical rule:

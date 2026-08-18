@@ -1,6 +1,6 @@
 # REFACTORING AND TEST PLAN
 
-Последнее обновление: 2026-03-27
+Последнее обновление: 2026-08-19
 
 ## Назначение
 
@@ -25,6 +25,19 @@
 5. Не строить общий framework ради абстракции без явного payoff.
 
 ## Приоритеты
+
+### Completed 2026-08-19: Telegram Access Links
+
+- Добавлен isolated parser/normalizer официальных Telegram destination links.
+- Unit-тесты фиксируют canonical `t.me` public/invite формы, legacy aliases,
+  malformed/lookalike rejection и import-only `web.telegram.org` routes.
+- Integration-level unit tests покрывают domain capability, admin connector
+  import, payment success fallback, bot subscription fallback и public
+  recurring checkout.
+- Рабочий public `t.me` fallback и существующий fresh invite flow закреплены
+  отдельными regression assertions.
+- Focused `-race` и полный `go test ./...` прошли; production rollout остаётся
+  отдельным операционным шагом.
 
 ### High
 

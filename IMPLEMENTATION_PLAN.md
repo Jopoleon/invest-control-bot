@@ -1,7 +1,7 @@
 # План реализации сервиса (рабочий документ)
 
-Статус: v1.17 (documentation audit and recurring/current-state cleanup)
-Дата обновления: 2026-04-28
+Статус: v1.19 (Telegram access-link hardening implemented, deploy pending)
+Дата обновления: 2026-08-19
 Основание: `tz.md`, `telegram-bot-flow.md`
 
 ## 1) Цель
@@ -13,6 +13,37 @@
 - `docs/architecture/app-refactor.md` - текущий цикл рефакторинга `internal/app`
 - `docs/architecture/refactoring-and-tests.md` - backlog по unit-тестам, дедупликации и безопасным refactoring-задачам
 - `docs/architecture/connector-period-model.md` - текущая model периодов коннектора (`duration`, `calendar_months`, `fixed_deadline`)
+
+### Обновление 2026-08-12
+
+- Production перенесён на `airnet-server` и `https://investcontrol.org`.
+- PostgreSQL 14 source восстановлен logical custom dump-ом в PostgreSQL 18;
+  source/target manifests совпали, новая БД использует `Europe/Moscow`.
+- После короткой явной паузы новый backend снова `active/enabled` и является
+  единственным writer/callback handler; старый backend остаётся
+  `inactive/disabled`.
+- Application tree перенесён в `/home/ubuntu/apps/invest-control-bot`; unit и
+  все файлы/каталоги сервиса используют Linux owner/group `ubuntu:ubuntu`.
+- Старый production hostname временно проксирует application paths на новый
+  HTTPS origin, сохраняя текущие Telegram Worker и Robokassa callbacks.
+- MAX webhook переключён на `https://investcontrol.org/max/webhook`.
+- Детали проверки, rollback и оставшиеся provider follow-ups находятся в
+  `docs/ops/airnet-server-migration.md`.
+
+### Обновление 2026-08-19
+
+- Telegram access identity отделена от user-facing URL: private `chat_id`
+  используется для Bot API invite/revoke, а не для синтеза ссылки.
+- Добавлен единый parser/normalizer официальных `t.me`, legacy `telegram.me` и
+  поддерживаемых `tg://` форм.
+- `web.telegram.org/{a,k,z}/#-100...` теперь import-only: ID извлекается, но URL
+  не попадает в payment/bot/public-page fallback.
+- Создание коннектора по Telegram Web URL требует уже обнаруженный чат и права
+  бота на invite; invalid/lookalike Telegram URL отклоняется.
+- Unit coverage добавлен для parser, domain/admin, payment, bot и recurring
+  page; focused race tests и полный `go test ./...` проходят.
+- Изменение пока не задеплоено; legacy-коннекторы нужно привязать через каталог
+  чатов после controlled rollout.
 
 ### Обновление 2026-03-27
 - Историческая цепочка additive SQL-миграций схлопнута в новый clean bootstrap.
