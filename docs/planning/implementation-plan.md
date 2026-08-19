@@ -114,6 +114,9 @@ Checks:
 - Next UX step: replace manual chat-ID discovery with a signed
   `KeyboardButtonRequestChat` / `chat_shared` binding flow while preserving the
   current `my_chat_member` catalog and dropdown.
+- Production rollout completed on 2026-08-19 as revision `5a0de97`; the
+  remaining operational step is validated catalog binding/backfill for legacy
+  private connectors.
 
 ## MAX Boundaries
 

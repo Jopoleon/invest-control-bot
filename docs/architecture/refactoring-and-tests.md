@@ -36,8 +36,8 @@
   fallback, public recurring checkout и cancel-page projection.
 - Рабочий public `t.me` fallback и существующий fresh invite flow закреплены
   отдельными regression assertions.
-- Focused `-race` и полный `go test ./...` прошли; production rollout остаётся
-  отдельным операционным шагом.
+- Focused `-race` и полный `go test ./...` прошли; revision `5a0de97`
+  задеплоена на production 2026-08-19, operational chat backfill ещё не выполнен.
 
 ### High
 

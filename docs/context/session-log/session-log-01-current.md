@@ -684,3 +684,52 @@ Do not start the legacy `investcontrol-server` backend at the same time.
   `t.me/+...` link.
 - Backfill only validated chats; a legacy connector whose bot cannot see the
   target chat must be fixed by adding/re-authorizing the bot first.
+
+## 2026-08-19 - Telegram Access-Link Production Deploy
+
+### Deployment
+
+- Re-ran the tracked-code gate before rollout: focused unit tests, affected
+  package race tests, full `GOCACHE=/tmp/go-build GOTMPDIR=/tmp go test ./...`,
+  `go vet ./...` and `git diff --check` passed.
+- Confirmed a quiet cutover point: no recent payment routes, established backend
+  connections, active DB sessions or transactions older than 30 seconds.
+- Confirmed the legacy host remained `inactive/disabled`, so production still
+  had exactly one writer/callback handler.
+- Saved the previous `2ed7bd2` binary and revision under
+  `/home/ubuntu/apps/invest-control-bot/.deploy/rollback-2ed7bd2` with
+  `ubuntu:ubuntu` ownership before replacement.
+- Deployed clean tracked revision `5a0de97` through the simple-layout
+  `scripts/deploy_vps.sh` path and restarted `invest-control-bot` once.
+
+### Verification
+
+- Local and remote binary SHA-256 matched:
+  `04533602d1a427c5b32a58d8ac7bc3acc379a4e794a3930dd13d3e26c018678d`.
+- Service is `active/running/enabled`, PID `381418`, `NRestarts=0`; app files
+  and env remain owned by `ubuntu:ubuntu` and env mode remains `0600`.
+- Startup applied zero migrations, passed Telegram and MAX API checks, and
+  emitted no post-deploy WARN/ERROR/panic/fatal lines.
+- Local/public `/healthz` returned `ok`; canonical root and legacy compatibility
+  health returned HTTP 200. Telegram webhook reports `pending=0` and no last
+  error.
+- DB remained reachable with 9 migrations; no active foreign DB sessions were
+  present at verification time.
+- Six active connectors still store legacy Telegram Web URLs. Each public
+  checkout returned HTTP 200 and none exposed `web.telegram.org`, proving the
+  read-time safety boundary against real production rows.
+
+### Follow-ups
+
+- Bind/backfill each private connector through the verified Telegram chat
+  catalog, then perform one controlled payment and one "Моя подписка" recovery
+  check for a fresh per-user `t.me/+...` invite.
+- The Go binary reports `vcs.modified=true` because untracked local artifacts,
+  including SSH-key files, remain in the repository directory. They were not
+  included in the binary, but release provenance should be cleaned before the
+  next build and the key material must never be committed.
+- One pre-existing MAX add-member failure for payment 162 used the configured
+  channel-URL fallback successfully. This predates and is independent from the
+  Telegram deployment, but merits a separate MAX access-flow check.
+- Go tests were not repeated after this final documentation-only update; all
+  production-code tests passed immediately before the deployed build.

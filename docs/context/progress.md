@@ -73,12 +73,14 @@ The current engineering focus is stabilization, not broad scope expansion:
   `internal/app/payments`, `internal/app/recurring`, and
   `internal/app/subscriptions`.
 - Documentation is being reorganized to keep AI/Codex session context durable.
-- The Telegram deep-link hardening is implemented and covered by unit,
-  race-detector and full-repository tests, but is not deployed yet. Existing
-  production connectors with Telegram Web URLs still need a controlled
-  post-deploy binding/backfill pass. Public payment/recurring pages expose only
-  public Telegram usernames; static/private invites remain bot-delivered after
-  confirmed access, and admin chat binding rejects destination mismatches.
+- The Telegram deep-link hardening was deployed to `airnet-server` as revision
+  `5a0de97` on 2026-08-19. Post-deploy health, Telegram/MAX startup checks,
+  database access and all six active legacy-Web connector checkout pages passed;
+  the service has zero restarts and no new WARN/ERROR. Existing production
+  connectors still need a controlled catalog binding/backfill pass. Public
+  payment/recurring pages expose only public Telegram usernames; static/private
+  invites remain bot-delivered after confirmed access, and admin chat binding
+  rejects destination mismatches.
 
 ## Sensitive Areas
 

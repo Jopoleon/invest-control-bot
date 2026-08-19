@@ -44,8 +44,8 @@
   private invite; chat binding отклоняет несовпадение URL канала и каталога.
 - Unit coverage добавлен для parser, domain/admin, payment, bot и recurring
   page; focused race tests и полный `go test ./...` проходят.
-- Изменение пока не задеплоено; legacy-коннекторы нужно привязать через каталог
-  чатов после controlled rollout.
+- Revision `5a0de97` задеплоена на `airnet-server` 2026-08-19; post-deploy
+  проверки прошли. Legacy-коннекторы ещё нужно привязать через каталог чатов.
 
 ### Обновление 2026-03-27
 - Историческая цепочка additive SQL-миграций схлопнута в новый clean bootstrap.

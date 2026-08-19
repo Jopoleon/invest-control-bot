@@ -38,6 +38,10 @@ This needs no database migration. Existing rows remain readable: a stored Web
 URL can contribute its `chat_id` at runtime, but it is suppressed as a public
 URL. Existing rows should still be normalized operationally after deployment.
 
+Rollout status: revision `5a0de97` was deployed to `airnet-server` on
+2026-08-19. All six active legacy-Web connector checkout pages returned 200
+without exposing `web.telegram.org`; catalog binding/backfill remains pending.
+
 ## Existing Operational Flow
 
 Telegram does not provide a method to list every chat where a bot is an admin,
