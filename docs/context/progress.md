@@ -95,6 +95,16 @@ The current engineering focus is stabilization, not broad scope expansion:
 
 ## Next Concrete Tasks
 
+- Telegram inbound outage 2026-09-22..2026-09-25 (legacy host offline, Worker
+  origin pointed at it) was fixed on 2026-09-25 by setting the Worker secret
+  `TELEGRAM_WEBHOOK_ORIGIN_URL=https://investcontrol.org/telegram/webhook`.
+  The legacy hostname proxy is no longer needed by Telegram, MAX or Robokassa;
+  the old host is offline and can be formally retired.
+- Long-period pending rebills without callback are now reported (WARN +
+  `rebill_pending_stale`) after one hour, but they are still never retried and
+  the user gets no "autopay failed" notice. Decide retry/failure semantics for
+  rebills without callback; the change is not deployed yet.
+
 - Monitor the resumed new service, Nginx, payment callbacks and recurring/audit
   state for 24–72 hours before removing rollback assets. Do not start the
   legacy writer.

@@ -80,7 +80,10 @@ Recurring у Robokassa не считается доступным "по умол
 - recurring-архитектура и UX уже собраны, магазин активирован со стороны Robokassa
 - short-period recurring timing вынесен в `internal/app/periodpolicy`
 - Robokassa rebill request/response логируются с provider metadata
-- stale pending rebills видны в логах и audit events
+- stale pending rebills видны в логах и audit events: для short-period
+  коннекторов после окончания подписки плюс callback grace, для обычных
+  коннекторов через час ожидания callback (`rebill_pending_stale`), пока
+  подписка ещё активна
 - operator UX показывает consent history, retry state и проблемные rebill
 
 ## Чего еще не хватает до полноценной боевой готовности
@@ -105,6 +108,10 @@ Recurring у Robokassa не считается доступным "по умол
 
 - продолжать live-money диагностику short-period recurring до нескольких стабильных повторов подряд
 - сверять Robokassa cabinet / provider-side state при `OK+InvoiceID`, если callback по child rebill не приходит
+- решить судьбу pending rebill без callback у обычных коннекторов: сейчас он
+  блокирует повторные попытки (уникальный pending на подписку) до истечения
+  подписки; на проде 2026-09-15..2026-09-23 так молча истекли 8 подписок с
+  включённым автоплатежом, ещё 4 (user 43) истекают 2026-09-26
 - пересмотреть short-period windows в `internal/app/periodpolicy` после фактических замеров provider latency
 - решить, нужен ли отдельный admin/debug flow для provider-side lookup, если recurring callback visibility снова станет проблемой
 

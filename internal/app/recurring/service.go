@@ -311,19 +311,46 @@ func (s *Service) EvaluateScheduledRebill(ctx context.Context, sub domain.Subscr
 	return decision, nil
 }
 
+// longPeriodPendingRebillStaleAfter is how long a pending rebill of an ordinary
+// (non short-period) connector may wait for the Robokassa result callback
+// before it is reported as stale.
+//
+// Robokassa answers the recurring request with OK+InvoiceID even when the
+// actual charge is later declined, and it sends no failure callback in that
+// case. Successful production rebills receive the result callback within
+// seconds, so an hour without callback is a reliable "declined or lost" signal.
+//
+// TODO: Decide whether such pending rebills should be marked failed after this
+// timeout so the scheduler can retry inside the 48h/24h windows. Today the
+// pending row blocks every further attempt until the subscription expires.
+const longPeriodPendingRebillStaleAfter = time.Hour
+
+// ReportStalePendingRebill surfaces a pending rebill that never received the
+// provider result callback. It emits one warning log and one audit event per
+// pending payment; the audit event doubles as the dedup marker across runs.
+//
+// Short-period connectors keep their original rule: report only after the
+// subscription end plus the callback grace window, because their rebill fires
+// seconds before expiry. Long-period connectors are reported by pending age
+// instead, while the subscription is still active, so operators can react
+// before access is revoked.
 func (s *Service) ReportStalePendingRebill(ctx context.Context, sub domain.Subscription, decision ScheduledRebillDecision, now time.Time) {
-	if decision.PendingPayment == nil || !decision.ShortDuration {
+	if decision.PendingPayment == nil {
 		return
 	}
 	pending := *decision.PendingPayment
 	if pending.Status != domain.PaymentStatusPending {
 		return
 	}
-	timing := periodpolicy.Resolve(decision.Connector)
-	if !timing.ShouldDeferExpiration(now, sub.EndsAt) {
-		return
-	}
-	if now.Before(sub.EndsAt) {
+	if decision.ShortDuration {
+		timing := periodpolicy.Resolve(decision.Connector)
+		if !timing.ShouldDeferExpiration(now, sub.EndsAt) {
+			return
+		}
+		if now.Before(sub.EndsAt) {
+			return
+		}
+	} else if now.Sub(pending.CreatedAt) < longPeriodPendingRebillStaleAfter {
 		return
 	}
 	details := "subscription_id=" + strconv.FormatInt(sub.ID, 10) +
@@ -345,7 +372,8 @@ func (s *Service) ReportStalePendingRebill(ctx context.Context, sub domain.Subsc
 		"connector_id", sub.ConnectorID,
 		"user_id", sub.UserID,
 		"pending_age", now.Sub(pending.CreatedAt),
-		"ended_ago", now.Sub(sub.EndsAt),
+		"remaining", sub.EndsAt.Sub(now),
+		"short_duration", decision.ShortDuration,
 	)
 	s.saveAuditEvent(ctx, sub.UserID, "", sub.ConnectorID, domain.AuditActionRebillPendingStale, details, now)
 }

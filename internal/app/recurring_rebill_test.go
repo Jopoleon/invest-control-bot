@@ -917,3 +917,121 @@ func testRecurringConfig(rebillURL string) config.Config {
 	}
 	return cfg
 }
+
+// Long-period connectors never reach the short-period expiry grace branch, so
+// a pending rebill without provider callback must be reported by pending age
+// while the subscription is still active, and only once per pending payment.
+func TestProcessRecurringRebills_RecordsStalePendingLongPeriodByAge(t *testing.T) {
+	cases := []struct {
+		name       string
+		pendingAge time.Duration
+		wantEvents int
+	}{
+		{name: "fresh pending is not stale", pendingAge: 10 * time.Minute, wantEvents: 0},
+		{name: "pending older than threshold is reported once", pendingAge: 3 * time.Hour, wantEvents: 1},
+	}
+	for i, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			st := memory.New()
+			now := time.Now().UTC()
+			payload := "in-stale-long-rebill-" + strconv.Itoa(i)
+
+			if err := st.CreateConnector(ctx, domain.Connector{
+				StartPayload: payload,
+				Name:         "monthly stale",
+				PriceRUB:     3335,
+				PeriodMode:   domain.ConnectorPeriodModeCalendarMonths,
+				PeriodMonths: 1,
+				IsActive:     true,
+				CreatedAt:    now.Add(-40 * 24 * time.Hour),
+			}); err != nil {
+				t.Fatalf("CreateConnector: %v", err)
+			}
+			connector, found, err := st.GetConnectorByStartPayload(ctx, payload)
+			if err != nil || !found {
+				t.Fatalf("GetConnectorByStartPayload found=%v err=%v", found, err)
+			}
+			seedPayment(t, ctx, st, domain.Payment{
+				Provider:       "robokassa",
+				Status:         domain.PaymentStatusPaid,
+				Token:          "stale-long-parent-" + strconv.Itoa(i),
+				UserID:         seedTelegramUser(t, ctx, st, int64(991000+i)),
+				ConnectorID:    connector.ID,
+				AmountRUB:      3335,
+				AutoPayEnabled: true,
+				CreatedAt:      now.Add(-28 * 24 * time.Hour),
+				UpdatedAt:      now.Add(-28 * 24 * time.Hour),
+			})
+			parentPayment, found, err := st.GetPaymentByToken(ctx, "stale-long-parent-"+strconv.Itoa(i))
+			if err != nil || !found {
+				t.Fatalf("parent payment found=%v err=%v", found, err)
+			}
+			if err := st.UpsertSubscriptionByPayment(ctx, domain.Subscription{
+				UserID:         parentPayment.UserID,
+				ConnectorID:    connector.ID,
+				PaymentID:      parentPayment.ID,
+				Status:         domain.SubscriptionStatusActive,
+				AutoPayEnabled: true,
+				StartsAt:       now.Add(-28 * 24 * time.Hour),
+				EndsAt:         now.Add(2 * 24 * time.Hour),
+				CreatedAt:      now.Add(-28 * 24 * time.Hour),
+				UpdatedAt:      now.Add(-28 * 24 * time.Hour),
+			}); err != nil {
+				t.Fatalf("UpsertSubscriptionByPayment: %v", err)
+			}
+			sub, found, err := st.GetLatestSubscriptionByUserConnector(ctx, parentPayment.UserID, connector.ID)
+			if err != nil || !found {
+				t.Fatalf("GetLatestSubscriptionByUserConnector found=%v err=%v", found, err)
+			}
+			seedPayment(t, ctx, st, domain.Payment{
+				Provider:          "robokassa",
+				ProviderPaymentID: "rebill_parent:" + parentPayment.Token,
+				Status:            domain.PaymentStatusPending,
+				Token:             "stale-long-child-" + strconv.Itoa(i),
+				UserID:            parentPayment.UserID,
+				ConnectorID:       connector.ID,
+				SubscriptionID:    sub.ID,
+				ParentPaymentID:   parentPayment.ID,
+				AmountRUB:         3335,
+				AutoPayEnabled:    true,
+				CreatedAt:         now.Add(-tc.pendingAge),
+				UpdatedAt:         now.Add(-tc.pendingAge),
+			})
+
+			appCtx := testApplicationForRecurring(t, st)
+			processRecurringRebills(ctx, appCtx)
+			processRecurringRebills(ctx, appCtx)
+
+			events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{
+				TargetUserID: parentPayment.UserID,
+				ConnectorID:  connector.ID,
+				Action:       domain.AuditActionRebillPendingStale,
+				Page:         1,
+				PageSize:     10,
+			})
+			if err != nil {
+				t.Fatalf("ListAuditEvents: %v", err)
+			}
+			if len(events) != tc.wantEvents {
+				t.Fatalf("rebill_pending_stale events=%d want=%d", len(events), tc.wantEvents)
+			}
+
+			// The stale report is observability only: the pending row must stay
+			// pending and no second rebill payment may appear.
+			payments, err := st.ListPayments(ctx, domain.PaymentListQuery{UserID: parentPayment.UserID, Limit: 20})
+			if err != nil {
+				t.Fatalf("ListPayments: %v", err)
+			}
+			var rebills []domain.Payment
+			for _, paymentRow := range payments {
+				if paymentRow.SubscriptionID == sub.ID {
+					rebills = append(rebills, paymentRow)
+				}
+			}
+			if len(rebills) != 1 || rebills[0].Status != domain.PaymentStatusPending {
+				t.Fatalf("unexpected rebill payments after stale report: %+v", rebills)
+			}
+		})
+	}
+}

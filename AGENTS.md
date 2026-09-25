@@ -109,7 +109,9 @@ What exists now:
 - short-duration rebill timing is centralized in `internal/app/periodpolicy`
 - scheduler logs a decision line for each short-period subscription it evaluates
 - Robokassa rebill calls log request and response metadata
-- stale pending rebills are surfaced through warning logs and audit events
+- stale pending rebills are surfaced through warning logs and audit events;
+  short-period connectors are reported after expiry plus callback grace,
+  long-period connectors after one hour without provider callback
 - short-duration expiry/reminder behavior is intentionally different from long-lived production periods
 
 This area is still considered sensitive and must be treated carefully.

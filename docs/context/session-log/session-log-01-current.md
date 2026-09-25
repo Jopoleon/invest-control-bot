@@ -733,3 +733,102 @@ Do not start the legacy `investcontrol-server` backend at the same time.
   Telegram deployment, but merits a separate MAX access-flow check.
 - Go tests were not repeated after this final documentation-only update; all
   production-code tests passed immediately before the deployed build.
+
+## 2026-09-25 - Production Incident: Telegram Inbound Down Since 2026-09-22
+
+### Goal
+
+- Check production availability, scan logs for payment errors, and investigate
+  a user report (user 42, Telegram, connector 99) about "payment problems".
+
+### Findings
+
+- `airnet-server`, the `invest-control-bot` service, Nginx, `/healthz` and
+  PostgreSQL are healthy (`NRestarts=0`, no WARN/ERROR in the last hours).
+- Robokassa callbacks already arrive directly at `https://investcontrol.org`
+  (Nginx `investcontrol-org.access.log` shows `/payment/result` from Robokassa
+  and browser `/payment/fail` with `auth.robokassa.ru` referrer). The payment
+  callback path is not broken.
+- The legacy host `192.144.13.87` (`xn--b1aghkfidhbthmd7l.xn--p1ai`) is fully
+  down: no ICMP, TCP 443 closed, SSH timeout. Its DNS A record still points
+  there.
+- The Cloudflare Worker `telegram-bot-relay` still has
+  `TELEGRAM_WEBHOOK_ORIGIN_URL` on the legacy hostname, so every Telegram
+  update gets `502 Bad Gateway` from the Worker. `getWebhookInfo` reports
+  `pending_update_count=5`, last error 2026-09-25 20:32 UTC. The last Telegram
+  update that reached the backend was 2026-09-22 09:27:41 MSK; MAX webhook and
+  outbound Telegram sends keep working.
+- User 42 (subscription 160, `calendar_months`, autopay off, ends 2026-09-26
+  12:47 MSK) received the expiry notice at 12:47 MSK with a `t.me/...?start=`
+  renewal button. Any tap on it never reaches the bot because of the Worker
+  502, so the user cannot start renewal. No payment rows were created.
+- Airnet Nginx already serves the legacy hostname with a valid Let's Encrypt
+  certificate (`sites-enabled/invest-control`, cert valid until 2026-10-26),
+  so repointing the legacy DNS A record to `46.8.195.244` is an alternative
+  fix that needs no Wrangler access.
+- Local Wrangler OAuth token is expired and the session is non-interactive, so
+  the Worker secret could not be changed from this session.
+- Secondary finding (recurring): 12 rebills in the last 14 days got
+  `OK<InvoiceID>` from Robokassa but never received a result callback. They
+  stay `pending`, block any retry because of the unique pending-rebill index,
+  and produce no `stale pending rebill` log/audit because
+  `ReportStalePendingRebill` only covers `ShortDuration` connectors. Eight of
+  those subscriptions (120-123, 125, 135, 150, 151) already expired and were
+  revoked; four (161-164, user 43) expire on 2026-09-26 afternoon. This
+  predates the legacy-host outage (first cases 2026-09-15) and looks like
+  provider-side declines with no failure callback.
+- Access-delivery errors in 14 days: three MAX `add chat member` failures
+  (payments 290, 309, 310) that fell back to `max_channel_url`, and two revoke
+  manual-check cases (subscriptions 117 Telegram `chat not found`, 120 MAX
+  insufficient rights).
+
+### Actions
+
+- Read-only investigation only: no service restart, DB write, provider or
+  Worker change. Go tests skipped because no production code changed.
+
+### Follow-ups
+
+- Restore Telegram inbound: run `wrangler login` interactively and set
+  `TELEGRAM_WEBHOOK_ORIGIN_URL=https://investcontrol.org/telegram/webhook`,
+  or repoint the legacy hostname A record to `46.8.195.244`.
+- After restore, contact user 42 and re-send the renewal link if needed.
+- Extend stale pending rebill reporting to long-period connectors and decide
+  on retry/failure semantics for rebills without callback.
+
+### Resolution (same day, 23:40 MSK)
+
+- The owner ran `wrangler login` and set the Worker secret
+  `TELEGRAM_WEBHOOK_ORIGIN_URL=https://investcontrol.org/telegram/webhook`.
+- Telegram drained its queue within a minute: `pending_update_count` went
+  5 -> 0, five `/telegram/webhook` POSTs returned 200, no WARN/ERROR.
+- Four of the queued updates were user 42 tapping the renewal button; the bot
+  processed them (`start_opened` for connector 99) so the user now sees the
+  normal payment flow. The stale `502` text in `getWebhookInfo` is historical
+  and clears on the next error/success cycle.
+- The legacy hostname proxy is no longer on the Telegram path. Remaining
+  legacy-host dependency is none for Telegram, MAX or Robokassa.
+
+## 2026-09-25 - Stale Pending Rebill Visibility For Long-Period Connectors
+
+### Change
+
+- `ReportStalePendingRebill` in `internal/app/recurring/service.go` no longer
+  returns early for non short-period connectors. Ordinary connectors report a
+  pending rebill as stale once it is older than one hour
+  (`longPeriodPendingRebillStaleAfter`) while the subscription is still
+  active. Short-period behavior is unchanged. The warning log now carries
+  `remaining` and `short_duration` instead of `ended_ago`.
+- Observability only: the pending row stays pending, the scheduler still does
+  not retry, and no user notification is sent. A `TODO:` next to the constant
+  records the open retry/failure decision.
+- Added `TestProcessRecurringRebills_RecordsStalePendingLongPeriodByAge`
+  covering fresh vs stale pending, once-only reporting and no side effects.
+- Docs updated: `docs/payments/robokassa-recurring.md`, `AGENTS.md`,
+  `docs/context/progress.md`.
+
+### Verification
+
+- `GOCACHE=/tmp/go-build GOTMPDIR=/tmp go test ./...` passed.
+- `go vet ./internal/app/...` and `git diff --check` passed.
+- Not deployed to production yet; the change is uncommitted in the worktree.
