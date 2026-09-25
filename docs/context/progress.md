@@ -103,7 +103,7 @@ The current engineering focus is stabilization, not broad scope expansion:
 - Long-period pending rebills without callback are now reported (WARN +
   `rebill_pending_stale`) after one hour, but they are still never retried and
   the user gets no "autopay failed" notice. Decide retry/failure semantics for
-  rebills without callback; the change is not deployed yet.
+  rebills without callback. Deployed as `79fedd7` on 2026-09-25.
 
 - Monitor the resumed new service, Nginx, payment callbacks and recurring/audit
   state for 24–72 hours before removing rollback assets. Do not start the

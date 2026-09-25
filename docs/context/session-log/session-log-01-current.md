@@ -831,4 +831,15 @@ Do not start the legacy `investcontrol-server` backend at the same time.
 
 - `GOCACHE=/tmp/go-build GOTMPDIR=/tmp go test ./...` passed.
 - `go vet ./internal/app/...` and `git diff --check` passed.
-- Not deployed to production yet; the change is uncommitted in the worktree.
+- Committed as `79fedd7` and deployed to `airnet-server` the same night via
+  simple-layout `scripts/deploy_vps.sh` (one restart, 23:51 MSK). Previous
+  binary `5a0de97` kept at `.deploy/rollback-pre-stale-202609252350`.
+- Post-deploy: local/remote SHA-256 match
+  (`bd2c725ad22ca50124bbd15e59eee82488a28a7ee23943f3992f8ad6768ea8d7`),
+  service active with `NRestarts=0`, zero migrations applied, Telegram and MAX
+  startup checks passed, `/healthz` 200 locally and publicly, Telegram webhook
+  `pending=0`.
+- The first scheduler sweep emitted exactly four `stale pending rebill without
+  callback` warnings and four `rebill_pending_stale` audit events for user 43
+  (subscriptions 161-164), and later sweeps did not repeat them, confirming
+  the once-per-payment dedup on real production rows.
