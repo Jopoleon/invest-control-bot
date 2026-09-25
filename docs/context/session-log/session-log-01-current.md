@@ -843,3 +843,39 @@ Do not start the legacy `investcontrol-server` backend at the same time.
   callback` warnings and four `rebill_pending_stale` audit events for user 43
   (subscriptions 161-164), and later sweeps did not repeat them, confirming
   the once-per-payment dedup on real production rows.
+
+## 2026-09-26 - Telegram Webhook Direct To Origin, Worker Retired
+
+### Hypothesis And Test
+
+- The Cloudflare Worker existed because the previous RU-hosted VPS could not
+  exchange traffic with Telegram. `airnet-server` is in Tashkent (UZ), so the
+  relay should be unnecessary.
+- Outbound was already direct: `TELEGRAM_API_BASE_URL` was commented out and
+  `api.telegram.org` answers from the host in ~0.3s.
+- Inbound test: `setWebhook` to `https://investcontrol.org/telegram/webhook`
+  with the unchanged secret and allowed updates. Telegram resolved the host to
+  `46.8.195.244`, and the first real updates arrived from Telegram's own IP
+  `91.108.5.136` (previously Cloudflare `172.70.x`) with HTTP 200.
+
+### Actions
+
+- Enabled `TELEGRAM_WEBHOOK_PUBLIC_URL="https://investcontrol.org/telegram/webhook"`
+  in the production env (backup `invest-control-bot.env.bak-20260926-webhook`,
+  mode 0600 preserved) and restarted once at 00:05 MSK in a quiet window.
+  Startup logged `telegram webhook is up to date`, zero migrations, MAX
+  webhook ensured, `/healthz` 200, `NRestarts=0`.
+- Worker deactivation is recorded below.
+- Deactivated the Cloudflare Worker `telegram-bot-relay`: `workers_dev = false`
+  in `wrangler.toml`, `wrangler deploy` reported "No targets deployed"
+  (version `108a80fd`), and the Worker URL now returns HTTP 404 (Cloudflare
+  error 1042). Secrets and code remain for a possible future reactivation.
+- Go tests skipped: no Go code changed in this step (env, Worker config and
+  docs only).
+
+### Follow-ups
+
+- Retire the legacy hostname server block and certificate on Airnet Nginx and
+  the dead DNS A record.
+- Remove `telegram-bot-relay/.wrangler/cache/wrangler-account.json` from git
+  and ignore `.wrangler/`.

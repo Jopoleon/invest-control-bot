@@ -73,11 +73,17 @@ database. Existing databases need a new migration version.
   remains only a PostgreSQL role.
 - The previous `investcontrol-server` backend is inactive/disabled and its
   PostgreSQL 14 database is a rollback snapshot, not a writer.
-- The previous `инвестконтроль.рф` hostname temporarily remains on the old
-  Nginx as a compatibility proxy for provider callbacks and legacy clients.
-- MAX uses the new direct webhook URL. Telegram still uses the Cloudflare
-  Worker public webhook, and Robokassa callbacks may continue using the old
-  hostname until their provider settings are changed.
+- The old host `192.144.13.87` (`инвестконтроль.рф`) is offline since
+  2026-09-22 and nothing depends on it anymore. Airnet Nginx still holds a
+  server block and certificate for that hostname, but its DNS points at the
+  dead host.
+- MAX, Telegram and Robokassa all use `https://investcontrol.org` directly.
+  Since 2026-09-26 the Telegram webhook is
+  `https://investcontrol.org/telegram/webhook`, set by the app at startup from
+  `TELEGRAM_WEBHOOK_PUBLIC_URL`; Telegram reaches the Tashkent host without a
+  relay. The Cloudflare Worker `telegram-bot-relay` is deactivated
+  (`workers_dev = false`) and kept in the repo only as a fallback for a hosting
+  move back to a network where Telegram is blocked.
 - Never start both old and new backends: recurring/lifecycle work runs inside
   the process and both databases would diverge.
 

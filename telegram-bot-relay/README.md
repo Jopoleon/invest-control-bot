@@ -1,5 +1,13 @@
 # Telegram Bot Relay
 
+> Status 2026-09-26: DEACTIVATED. Production runs in Tashkent and talks to
+> Telegram directly in both directions (`TELEGRAM_WEBHOOK_PUBLIC_URL` points at
+> `https://investcontrol.org/telegram/webhook`, `TELEGRAM_API_BASE_URL` is
+> unset). The Worker is deployed with `workers_dev = false`, so its URL returns
+> 404. To reactivate for a host where Telegram is blocked: set
+> `workers_dev = true`, run `wrangler deploy`, verify the three secrets, then
+> switch the app env back to the Worker URLs.
+
 Cloudflare Worker relay for Telegram traffic.
 
 It solves two separate network problems that can happen on RU-hosted VPS:

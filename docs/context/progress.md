@@ -60,11 +60,9 @@ The current engineering focus is stabilization, not broad scope expansion:
 - The previous production hostname remains a temporary HTTPS compatibility
   proxy to the new origin. Its exact `/mcp` route stays on the unrelated old
   stack; the new hostname intentionally returns 404 for `/mcp`.
-- MAX has only the new-domain webhook subscription. Telegram remains healthy
-  through its Worker (`pending=0`, no last error); a synthetic empty update
-  passed Worker→legacy proxy→new backend with HTTP 200. The Worker secret could
-  not be updated because local Wrangler authentication is unavailable, so the
-  old hostname proxy currently preserves its origin route.
+- MAX and Telegram both use direct `investcontrol.org` webhooks. The Telegram
+  Cloudflare Worker relay was retired on 2026-09-26 after a live test showed
+  Telegram delivering updates straight to the Tashkent host.
 - Messenger-neutral refactor is ongoing, especially around delivery, identity
   resolution, and transport-specific access actions.
 - Admin UI is being refined for operational clarity around connectors,
@@ -96,10 +94,10 @@ The current engineering focus is stabilization, not broad scope expansion:
 ## Next Concrete Tasks
 
 - Telegram inbound outage 2026-09-22..2026-09-25 (legacy host offline, Worker
-  origin pointed at it) was fixed on 2026-09-25 by setting the Worker secret
-  `TELEGRAM_WEBHOOK_ORIGIN_URL=https://investcontrol.org/telegram/webhook`.
-  The legacy hostname proxy is no longer needed by Telegram, MAX or Robokassa;
-  the old host is offline and can be formally retired.
+  origin pointed at it) is closed: the webhook now goes directly to
+  `https://investcontrol.org/telegram/webhook` and the Worker is deactivated.
+  Remaining cleanup: retire the legacy hostname server block/certificate on
+  Airnet Nginx and the dead DNS record when convenient.
 - Long-period pending rebills without callback are now reported (WARN +
   `rebill_pending_stale`) after one hour, but they are still never retried and
   the user gets no "autopay failed" notice. Decide retry/failure semantics for
