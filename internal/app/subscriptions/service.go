@@ -82,6 +82,14 @@ func (s *Service) ProcessSubscriptionReminders(ctx context.Context) {
 		if !shouldSendReminder(connector) {
 			continue
 		}
+		if successor, ok := s.findRenewedContinuation(ctx, sub, connector); ok {
+			if err := s.Store.MarkSubscriptionReminderSent(ctx, sub.ID, now); err != nil {
+				slog.Error("mark subscription reminder skipped failed", "error", err, "subscription_id", sub.ID)
+				continue
+			}
+			s.saveAuditEvent(ctx, sub.UserID, "", sub.ConnectorID, domain.AuditActionSubscriptionReminderSkipped, buildRenewedSkipDetails(sub.ID, successor.ID), now)
+			continue
+		}
 
 		text := s.SubscriptionReminderMessage(sub.EndsAt)
 		preferredMessengerUserID := ""
@@ -115,6 +123,14 @@ func (s *Service) ProcessSubscriptionExpiryNotices(ctx context.Context) {
 			continue
 		}
 		if !shouldSendExpiryNotice(connector) {
+			continue
+		}
+		if successor, ok := s.findRenewedContinuation(ctx, sub, connector); ok {
+			if err := s.Store.MarkSubscriptionExpiryNoticeSent(ctx, sub.ID, now); err != nil {
+				slog.Error("mark subscription expiry notice skipped failed", "error", err, "subscription_id", sub.ID)
+				continue
+			}
+			s.saveAuditEvent(ctx, sub.UserID, "", sub.ConnectorID, domain.AuditActionSubscriptionExpiryNoticeSkipped, buildRenewedSkipDetails(sub.ID, successor.ID), now)
 			continue
 		}
 
@@ -660,6 +676,59 @@ func (s *Service) hasActiveReplacementSubscription(ctx context.Context, sub doma
 		return false
 	}
 	return latestSub.IsCurrentActiveAt(now)
+}
+
+// findRenewedContinuation returns another active subscription of the same
+// user that continues access after sub ends, so "your subscription is ending"
+// notifications for sub would be false.
+//
+// Manual renewals do not extend the current row: they create a new row queued
+// at starts_at = current ends_at (see max(now, current period end) rule). The
+// candidate must therefore start no later than sub.EndsAt (no access gap) and
+// end strictly after it. It counts when it belongs to the same connector or to
+// another connector pointing to the same Telegram chat / MAX chat.
+func (s *Service) findRenewedContinuation(ctx context.Context, sub domain.Subscription, connector domain.Connector) (domain.Subscription, bool) {
+	subs, err := s.Store.ListSubscriptions(ctx, domain.SubscriptionListQuery{
+		UserID: sub.UserID,
+		Status: domain.SubscriptionStatusActive,
+		Limit:  200,
+	})
+	if err != nil {
+		slog.Error("list active subscriptions for renewal continuation failed", "error", err, "subscription_id", sub.ID, "user_id", sub.UserID)
+		return domain.Subscription{}, false
+	}
+	chatRef := connector.ResolvedTelegramChatRef()
+	maxChatID, maxChatOK := connector.ResolvedMAXChatID()
+	for _, candidate := range subs {
+		if candidate.ID == sub.ID || candidate.Status != domain.SubscriptionStatusActive {
+			continue
+		}
+		if !candidate.EndsAt.After(sub.EndsAt) || candidate.StartsAt.After(sub.EndsAt) {
+			continue
+		}
+		if candidate.ConnectorID == sub.ConnectorID {
+			return candidate, true
+		}
+		candidateConnector, found, err := s.Store.GetConnector(ctx, candidate.ConnectorID)
+		if err != nil {
+			slog.Error("load connector for renewal continuation failed", "error", err, "subscription_id", candidate.ID, "connector_id", candidate.ConnectorID, "user_id", sub.UserID)
+			continue
+		}
+		if !found {
+			continue
+		}
+		if chatRef != "" && candidateConnector.ResolvedTelegramChatRef() == chatRef {
+			return candidate, true
+		}
+		if candidateChatID, ok := candidateConnector.ResolvedMAXChatID(); maxChatOK && ok && candidateChatID == maxChatID {
+			return candidate, true
+		}
+	}
+	return domain.Subscription{}, false
+}
+
+func buildRenewedSkipDetails(subscriptionID, successorID int64) string {
+	return "subscription_id=" + strconv.FormatInt(subscriptionID, 10) + ";successor_subscription_id=" + strconv.FormatInt(successorID, 10)
 }
 
 // hasOtherActiveTelegramAccessForChat reports whether the user already has

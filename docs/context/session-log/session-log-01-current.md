@@ -879,3 +879,47 @@ Do not start the legacy `investcontrol-server` backend at the same time.
   the dead DNS A record.
 - Remove `telegram-bot-relay/.wrangler/cache/wrangler-account.json` from git
   and ignore `.wrangler/`.
+
+## 2026-10-01 - False "Subscription Ending" Notices After Manual Renewal
+
+### Incident
+
+- User 49 (Telegram `1280657602`, connector 76, `calendar_months`=1, no
+  autopay) complained that the bot kept warning about expiry after paying.
+- Production data: subscription 177 ended 2026-10-01 15:45 MSK. The 3-day
+  reminder went out on 2026-09-28 15:45 (correct). The user paid manually at
+  16:40 the same day (payment 345, Robokassa result received), which created
+  subscription 266 queued at `starts_at = 177.ends_at`. On 2026-09-30 15:45
+  the same-day expiry notice ("Доступ будет отключен ..., если продление не
+  поступит") was still sent for subscription 177.
+
+### Root Cause
+
+- Manual renewals create a new subscription row rather than extending the
+  current one. `ProcessSubscriptionReminders` and
+  `ProcessSubscriptionExpiryNotices` selected rows only by their own `ends_at`
+  and never checked for a queued successor. The expiry job already had the
+  replacement check (`hasActiveReplacementSubscription`), so access itself was
+  never at risk: 177 expires with `replacement_active=true` and no revoke.
+
+### Fix
+
+- `findRenewedContinuation` in `internal/app/subscriptions/service.go`: another
+  active subscription of the same user that starts no later than the current
+  `ends_at` and ends after it, on the same connector or on a connector with the
+  same Telegram chat ref / MAX chat ID. When found, the job does not send the
+  message, still sets `reminder_sent_at` / `expiry_notice_sent_at` so the row
+  is not reselected, and writes `subscription_reminder_skipped_renewed` /
+  `subscription_expiry_notice_skipped_renewed` with
+  `subscription_id=...;successor_subscription_id=...`.
+- Tests: `internal/app/subscriptions/renewal_continuation_test.go` (same
+  connector reminder/notice skip, same-chat other connector skip, and still
+  sending for a different chat or a renewal with an access gap). The three skip
+  tests fail on the old code. `GOCACHE=/tmp/go-build go test ./...` is green.
+
+### Notes
+
+- Assumption: a successor with a gap after `ends_at` does not suppress the
+  notice, because access is really lost in between.
+- A pending rebill has no subscription row until its paid callback, so it can
+  never suppress a notice; only confirmed paid periods count.

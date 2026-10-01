@@ -63,6 +63,12 @@ The current engineering focus is stabilization, not broad scope expansion:
 - MAX and Telegram both use direct `investcontrol.org` webhooks. The Telegram
   Cloudflare Worker relay was retired on 2026-09-26 after a live test showed
   Telegram delivering updates straight to the Tashkent host.
+- Since 2026-10-01 the 3-day reminder and same-day expiry notice jobs skip
+  the message when another active subscription already continues access
+  (manual renewal queued at `starts_at = current ends_at`, or another connector
+  with the same Telegram/MAX chat). Skips are marked on the row and audited as
+  `subscription_reminder_skipped_renewed` /
+  `subscription_expiry_notice_skipped_renewed`.
 - Messenger-neutral refactor is ongoing, especially around delivery, identity
   resolution, and transport-specific access actions.
 - Admin UI is being refined for operational clarity around connectors,
