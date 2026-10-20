@@ -967,3 +967,48 @@ Do not start the legacy `investcontrol-server` backend at the same time.
   succeeds after a manual renewal, two periods are activated.
 - The pay-consent toggle re-renders the checkout step without the notice;
   acceptable for now.
+
+## 2026-10-20 - Autopay-Failed Notice And Revoke Failure Audit
+
+### Change
+
+- `recurring.Service.ReportStalePendingRebill` now calls `notifyStaleRebill`
+  on the first stale report of a pending rebill: one user notice
+  (`appRecurringRebillStaleNotice`, connector name + current period end) with
+  the messenger-aware renewal entrypoint from
+  `subscriptions.Service.BuildRenewalNotification`, plus audit
+  `recurring_payment_failed_notice` with `source=stale_rebill`. The
+  `rebill_pending_stale` audit stays the dedup marker, so already-reported
+  rebills do not get a late notice after deploy.
+- Skipped when the period already ended (short-period connectors).
+- Test: `TestReportStalePendingRebill_NotifiesUserOnce` (fresh: no notice;
+  stale: exactly one notice and one audit over two scheduler runs).
+
+### Revoke failures investigated (read-only)
+
+- `subscription_revoke_manual_check_required` in 30 days: user 43 (sub 161,
+  2026-09-26), user 3 (sub 119, 2026-10-14), user 19 (sub 235, 2026-10-18).
+- MAX chat «МиниСклад» `-74062334901690`: `GET /chats/{id}/members/me` shows
+  the bot with `is_admin=false`, no permissions; every other MAX chat has
+  `add_remove_members`. MAX error text: "The user has already been deleted or
+  you do not have sufficient rights". Users 43 and 19 have active paid
+  subscriptions again, so nobody has unpaid access there now except the
+  owner's test account (user 2).
+- Telegram chat `-1003222018503` (sub 119, connector 52 «ТЕСТ АрендаЭкспресс»):
+  "user is an administrator of the chat"; user 3 is the operator's own
+  account. No action needed beyond making this error non-retryable.
+- All 7 Telegram chats: bot is administrator with `can_restrict_members`.
+- MAX members without a subscription for that chat: users 12/17/18 were false
+  positives (legacy connectors 24/29/30 carry the chat only in
+  `max_channel_url`). Real ones: user 55 in «СКС Трейд» (joined 2026-09-11 with
+  no payment that day) and user 63 in «Русский Тоннаж» (joined 2026-09-06,
+  before registering 2026-10-15). Not added by the bot.
+- Follow-ups recorded in `docs/backlog/todo.md`.
+
+### Context
+
+- User 9 (MAX "Александр") is Гаврилов Александр Сергеевич; same blocked
+  manual-payment pattern as users 37/38 on 18–19.10, subscriptions on
+  connectors 87/96 expired 2026-10-20 15:28/15:30.
+- Users 19 and 37 renewed manually on 2026-10-20 after the fix (19 with
+  autopay on all four connectors).

@@ -114,6 +114,11 @@ The current engineering focus is stabilization, not broad scope expansion:
   was declined could not pay until access was revoked (MAX users 19/37/38,
   rebills 15–17.10). A late success of the stale rebill after a manual renewal
   would activate two periods; watch for it.
+- Stale rebills now also send the user a one-time "автоплатеж не прошел"
+  notice (audit `recurring_payment_failed_notice`, `source=stale_rebill`).
+  Retry/failure semantics for rebills without callback are still open.
+- Bot is not an admin in the MAX chat «МиниСклад» (`-74062334901690`), so
+  revokes there always fail; an operator must grant `add_remove_members`.
 
 - Monitor the resumed new service, Nginx, payment callbacks and recurring/audit
   state for 24–72 hours before removing rollback assets. Do not start the

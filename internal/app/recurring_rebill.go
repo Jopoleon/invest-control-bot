@@ -34,6 +34,8 @@ func (a *application) recurringService() *apprecurring.Service {
 		GenerateInvoiceID:                     generateInvoiceID,
 		BuildTargetAuditEvent:                 a.buildAppTargetAuditEvent,
 		SendUserNotification:                  a.sendUserNotification,
+		BuildRenewalNotification:              a.buildRenewalNotification,
+		StaleRebillNotice:                     appRecurringRebillStaleNotice,
 		ResolveUserByMessengerUserID:          a.resolveUserByMessengerUserID,
 		ResolveTelegramMessengerUserID:        a.resolveTelegramMessengerUserID,
 		ResolveConnectorChannel:               resolveConnectorChannelURL,

@@ -1203,3 +1203,74 @@ func TestProcessCancelRequest_DisablesLatestActiveSubscriptionForStalePage(t *te
 		t.Fatalf("audit details=%q", got)
 	}
 }
+
+// A stale rebill must tell the user once that autopay failed and how to renew,
+// using the messenger-aware renewal entrypoint; a fresh rebill must stay quiet.
+func TestReportStalePendingRebill_NotifiesUserOnce(t *testing.T) {
+	cases := []struct {
+		name       string
+		pendingAge time.Duration
+		wantSent   int
+	}{
+		{name: "fresh pending stays quiet", pendingAge: 10 * time.Minute, wantSent: 0},
+		{name: "stale pending notifies once", pendingAge: 3 * time.Hour, wantSent: 1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			st := memory.New()
+			now := time.Now().UTC()
+			connector := domain.Connector{
+				ID:           5,
+				StartPayload: "in-stale-notice",
+				Name:         "МиниСклад",
+				PeriodMode:   domain.ConnectorPeriodModeCalendarMonths,
+				PeriodMonths: 1,
+			}
+			sub := domain.Subscription{ID: 9, UserID: 42, ConnectorID: connector.ID, Status: domain.SubscriptionStatusActive, AutoPayEnabled: true, EndsAt: now.Add(48 * time.Hour)}
+			pending := domain.Payment{ID: 77, Status: domain.PaymentStatusPending, Token: "inv-77", SubscriptionID: sub.ID, CreatedAt: now.Add(-tc.pendingAge)}
+
+			var sent []messenger.OutgoingMessage
+			service := &Service{
+				Store: st,
+				BuildTargetAuditEvent: func(_ context.Context, userID int64, _ string, connectorID int64, action, details string, createdAt time.Time) domain.AuditEvent {
+					return domain.AuditEvent{TargetUserID: userID, ConnectorID: connectorID, Action: action, Details: details, CreatedAt: createdAt}
+				},
+				SendUserNotification: func(_ context.Context, userID int64, _ string, msg messenger.OutgoingMessage) error {
+					if userID != sub.UserID {
+						t.Fatalf("notice user=%d want %d", userID, sub.UserID)
+					}
+					sent = append(sent, msg)
+					return nil
+				},
+				BuildRenewalNotification: func(_ context.Context, _ int64, _ string, startPayload, text string) messenger.OutgoingMessage {
+					return messenger.OutgoingMessage{Text: text + "\n/start " + startPayload}
+				},
+				StaleRebillNotice: func(name string, _ time.Time) string { return "autopay failed: " + name },
+			}
+			decision := ScheduledRebillDecision{Connector: connector, PendingPayment: &pending}
+
+			service.ReportStalePendingRebill(ctx, sub, decision, now)
+			service.ReportStalePendingRebill(ctx, sub, decision, now.Add(time.Minute))
+
+			if len(sent) != tc.wantSent {
+				t.Fatalf("notices sent=%d want %d", len(sent), tc.wantSent)
+			}
+			if tc.wantSent > 0 && sent[0].Text != "autopay failed: МиниСклад\n/start in-stale-notice" {
+				t.Fatalf("notice text=%q", sent[0].Text)
+			}
+			events, _, err := st.ListAuditEvents(ctx, domain.AuditEventListQuery{
+				TargetUserID: sub.UserID,
+				Action:       domain.AuditActionRecurringPaymentFailedNotice,
+				Page:         1,
+				PageSize:     10,
+			})
+			if err != nil {
+				t.Fatalf("ListAuditEvents: %v", err)
+			}
+			if len(events) != tc.wantSent {
+				t.Fatalf("notice audit events=%d want %d", len(events), tc.wantSent)
+			}
+		})
+	}
+}

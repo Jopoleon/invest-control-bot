@@ -40,11 +40,17 @@ type ScheduledRebillDecision struct {
 // construction, and invoice-id generation so the recurring payment path can be
 // tested independently from HTTP handlers and the application composition root.
 type Service struct {
-	Store                                 store.Store
-	RobokassaService                      *payment.RobokassaService
-	GenerateInvoiceID                     func() string
-	BuildTargetAuditEvent                 func(context.Context, int64, string, int64, string, string, time.Time) domain.AuditEvent
-	SendUserNotification                  func(context.Context, int64, string, messenger.OutgoingMessage) error
+	Store                 store.Store
+	RobokassaService      *payment.RobokassaService
+	GenerateInvoiceID     func() string
+	BuildTargetAuditEvent func(context.Context, int64, string, int64, string, string, time.Time) domain.AuditEvent
+	SendUserNotification  func(context.Context, int64, string, messenger.OutgoingMessage) error
+	// BuildRenewalNotification adds the messenger-specific renewal entrypoint
+	// (Telegram button or MAX /start command) to a user notice.
+	BuildRenewalNotification func(ctx context.Context, userID int64, preferredMessengerUserID, startPayload, text string) messenger.OutgoingMessage
+	// StaleRebillNotice renders the "autopay failed" notice for a connector name
+	// and the current period end.
+	StaleRebillNotice                     func(connectorName string, endsAt time.Time) string
 	ResolveUserByMessengerUserID          func(context.Context, int64) (domain.User, bool, error)
 	ResolveTelegramMessengerUserID        func(context.Context, int64) (int64, bool, error)
 	ResolveConnectorChannel               func(string, string) string
@@ -365,6 +371,39 @@ func (s *Service) ReportStalePendingRebill(ctx context.Context, sub domain.Subsc
 		"short_duration", decision.ShortDuration,
 	)
 	s.saveAuditEvent(ctx, sub.UserID, "", sub.ConnectorID, domain.AuditActionRebillPendingStale, details, now)
+	s.notifyStaleRebill(ctx, sub, decision.Connector, pending, now)
+}
+
+// notifyStaleRebill tells the user once that autopay did not go through and
+// how to renew manually. It runs only on the first stale report for a pending
+// payment, so the rebill_pending_stale audit event is the dedup marker.
+//
+// The bot accepts a manual payment for the same connector once the rebill is
+// stale (see bot.sendExistingSubscriptionMessage), so the notice and checkout
+// use the same rule.
+//
+// TODO: The notice is not retried when delivery fails; the regular expiry
+// notice still reaches the user before access ends.
+func (s *Service) notifyStaleRebill(ctx context.Context, sub domain.Subscription, connector domain.Connector, pending domain.Payment, now time.Time) {
+	if s.SendUserNotification == nil || s.StaleRebillNotice == nil {
+		return
+	}
+	// Short-period rebills become stale only after the period end; the expiry
+	// message already tells those users to renew.
+	if !now.Before(sub.EndsAt) {
+		return
+	}
+	text := s.StaleRebillNotice(connector.Name, sub.EndsAt)
+	msg := messenger.OutgoingMessage{Text: text}
+	if s.BuildRenewalNotification != nil {
+		msg = s.BuildRenewalNotification(ctx, sub.UserID, "", connector.StartPayload, text)
+	}
+	if err := s.SendUserNotification(ctx, sub.UserID, "", msg); err != nil {
+		slog.Warn("stale rebill notice send failed", "error", err, "subscription_id", sub.ID, "payment_id", pending.ID, "user_id", sub.UserID)
+		return
+	}
+	s.saveAuditEvent(ctx, sub.UserID, "", sub.ConnectorID, domain.AuditActionRecurringPaymentFailedNotice,
+		"payment_id="+strconv.FormatInt(pending.ID, 10)+";subscription_id="+strconv.FormatInt(sub.ID, 10)+";source=stale_rebill", now)
 }
 
 func (s *Service) saveAuditEvent(ctx context.Context, userID int64, preferredMessengerUserID string, connectorID int64, action, details string, createdAt time.Time) {

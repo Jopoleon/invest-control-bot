@@ -87,6 +87,17 @@ func appSubscriptionReminderMessage(endsAt time.Time) string {
 	return fmt.Sprintf("🔔 Напоминание: подписка закончится %s. Чтобы продлить доступ, нажмите кнопку ниже.", endsAt.In(time.Local).Format("02.01.2006 15:04"))
 }
 
+// appRecurringRebillStaleNotice is sent once when an autopay rebill got no
+// provider confirmation (Robokassa sends no callback for a declined charge).
+func appRecurringRebillStaleNotice(connectorName string, endsAt time.Time) string {
+	name := strings.TrimSpace(connectorName)
+	subject := "по подписке"
+	if name != "" {
+		subject = "по подписке «" + name + "»"
+	}
+	return fmt.Sprintf("⚠️ Автоплатеж %s не прошел: банк не подтвердил списание.\n\nДоступ действует до %s. Чтобы не потерять его, оплатите подписку вручную — новый период начнется после окончания текущего.", subject, endsAt.In(time.Local).Format("02.01.2006 15:04"))
+}
+
 func appSubscriptionExpiryNoticeMessage(endsAt time.Time) string {
 	return fmt.Sprintf("⏰ Сегодня заканчивается подписка. Доступ будет отключен %s, если продление не поступит.", endsAt.In(time.Local).Format("02.01.2006 15:04"))
 }
