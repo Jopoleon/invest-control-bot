@@ -108,7 +108,7 @@ The current engineering focus is stabilization, not broad scope expansion:
   `rebill_pending_stale`) after one hour, but they are still never retried and
   the user gets no "autopay failed" push. Decide retry/failure semantics for
   rebills without callback. Deployed as `79fedd7` on 2026-09-25.
-- Since 2026-10-20 (not yet deployed at the time of writing) the bot lets a
+- Since 2026-10-20 (deployed as `ee8d810` at 19:46 MSK) the bot lets a
   user with an active autopay subscription pay manually once its rebill is
   stale, with a "автоплатеж не прошел" notice. Before that, users whose card
   was declined could not pay until access was revoked (MAX users 19/37/38,

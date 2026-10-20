@@ -958,7 +958,9 @@ Do not start the legacy `investcontrol-server` backend at the same time.
 
 ### Notes / Unverified
 
-- Not deployed yet. Manual renewal reuses the existing queued-subscription
+- Deployed as `ee8d810` on 2026-10-20 19:46 MSK; service came up clean
+  (Telegram/MAX webhooks ensured, no errors). Not yet seen in a live user flow.
+- Manual renewal reuses the existing queued-subscription
   rule from `ActivateSuccessfulPayment`; it is the same path users without
   autopay already had.
 - Risk kept as a TODO in `existing_subscription.go`: if a stale rebill later
