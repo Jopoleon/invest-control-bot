@@ -981,6 +981,8 @@ Do not start the legacy `investcontrol-server` backend at the same time.
   `rebill_pending_stale` audit stays the dedup marker, so already-reported
   rebills do not get a late notice after deploy.
 - Skipped when the period already ended (short-period connectors).
+- Deployed as `51479ec` on 2026-10-20 21:59 MSK; service came up clean. No
+  live stale rebill has fired the notice yet.
 - Test: `TestReportStalePendingRebill_NotifiesUserOnce` (fresh: no notice;
   stale: exactly one notice and one audit over two scheduler runs).
 
