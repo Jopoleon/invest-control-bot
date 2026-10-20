@@ -81,3 +81,38 @@ func TestResolveDurationTiming_ForTwoDayPeriod(t *testing.T) {
 		t.Fatalf("ExpiryGrace=%s want=0", timing.ExpiryGrace)
 	}
 }
+
+func TestIsPendingRebillStale_LongPeriodUsesPendingAge(t *testing.T) {
+	timing := Resolve(domain.Connector{
+		PeriodMode:   domain.ConnectorPeriodModeCalendarMonths,
+		PeriodMonths: 1,
+	})
+	now := time.Date(2026, 10, 17, 15, 0, 0, 0, time.UTC)
+	endsAt := now.Add(72 * time.Hour)
+
+	if timing.IsPendingRebillStale(now, now.Add(-59*time.Minute), endsAt) {
+		t.Fatal("pending for 59m reported stale, want fresh")
+	}
+	if !timing.IsPendingRebillStale(now, now.Add(-LongPeriodPendingRebillStaleAfter), endsAt) {
+		t.Fatal("pending for 1h not reported stale")
+	}
+}
+
+func TestIsPendingRebillStale_ShortPeriodOnlyInsideExpiryGrace(t *testing.T) {
+	timing := Resolve(domain.Connector{
+		PeriodMode:    domain.ConnectorPeriodModeDuration,
+		PeriodSeconds: 4 * 60,
+	})
+	endsAt := time.Date(2026, 10, 17, 15, 0, 0, 0, time.UTC)
+	pendingSince := endsAt.Add(-2 * time.Hour)
+
+	if timing.IsPendingRebillStale(endsAt.Add(-time.Second), pendingSince, endsAt) {
+		t.Fatal("short-period rebill stale before subscription end")
+	}
+	if !timing.IsPendingRebillStale(endsAt.Add(10*time.Second), pendingSince, endsAt) {
+		t.Fatal("short-period rebill not stale inside expiry grace")
+	}
+	if timing.IsPendingRebillStale(endsAt.Add(timing.ExpiryGrace), pendingSince, endsAt) {
+		t.Fatal("short-period rebill stale after expiry grace")
+	}
+}

@@ -38,7 +38,8 @@ func (h *Handler) handlePay(ctx context.Context, cb messenger.IncomingAction) {
 		h.sendTo(ctx, cb.ChatID, cb.User, botMsgPaymentProviderNotConfigured)
 		return
 	}
-	if handled := h.sendExistingSubscriptionMessage(ctx, cb.ChatID, cb.User, connectorID); handled {
+	// A stale autopay rebill does not stop checkout here: the user renews manually.
+	if handled, _ := h.sendExistingSubscriptionMessage(ctx, cb.ChatID, cb.User, connectorID); handled {
 		return
 	}
 	user, resolved := h.resolveMessengerUser(ctx, cb.User)

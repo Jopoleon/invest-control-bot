@@ -311,19 +311,11 @@ func (s *Service) EvaluateScheduledRebill(ctx context.Context, sub domain.Subscr
 	return decision, nil
 }
 
-// longPeriodPendingRebillStaleAfter is how long a pending rebill of an ordinary
-// (non short-period) connector may wait for the Robokassa result callback
-// before it is reported as stale.
-//
-// Robokassa answers the recurring request with OK+InvoiceID even when the
-// actual charge is later declined, and it sends no failure callback in that
-// case. Successful production rebills receive the result callback within
-// seconds, so an hour without callback is a reliable "declined or lost" signal.
-//
-// TODO: Decide whether such pending rebills should be marked failed after this
-// timeout so the scheduler can retry inside the 48h/24h windows. Today the
-// pending row blocks every further attempt until the subscription expires.
-const longPeriodPendingRebillStaleAfter = time.Hour
+// TODO: Decide whether stale pending rebills (see
+// periodpolicy.LongPeriodPendingRebillStaleAfter) should be marked failed so
+// the scheduler can retry inside the 48h/24h windows. Today the pending row
+// blocks every further attempt until the subscription expires; the bot only
+// lets the user renew manually once the rebill is stale.
 
 // ReportStalePendingRebill surfaces a pending rebill that never received the
 // provider result callback. It emits one warning log and one audit event per
@@ -342,15 +334,12 @@ func (s *Service) ReportStalePendingRebill(ctx context.Context, sub domain.Subsc
 	if pending.Status != domain.PaymentStatusPending {
 		return
 	}
-	if decision.ShortDuration {
-		timing := periodpolicy.Resolve(decision.Connector)
-		if !timing.ShouldDeferExpiration(now, sub.EndsAt) {
-			return
-		}
-		if now.Before(sub.EndsAt) {
-			return
-		}
-	} else if now.Sub(pending.CreatedAt) < longPeriodPendingRebillStaleAfter {
+	timing := periodpolicy.Resolve(decision.Connector)
+	// decision.ShortDuration is the scheduler's own view of the connector; keep
+	// it authoritative so a connector without a resolvable duration still uses
+	// the long-period age rule.
+	timing.ShortDuration = decision.ShortDuration
+	if !timing.IsPendingRebillStale(now, pending.CreatedAt, sub.EndsAt) {
 		return
 	}
 	details := "subscription_id=" + strconv.FormatInt(sub.ID, 10) +

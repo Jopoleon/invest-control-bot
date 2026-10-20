@@ -84,10 +84,14 @@ func (h *Handler) handleRegistrationStep(ctx context.Context, msg messenger.Inco
 
 // sendFinalRegistrationMessage sends completion text and pay button.
 func (h *Handler) sendFinalRegistrationMessage(ctx context.Context, chatID int64, userIdentity messenger.UserIdentity, connectorID int64) {
-	if handled := h.sendExistingSubscriptionMessage(ctx, chatID, userIdentity, connectorID); handled {
+	handled, manualRenewalNotice := h.sendExistingSubscriptionMessage(ctx, chatID, userIdentity, connectorID)
+	if handled {
 		return
 	}
 	text, payKeyboard := h.buildFinalPaymentStep(ctx, connectorID, userIdentity.Kind, false)
+	if manualRenewalNotice != "" {
+		text = manualRenewalNotice + "\n\n" + text
+	}
 	if err := h.sender.Send(ctx, recipientRef(chatID, userIdentity), messenger.OutgoingMessage{Text: text, Buttons: payKeyboard}); err != nil {
 		slog.Error("send final message failed", "error", err, "chat_id", chatID, "connector_id", connectorID)
 	}

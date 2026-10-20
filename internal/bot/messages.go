@@ -72,6 +72,7 @@ const (
 	botMsgExistingSubscriptionAutopayEnabled      = "\n\nАвтоплатеж для этого тарифа уже включен."
 	botMsgExistingSubscriptionAutopayDisabledHint = "\n\nАвтоплатеж для этого тарифа сейчас выключен, но его можно включить обратно без повторной оплаты."
 	botBtnAutopayEnableAgain                      = "Включить автоплатеж обратно"
+	botMsgExistingSubscriptionRebillNotConfirmed  = "\n\n⚠️ Автоплатеж не прошел: списание не подтверждено банком. Чтобы не потерять доступ, оплатите подписку вручную. Новый период начнется после окончания текущего."
 	botMsgCheckoutBase                            = "✅ Почти готово.\n💳 Осталось оплатить подписку.\nНажмите кнопку «Оплатить» ниже, чтобы перейти на платежную страницу."
 	botMsgCheckoutAutopayDisabled                 = "\n\n☐ Автоплатеж выключен.\nЕсли хотите подключить автоматические списания, подтвердите согласие кнопкой ниже."
 	botBtnCheckoutAutopayOff                      = "☐ Я согласен на автоматические списания"

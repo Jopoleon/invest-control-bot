@@ -923,3 +923,45 @@ Do not start the legacy `investcontrol-server` backend at the same time.
   notice, because access is really lost in between.
 - A pending rebill has no subscription row until its paid callback, so it can
   never suppress a notice; only confirmed paid periods count.
+
+## 2026-10-20 - Manual Payment Blocked While Autopay Rebill Hangs
+
+### Incident
+
+- Support reported payment problems for three MAX users (internal ids 19, 37,
+  38). Production check: their autopay rebills (payments 400–403, 415–418) got
+  `OK<invoice>` from Robokassa but never a result callback, i.e. the charge was
+  declined. Rebills of other users on the same days succeeded.
+- On 2026-10-19 users 37 and 38 opened the bot before expiry to pay manually.
+  The bot answered "У вас уже есть активная подписка ... Автоплатеж для этого
+  тарифа уже включен" with no pay button, so they could not pay until access
+  was revoked on 2026-10-20.
+- First server check wrongly concluded that MAX had stopped delivering
+  webhooks (no `/max/webhook` hits for ~26 h). A test `/start` from the owner
+  arrived normally; whole days without MAX traffic are usual for this bot.
+
+### Fix
+
+- `periodpolicy.Timing.IsPendingRebillStale` now holds the stale rule
+  (short-period: after `ends_at` inside expiry grace; otherwise pending age
+  >= `LongPeriodPendingRebillStaleAfter` = 1h). `recurring.ReportStalePendingRebill`
+  uses it, behavior unchanged.
+- `sendExistingSubscriptionMessage` returns `(handled, manualRenewalNotice)`.
+  For an active autopay subscription with a stale pending rebill it does not
+  block checkout: the registration path prepends the "автоплатеж не прошел"
+  notice to the normal payment step, and `handlePay` creates the payment.
+  A fresh pending rebill (< 1h) still blocks, so a charge that may still
+  succeed is not doubled by a manual payment.
+- Tests: `internal/bot/existing_subscription_test.go` (stale → notice + pay
+  button, stale → payment created, fresh → blocked) and periodpolicy stale-rule
+  tests. `GOCACHE=/tmp/go-build go test ./...` is green.
+
+### Notes / Unverified
+
+- Not deployed yet. Manual renewal reuses the existing queued-subscription
+  rule from `ActivateSuccessfulPayment`; it is the same path users without
+  autopay already had.
+- Risk kept as a TODO in `existing_subscription.go`: if a stale rebill later
+  succeeds after a manual renewal, two periods are activated.
+- The pay-consent toggle re-renders the checkout step without the notice;
+  acceptable for now.

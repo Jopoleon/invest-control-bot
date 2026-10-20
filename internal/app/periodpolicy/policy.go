@@ -95,6 +95,36 @@ func (t Timing) ShouldDeferExpiration(now, endsAt time.Time) bool {
 	return now.Before(endsAt.Add(t.ExpiryGrace))
 }
 
+// LongPeriodPendingRebillStaleAfter is how long a pending rebill of an ordinary
+// (non short-period) connector may wait for the Robokassa result callback
+// before it is treated as stale.
+//
+// Robokassa answers the recurring request with OK+InvoiceID even when the
+// actual charge is later declined, and it sends no failure callback in that
+// case. Successful production rebills receive the result callback within
+// seconds, so an hour without callback is a reliable "declined or lost" signal.
+const LongPeriodPendingRebillStaleAfter = time.Hour
+
+// IsPendingRebillStale reports whether a pending rebill created at
+// pendingCreatedAt for a subscription ending at endsAt has waited too long for
+// the provider result callback.
+//
+// Short-period connectors fire the rebill seconds before expiry, so their
+// rebill is stale only after the subscription end, inside the callback grace
+// window. Long-period connectors are judged by pending age while the
+// subscription is still active, so the user and operators can react before
+// access is revoked.
+//
+// A stale rebill is not a failed payment: a late success callback would still
+// be honored. Callers use this only to surface the problem and to let the user
+// renew manually.
+func (t Timing) IsPendingRebillStale(now, pendingCreatedAt, endsAt time.Time) bool {
+	if t.ShortDuration {
+		return t.ShouldDeferExpiration(now, endsAt) && !now.Before(endsAt)
+	}
+	return now.Sub(pendingCreatedAt) >= LongPeriodPendingRebillStaleAfter
+}
+
 func clampDuration(value, minValue, maxValue time.Duration) time.Duration {
 	if value < minValue {
 		return minValue
